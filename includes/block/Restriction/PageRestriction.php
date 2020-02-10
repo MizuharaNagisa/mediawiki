@@ -1,6 +1,6 @@
 <?php
 /**
- * A Block restriction object of type 'Page'.
+ * A block restriction object of type 'Page'.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,24 +25,28 @@ namespace MediaWiki\Block\Restriction;
 class PageRestriction extends AbstractRestriction {
 
 	/**
-	 * {@inheritdoc}
+	 * @inheritDoc
 	 */
 	const TYPE = 'page';
 
 	/**
-	 * {@inheritdoc}
+	 * @inheritDoc
 	 */
 	const TYPE_ID = 1;
 
 	/**
-	 * @var \Title
+	 * @var \Title|bool
 	 */
 	protected $title;
 
 	/**
-	 * {@inheritdoc}
+	 * @inheritDoc
 	 */
 	public function matches( \Title $title ) {
+		if ( !$this->getTitle() ) {
+			return false;
+		}
+
 		return $title->equals( $this->getTitle() );
 	}
 
@@ -66,18 +70,26 @@ class PageRestriction extends AbstractRestriction {
 	 * @return \Title|null
 	 */
 	public function getTitle() {
-		if ( !$this->title ) {
+		if ( $this->title === null ) {
 			$this->title = \Title::newFromID( $this->value );
+
+			// If the title does not exist, set to false to prevent multiple database
+			// queries.
+			if ( $this->title === null ) {
+				$this->title = false;
+			}
 		}
 
-		return $this->title;
+		return $this->title ?? null;
 	}
 
 	/**
-	 * {@inheritdoc}
+	 * @inheritDoc
 	 */
 	public static function newFromRow( \stdClass $row ) {
+		/** @var self $restriction */
 		$restriction = parent::newFromRow( $row );
+		'@phan-var self $restriction';
 
 		// If the page_namespace and the page_title were provided, add the title to
 		// the restriction.

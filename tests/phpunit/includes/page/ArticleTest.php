@@ -1,6 +1,6 @@
 <?php
 
-class ArticleTest extends MediaWikiTestCase {
+class ArticleTest extends \MediaWikiTestCase {
 
 	/**
 	 * @var Title
@@ -12,14 +12,14 @@ class ArticleTest extends MediaWikiTestCase {
 	private $article;
 
 	/** creates a title object and its article object */
-	protected function setUp() {
+	protected function setUp() : void {
 		parent::setUp();
 		$this->title = Title::makeTitle( NS_MAIN, 'SomePage' );
 		$this->article = new Article( $this->title );
 	}
 
 	/** cleanup title object and its article object */
-	protected function tearDown() {
+	protected function tearDown() : void {
 		parent::tearDown();
 		$this->title = null;
 		$this->article = null;
@@ -29,7 +29,7 @@ class ArticleTest extends MediaWikiTestCase {
 	 * @covers Article::__get
 	 */
 	public function testImplementsGetMagic() {
-		$this->assertEquals( false, $this->article->mLatest, "Article __get magic" );
+		$this->assertFalse( $this->article->mLatest, "Article __get magic" );
 	}
 
 	/**

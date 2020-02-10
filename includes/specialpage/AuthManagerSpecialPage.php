@@ -13,7 +13,8 @@ use MediaWiki\Session\Token;
  */
 abstract class AuthManagerSpecialPage extends SpecialPage {
 	/** @var string[] The list of actions this special page deals with. Subclasses should override
-	 * this. */
+	 * this.
+	 */
 	protected static $allowedActions = [
 		AuthManager::ACTION_LOGIN, AuthManager::ACTION_LOGIN_CONTINUE,
 		AuthManager::ACTION_CREATE, AuthManager::ACTION_CREATE_CONTINUE,
@@ -157,7 +158,7 @@ abstract class AuthManagerSpecialPage extends SpecialPage {
 				if ( $request->wasPosted() ) {
 					// unique ID in case the same special page is open in multiple browser tabs
 					$uniqueId = MWCryptRand::generateHex( 6 );
-					$key = $key . ':' . $uniqueId;
+					$key .= ':' . $uniqueId;
 
 					$queryParams = [ 'authUniqueId' => $uniqueId ] + $queryParams;
 					$authData = array_diff_key( $request->getValues(),
@@ -181,7 +182,7 @@ abstract class AuthManagerSpecialPage extends SpecialPage {
 
 		$uniqueId = $request->getVal( 'authUniqueId' );
 		if ( $uniqueId ) {
-			$key = $key . ':' . $uniqueId;
+			$key .= ':' . $uniqueId;
 			$authData = $authManager->getAuthenticationSessionData( $key );
 			if ( $authData ) {
 				$authManager->removeAuthenticationSessionData( $key );
@@ -429,15 +430,16 @@ abstract class AuthManagerSpecialPage extends SpecialPage {
 				// accidentally returning it so best check and fix
 				$status = Status::wrap( $status );
 			} elseif ( is_string( $status ) ) {
-				$status = Status::newFatal( new RawMessage( '$1', $status ) );
+				$status = Status::newFatal( new RawMessage( '$1', [ $status ] ) );
 			} elseif ( is_array( $status ) ) {
 				if ( is_string( reset( $status ) ) ) {
 					$status = Status::newFatal( ...$status );
 				} elseif ( is_array( reset( $status ) ) ) {
-					$status = Status::newGood();
+					$ret = Status::newGood();
 					foreach ( $status as $message ) {
-						$status->fatal( ...$message );
+						$ret->fatal( ...$message );
 					}
+					$status = $ret;
 				} else {
 					throw new UnexpectedValueException( 'invalid HTMLForm::trySubmit() return value: '
 						. 'first element of array is ' . gettype( reset( $status ) ) );
@@ -507,7 +509,7 @@ abstract class AuthManagerSpecialPage extends SpecialPage {
 	 * Generates a HTMLForm descriptor array from a set of authentication requests.
 	 * @param AuthenticationRequest[] $requests
 	 * @param string $action AuthManager action name (one of the AuthManager::ACTION_* constants)
-	 * @return array
+	 * @return array[]
 	 */
 	protected function getAuthFormDescriptor( $requests, $action ) {
 		$fieldInfo = AuthenticationRequest::mergeFieldInfo( $requests );
@@ -598,7 +600,7 @@ abstract class AuthManagerSpecialPage extends SpecialPage {
 	/**
 	 * Adds a sequential tabindex starting from 1 to all form elements. This way the user can
 	 * use the tab key to traverse the form without having to step through all links and such.
-	 * @param array &$formDescriptor
+	 * @param array[] &$formDescriptor
 	 */
 	protected function addTabIndex( &$formDescriptor ) {
 		$i = 1;
@@ -710,7 +712,6 @@ abstract class AuthManagerSpecialPage extends SpecialPage {
 	 * are shown closer to the bottom; weight defaults to 0. Negative weight is allowed.)
 	 * Keep order if weights are equal.
 	 * @param array &$formDescriptor
-	 * @return array
 	 */
 	protected static function sortFormDescriptorFields( array &$formDescriptor ) {
 		$i = 0;

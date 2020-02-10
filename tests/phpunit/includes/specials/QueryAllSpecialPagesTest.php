@@ -22,7 +22,7 @@ class QueryAllSpecialPagesTest extends MediaWikiTestCase {
 
 	/** List query pages that can not be tested automatically */
 	protected $manualTest = [
-		LinkSearchPage::class
+		SpecialLinkSearch::class
 	];
 
 	/**
@@ -38,12 +38,11 @@ class QueryAllSpecialPagesTest extends MediaWikiTestCase {
 	/**
 	 * Initialize all query page objects
 	 */
-	function __construct() {
-		parent::__construct();
+	protected function setUp() : void {
+		parent::setUp();
 
 		foreach ( QueryPage::getPages() as $page ) {
-			$class = $page[0];
-			$name = $page[1];
+			list( $class, $name ) = $page;
 			if ( !in_array( $class, $this->manualTest ) ) {
 				$this->queryPages[$class] =
 					MediaWikiServices::getInstance()->getSpecialPageFactory()->getPage( $name );

@@ -21,6 +21,8 @@
  * @ingroup Cache
  */
 
+use Wikimedia\IPUtils;
+
 /**
  * Base class for data storage in the file system.
  *
@@ -230,31 +232,26 @@ abstract class FileCacheBase {
 	 */
 	public function incrMissesRecent( WebRequest $request ) {
 		if ( mt_rand( 0, self::MISS_FACTOR - 1 ) == 0 ) {
-			$cache = ObjectCache::getLocalClusterInstance();
 			# Get a large IP range that should include the user  even if that
 			# person's IP address changes
 			$ip = $request->getIP();
-			if ( !IP::isValid( $ip ) ) {
+			if ( !IPUtils::isValid( $ip ) ) {
 				return;
 			}
-			$ip = IP::isIPv6( $ip )
-				? IP::sanitizeRange( "$ip/32" )
-				: IP::sanitizeRange( "$ip/16" );
+
+			$ip = IPUtils::isIPv6( $ip )
+				? IPUtils::sanitizeRange( "$ip/32" )
+				: IPUtils::sanitizeRange( "$ip/16" );
 
 			# Bail out if a request already came from this range...
+			$cache = ObjectCache::getLocalClusterInstance();
 			$key = $cache->makeKey( static::class, 'attempt', $this->mType, $this->mKey, $ip );
-			if ( $cache->get( $key ) ) {
+			if ( !$cache->add( $key, 1, self::MISS_TTL_SEC ) ) {
 				return; // possibly the same user
 			}
-			$cache->set( $key, 1, self::MISS_TTL_SEC );
 
 			# Increment the number of cache misses...
-			$key = $this->cacheMissKey( $cache );
-			if ( $cache->get( $key ) === false ) {
-				$cache->set( $key, 1, self::MISS_TTL_SEC );
-			} else {
-				$cache->incr( $key );
-			}
+			$cache->incrWithInit( $this->cacheMissKey( $cache ), self::MISS_TTL_SEC );
 		}
 	}
 

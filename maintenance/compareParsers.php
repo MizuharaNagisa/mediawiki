@@ -39,6 +39,18 @@ require_once __DIR__ . '/dumpIterator.php';
 class CompareParsers extends DumpIterator {
 
 	private $count = 0;
+	/** @var bool */
+	private $saveFailed;
+	/** @var bool */
+	private $stripParametersEnabled;
+	/** @var bool */
+	private $showParsedOutput;
+	/** @var bool */
+	private $showDiff;
+	/** @var ParserOptions */
+	private $options;
+	/** @var int */
+	private $failed;
 
 	public function __construct() {
 		parent::__construct();
@@ -111,7 +123,7 @@ class CompareParsers extends DumpIterator {
 		}
 	}
 
-	function stripParameters( $text ) {
+	private function stripParameters( $text ) {
 		if ( !$this->stripParametersEnabled ) {
 			return $text;
 		}
@@ -144,7 +156,9 @@ class CompareParsers extends DumpIterator {
 			return;
 		}
 
-		$text = strval( $content->getNativeData() );
+		/** @var WikitextContent $content */
+		'@phan-var WikitextContent $content';
+		$text = strval( $content->getText() );
 
 		$output1 = $parser1->parse( $text, $title, $this->options );
 		$output2 = $parser2->parse( $text, $title, $this->options );

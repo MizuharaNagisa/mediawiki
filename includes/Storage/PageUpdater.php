@@ -33,13 +33,14 @@ use DeferredUpdates;
 use Hooks;
 use LogicException;
 use ManualLogEntry;
+use MediaWiki\Content\IContentHandlerFactory;
 use MediaWiki\Linker\LinkTarget;
 use MediaWiki\Revision\MutableRevisionRecord;
 use MediaWiki\Revision\RevisionAccessException;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\RevisionStore;
-use MediaWiki\Revision\SlotRoleRegistry;
 use MediaWiki\Revision\SlotRecord;
+use MediaWiki\Revision\SlotRoleRegistry;
 use MWException;
 use RecentChange;
 use Revision;
@@ -51,7 +52,7 @@ use Wikimedia\Assert\Assert;
 use Wikimedia\Rdbms\DBConnRef;
 use Wikimedia\Rdbms\DBUnexpectedError;
 use Wikimedia\Rdbms\IDatabase;
-use Wikimedia\Rdbms\LoadBalancer;
+use Wikimedia\Rdbms\ILoadBalancer;
 use WikiPage;
 
 /**
@@ -68,6 +69,7 @@ use WikiPage;
  *
  * @since 1.32
  * @ingroup Page
+ * @phan-file-suppress PhanTypeArraySuspiciousNullable Cannot read type of $this->status->value
  */
 class PageUpdater {
 
@@ -87,7 +89,7 @@ class PageUpdater {
 	private $derivedDataUpdater;
 
 	/**
-	 * @var LoadBalancer
+	 * @var ILoadBalancer
 	 */
 	private $loadBalancer;
 
@@ -100,6 +102,11 @@ class PageUpdater {
 	 * @var SlotRoleRegistry
 	 */
 	private $slotRoleRegistry;
+
+	/**
+	 * @var IContentHandlerFactory
+	 */
+	private $contentHandlerFactory;
 
 	/**
 	 * @var boolean see $wgUseAutomaticEditSummaries
@@ -151,17 +158,19 @@ class PageUpdater {
 	 * @param User $user
 	 * @param WikiPage $wikiPage
 	 * @param DerivedPageDataUpdater $derivedDataUpdater
-	 * @param LoadBalancer $loadBalancer
+	 * @param ILoadBalancer $loadBalancer
 	 * @param RevisionStore $revisionStore
 	 * @param SlotRoleRegistry $slotRoleRegistry
+	 * @param IContentHandlerFactory $contentHandlerFactory
 	 */
 	public function __construct(
 		User $user,
 		WikiPage $wikiPage,
 		DerivedPageDataUpdater $derivedDataUpdater,
-		LoadBalancer $loadBalancer,
+		ILoadBalancer $loadBalancer,
 		RevisionStore $revisionStore,
-		SlotRoleRegistry $slotRoleRegistry
+		SlotRoleRegistry $slotRoleRegistry,
+		IContentHandlerFactory $contentHandlerFactory
 	) {
 		$this->user = $user;
 		$this->wikiPage = $wikiPage;
@@ -170,6 +179,7 @@ class PageUpdater {
 		$this->loadBalancer = $loadBalancer;
 		$this->revisionStore = $revisionStore;
 		$this->slotRoleRegistry = $slotRoleRegistry;
+		$this->contentHandlerFactory = $contentHandlerFactory;
 
 		$this->slotsUpdate = new RevisionSlotsUpdate();
 	}
@@ -532,7 +542,6 @@ class PageUpdater {
 	 * @return ContentHandler
 	 */
 	private function getContentHandler( $role ) {
-		// TODO: inject something like a ContentHandlerRegistry
 		if ( $this->slotsUpdate->isModifiedSlot( $role ) ) {
 			$slot = $this->slotsUpdate->getModifiedSlot( $role );
 		} else {
@@ -545,7 +554,7 @@ class PageUpdater {
 			}
 		}
 
-		return ContentHandler::getForModelID( $slot->getModel() );
+		return $this->contentHandlerFactory->getContentHandler( $slot->getModel() );
 	}
 
 	/**
@@ -656,7 +665,8 @@ class PageUpdater {
 			$roleHandler = $this->slotRoleRegistry->getRoleHandler( $role );
 
 			if ( !$roleHandler->isAllowedModel( $slot->getModel(), $this->getTitle() ) ) {
-				$contentHandler = ContentHandler::getForModelID( $slot->getModel() );
+				$contentHandler = $this->contentHandlerFactory
+					->getContentHandler( $slot->getModel() );
 				$this->status = Status::newFatal( 'content-not-allowed-here',
 					ContentHandler::getLocalizedName( $contentHandler->getModelID() ),
 					$this->getTitle()->getPrefixedText(),
@@ -882,6 +892,7 @@ class PageUpdater {
 		// TODO: introduce something like an UnsavedRevisionFactory service instead!
 		/** @var MutableRevisionRecord $rev */
 		$rev = $this->derivedDataUpdater->getRevision();
+		'@phan-var MutableRevisionRecord $rev';
 
 		$rev->setPageId( $title->getArticleID() );
 

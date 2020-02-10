@@ -19,6 +19,7 @@
  * @ingroup Pager
  */
 
+use MediaWiki\Linker\LinkRenderer;
 use MediaWiki\MediaWikiServices;
 use Wikimedia\Rdbms\FakeResultWrapper;
 
@@ -46,6 +47,11 @@ class AllMessagesTablePager extends TablePager {
 	protected $prefix;
 
 	/**
+	 * @var string
+	 */
+	protected $suffix;
+
+	/**
 	 * @var Language
 	 */
 	public $lang;
@@ -58,9 +64,12 @@ class AllMessagesTablePager extends TablePager {
 	/**
 	 * @param IContextSource|null $context
 	 * @param FormOptions $opts
+	 * @param LinkRenderer $linkRenderer
 	 */
-	public function __construct( IContextSource $context = null, FormOptions $opts ) {
-		parent::__construct( $context );
+	public function __construct( ?IContextSource $context, FormOptions $opts,
+		LinkRenderer $linkRenderer
+	) {
+		parent::__construct( $context, $linkRenderer );
 
 		$this->mIndexField = 'am_title';
 		// FIXME: Why does this need to be set to DIR_DESCENDING to produce ascending ordering?
@@ -167,29 +176,30 @@ class AllMessagesTablePager extends TablePager {
 	}
 
 	/**
-	 *  This function normally does a database query to get the results; we need
+	 * This function normally does a database query to get the results; we need
 	 * to make a pretend result using a FakeResultWrapper.
 	 * @param string $offset
 	 * @param int $limit
-	 * @param bool $descending
+	 * @param bool $order
 	 * @return FakeResultWrapper
 	 */
-	function reallyDoQuery( $offset, $limit, $descending ) {
-		$result = new FakeResultWrapper( [] );
+	function reallyDoQuery( $offset, $limit, $order ) {
+		$asc = ( $order === self::QUERY_ASCENDING );
 
-		$messageNames = $this->getAllMessages( $descending );
+		$messageNames = $this->getAllMessages( $order );
 		$statuses = self::getCustomisedStatuses( $messageNames, $this->langcode, $this->foreign );
 
+		$rows = [];
 		$count = 0;
 		foreach ( $messageNames as $key ) {
 			$customised = isset( $statuses['pages'][$key] );
 			if ( $customised !== $this->custom &&
-				( $descending && ( $key < $offset || !$offset ) || !$descending && $key > $offset ) &&
+				( $asc && ( $key < $offset || !$offset ) || !$asc && $key > $offset ) &&
 				( ( $this->prefix && preg_match( $this->prefix, $key ) ) || $this->prefix === false )
 			) {
-				$actual = wfMessage( $key )->inLanguage( $this->lang )->plain();
-				$default = wfMessage( $key )->inLanguage( $this->lang )->useDatabase( false )->plain();
-				$result->result[] = [
+				$actual = $this->msg( $key )->inLanguage( $this->lang )->plain();
+				$default = $this->msg( $key )->inLanguage( $this->lang )->useDatabase( false )->plain();
+				$rows[] = [
 					'am_title' => $key,
 					'am_actual' => $actual,
 					'am_default' => $default,
@@ -204,7 +214,7 @@ class AllMessagesTablePager extends TablePager {
 			}
 		}
 
-		return $result;
+		return new FakeResultWrapper( $rows );
 	}
 
 	protected function getStartBody() {
@@ -234,7 +244,7 @@ class AllMessagesTablePager extends TablePager {
 	}
 
 	function formatValue( $field, $value ) {
-		$linkRenderer = MediaWikiServices::getInstance()->getLinkRenderer();
+		$linkRenderer = $this->getLinkRenderer();
 		switch ( $field ) {
 			case 'am_title' :
 				$title = Title::makeTitle( NS_MEDIAWIKI, $value . $this->suffix );
@@ -255,8 +265,7 @@ class AllMessagesTablePager extends TablePager {
 					$title = $linkRenderer->makeKnownLink( $title, $this->getLanguage()->lcfirst( $value ) );
 				} else {
 					$title = $linkRenderer->makeBrokenLink(
-						$title,
-						$this->getLanguage()->lcfirst( $value )
+						$title, $this->getLanguage()->lcfirst( $value )
 					);
 				}
 				if ( $this->mCurrentRow->am_talk_exists ) {
@@ -281,14 +290,17 @@ class AllMessagesTablePager extends TablePager {
 		return '';
 	}
 
-	/** @return string HTML */
+	/**
+	 * @param stdClass $row
+	 * @return string HTML
+	 */
 	function formatRow( $row ) {
 		// Do all the normal stuff
 		$s = parent::formatRow( $row );
 
 		// But if there's a customised message, add that too.
 		if ( $row->am_customised ) {
-			$s .= Html::openElement( 'tr', $this->getRowAttrs( $row, true ) );
+			$s .= Html::openElement( 'tr', $this->getRowAttrs( $row ) );
 			$formatted = strval( $this->formatValue( 'am_actual', $row->am_actual ) );
 
 			if ( $formatted === '' ) {
@@ -306,7 +318,11 @@ class AllMessagesTablePager extends TablePager {
 		return [];
 	}
 
-	/** @return array HTML attributes */
+	/**
+	 * @param string $field
+	 * @param string $value
+	 * @return array HTML attributes
+	 */
 	function getCellAttrs( $field, $value ) {
 		$attr = [];
 		if ( $field === 'am_title' ) {
@@ -347,7 +363,7 @@ class AllMessagesTablePager extends TablePager {
 	}
 
 	function getQueryInfo() {
-		return '';
+		return [];
 	}
 
 }

@@ -21,6 +21,7 @@
  * @ingroup SpecialPage
  */
 
+use MediaWiki\MediaWikiServices;
 use Wikimedia\Timestamp\TimestampException;
 
 /**
@@ -34,11 +35,11 @@ class SpecialLog extends SpecialPage {
 	}
 
 	public function execute( $par ) {
-		global $wgActorTableSchemaMigrationStage;
-
 		$this->setHeaders();
 		$this->outputHeader();
-		$this->getOutput()->addModules( 'mediawiki.userSuggest' );
+		$out = $this->getOutput();
+		$out->addModules( 'mediawiki.userSuggest' );
+		$out->addModuleStyles( 'mediawiki.interface.helpers.styles' );
 		$this->addHelpLink( 'Help:Log' );
 
 		$opts = new FormOptions;
@@ -93,7 +94,9 @@ class SpecialLog extends SpecialPage {
 		if ( !LogPage::isLogType( $type ) ) {
 			$opts->setValue( 'type', '' );
 		} elseif ( isset( $logRestrictions[$type] )
-			&& !$this->getUser()->isAllowed( $logRestrictions[$type] )
+			&& !MediaWikiServices::getInstance()
+				->getPermissionManager()
+				->userHasRight( $this->getUser(), $logRestrictions[$type] )
 		) {
 			throw new PermissionsError( $logRestrictions[$type] );
 		}
@@ -104,13 +107,7 @@ class SpecialLog extends SpecialPage {
 			$offenderName = $opts->getValue( 'offender' );
 			$offender = empty( $offenderName ) ? null : User::newFromName( $offenderName, false );
 			if ( $offender ) {
-				if ( $wgActorTableSchemaMigrationStage & SCHEMA_COMPAT_READ_NEW ) {
-					$qc = [ 'ls_field' => 'target_author_actor', 'ls_value' => $offender->getActorId() ];
-				} elseif ( $offender->getId() > 0 ) {
-					$qc = [ 'ls_field' => 'target_author_id', 'ls_value' => $offender->getId() ];
-				} else {
-					$qc = [ 'ls_field' => 'target_author_ip', 'ls_value' => $offender->getName() ];
-				}
+				$qc = [ 'ls_field' => 'target_author_actor', 'ls_value' => (string)$offender->getActorId() ];
 			}
 		} else {
 			// Allow extensions to add relations to their search types
@@ -180,11 +177,10 @@ class SpecialLog extends SpecialPage {
 	 *
 	 * @param FormOptions $opts
 	 * @param string $par
-	 * @throws ConfigException
 	 */
 	private function parseParams( FormOptions $opts, $par ) {
 		# Get parameters
-		$par = $par !== null ? $par : '';
+		$par = $par ?? '';
 		$parms = explode( '/', $par );
 		$symsForAll = [ '*', 'all' ];
 		if ( $parms[0] != '' &&
@@ -263,7 +259,9 @@ class SpecialLog extends SpecialPage {
 
 	private function getActionButtons( $formcontents ) {
 		$user = $this->getUser();
-		$canRevDelete = $user->isAllowedAll( 'deletedhistory', 'deletelogentry' );
+		$canRevDelete = MediaWikiServices::getInstance()
+			->getPermissionManager()
+			->userHasAllRights( $user, 'deletedhistory', 'deletelogentry' );
 		$showTagEditUI = ChangeTags::showTagEditingUI( $user );
 		# If the user doesn't have the ability to delete log entries nor edit tags,
 		# don't bother showing them the button(s).

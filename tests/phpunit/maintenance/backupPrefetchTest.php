@@ -6,8 +6,6 @@ use BaseDump;
 use MediaWikiTestCase;
 
 /**
- * Tests for BaseDump
- *
  * @group Dump
  * @covers BaseDump
  */
@@ -20,7 +18,7 @@ class BaseDumpTest extends MediaWikiTestCase {
 	 */
 	private $dump = null;
 
-	protected function tearDown() {
+	protected function tearDown() : void {
 		if ( $this->dump !== null ) {
 			$this->dump->close();
 		}
@@ -42,7 +40,7 @@ class BaseDumpTest extends MediaWikiTestCase {
 			"Prefetch of page $page revision $revision" );
 	}
 
-	function testSequential() {
+	public function testSequential() {
 		$fname = $this->setUpPrefetch();
 		$this->dump = new BaseDump( $fname );
 
@@ -52,7 +50,7 @@ class BaseDumpTest extends MediaWikiTestCase {
 		$this->assertPrefetchEquals( "Talk about BackupDumperTestP1 Text1", 4, 8 );
 	}
 
-	function testSynchronizeRevisionMissToRevision() {
+	public function testSynchronizeRevisionMissToRevision() {
 		$fname = $this->setUpPrefetch();
 		$this->dump = new BaseDump( $fname );
 
@@ -61,7 +59,7 @@ class BaseDumpTest extends MediaWikiTestCase {
 		$this->assertPrefetchEquals( "BackupDumperTestP2Text4 some additional Text", 2, 5 );
 	}
 
-	function testSynchronizeRevisionMissToPage() {
+	public function testSynchronizeRevisionMissToPage() {
 		$fname = $this->setUpPrefetch();
 		$this->dump = new BaseDump( $fname );
 
@@ -70,7 +68,7 @@ class BaseDumpTest extends MediaWikiTestCase {
 		$this->assertPrefetchEquals( "Talk about BackupDumperTestP1 Text1", 4, 8 );
 	}
 
-	function testSynchronizePageMiss() {
+	public function testSynchronizePageMiss() {
 		$fname = $this->setUpPrefetch();
 		$this->dump = new BaseDump( $fname );
 
@@ -79,7 +77,7 @@ class BaseDumpTest extends MediaWikiTestCase {
 		$this->assertPrefetchEquals( "Talk about BackupDumperTestP1 Text1", 4, 8 );
 	}
 
-	function testPageMissAtEnd() {
+	public function testPageMissAtEnd() {
 		$fname = $this->setUpPrefetch();
 		$this->dump = new BaseDump( $fname );
 
@@ -87,7 +85,7 @@ class BaseDumpTest extends MediaWikiTestCase {
 		$this->assertPrefetchEquals( null, 6, 40 );
 	}
 
-	function testRevisionMissAtEnd() {
+	public function testRevisionMissAtEnd() {
 		$fname = $this->setUpPrefetch();
 		$this->dump = new BaseDump( $fname );
 
@@ -95,7 +93,7 @@ class BaseDumpTest extends MediaWikiTestCase {
 		$this->assertPrefetchEquals( null, 4, 40 );
 	}
 
-	function testSynchronizePageMissAtStart() {
+	public function testSynchronizePageMissAtStart() {
 		$fname = $this->setUpPrefetch();
 		$this->dump = new BaseDump( $fname );
 
@@ -103,7 +101,7 @@ class BaseDumpTest extends MediaWikiTestCase {
 		$this->assertPrefetchEquals( "BackupDumperTestP2Text1", 2, 2 );
 	}
 
-	function testSynchronizeRevisionMissAtStart() {
+	public function testSynchronizeRevisionMissAtStart() {
 		$fname = $this->setUpPrefetch();
 		$this->dump = new BaseDump( $fname );
 
@@ -111,7 +109,7 @@ class BaseDumpTest extends MediaWikiTestCase {
 		$this->assertPrefetchEquals( "BackupDumperTestP2Text1", 2, 2 );
 	}
 
-	function testSequentialAcrossFiles() {
+	public function testSequentialAcrossFiles() {
 		$fname1 = $this->setUpPrefetch( [ 1 ] );
 		$fname2 = $this->setUpPrefetch( [ 2, 4 ] );
 		$this->dump = new BaseDump( $fname1 . ";" . $fname2 );
@@ -122,7 +120,7 @@ class BaseDumpTest extends MediaWikiTestCase {
 		$this->assertPrefetchEquals( "Talk about BackupDumperTestP1 Text1", 4, 8 );
 	}
 
-	function testSynchronizeSkipAcrossFile() {
+	public function testSynchronizeSkipAcrossFile() {
 		$fname1 = $this->setUpPrefetch( [ 1 ] );
 		$fname2 = $this->setUpPrefetch( [ 2 ] );
 		$fname3 = $this->setUpPrefetch( [ 4 ] );
@@ -132,7 +130,7 @@ class BaseDumpTest extends MediaWikiTestCase {
 		$this->assertPrefetchEquals( "Talk about BackupDumperTestP1 Text1", 4, 8 );
 	}
 
-	function testSynchronizeMissInWholeFirstFile() {
+	public function testSynchronizeMissInWholeFirstFile() {
 		$fname1 = $this->setUpPrefetch( [ 1 ] );
 		$fname2 = $this->setUpPrefetch( [ 2 ] );
 		$this->dump = new BaseDump( $fname1 . ";" . $fname2 );

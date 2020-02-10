@@ -1,7 +1,9 @@
 <?php
+
 namespace Wikimedia\Services;
 
 use Exception;
+use Psr\Container\ContainerExceptionInterface;
 use RuntimeException;
 
 /**
@@ -30,7 +32,8 @@ use RuntimeException;
 /**
  * Exception thrown when trying to replace an already active service.
  */
-class CannotReplaceActiveServiceException extends RuntimeException {
+class CannotReplaceActiveServiceException extends RuntimeException
+	implements ContainerExceptionInterface {
 
 	/**
 	 * @param string $serviceName
@@ -41,10 +44,3 @@ class CannotReplaceActiveServiceException extends RuntimeException {
 	}
 
 }
-
-/**
- * Retain the old class name for backwards compatibility.
- * @deprecated since 1.33
- */
-class_alias( CannotReplaceActiveServiceException::class,
-	'MediaWiki\Services\CannotReplaceActiveServiceException' );

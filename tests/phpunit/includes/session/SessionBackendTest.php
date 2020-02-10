@@ -5,6 +5,7 @@ namespace MediaWiki\Session;
 use Config;
 use MediaWikiTestCase;
 use User;
+use Wikimedia\AtEase\AtEase;
 use Wikimedia\TestingAccessWrapper;
 
 /**
@@ -223,7 +224,7 @@ class SessionBackendTest extends MediaWikiTestCase {
 		}
 
 		$session2 = null;
-		$this->assertSame( 0, count( $priv->requests ) );
+		$this->assertSame( [], $priv->requests );
 		$this->assertArrayNotHasKey( $backend->getId(), $manager->allSessionBackends );
 		$this->assertArrayHasKey( $backend->getId(), $manager->allSessionIds );
 	}
@@ -294,7 +295,7 @@ class SessionBackendTest extends MediaWikiTestCase {
 		$backend->resetId();
 		$this->assertNotEquals( self::SESSIONID, $backend->getId() );
 		$this->assertSame( $backend->getId(), $sessionId->getId() );
-		$this->assertInternalType( 'array', $this->store->getSession( $backend->getId() ) );
+		$this->assertIsArray( $this->store->getSession( $backend->getId() ) );
 		$this->assertFalse( $this->store->getSession( self::SESSIONID ) );
 		$this->assertSame( $id, session_id() );
 		$this->assertArrayNotHasKey( self::SESSIONID, $manager->allSessionBackends );
@@ -571,10 +572,10 @@ class SessionBackendTest extends MediaWikiTestCase {
 		$backend->save();
 		$this->assertTrue( $this->onSessionMetadataCalled );
 		$blob = $this->store->getSession( self::SESSIONID );
-		$this->assertInternalType( 'array', $blob );
+		$this->assertIsArray( $blob );
 		$this->assertArrayHasKey( 'metadata', $blob );
 		$metadata = $blob['metadata'];
-		$this->assertInternalType( 'array', $metadata );
+		$this->assertIsArray( $metadata );
 		$this->assertArrayHasKey( '???', $metadata );
 		$this->assertSame( '!!!', $metadata['???'] );
 		$this->assertFalse( $this->store->getSessionFromBackend( self::SESSIONID ),
@@ -623,10 +624,10 @@ class SessionBackendTest extends MediaWikiTestCase {
 		$backend->save();
 		$this->assertTrue( $this->onSessionMetadataCalled );
 		$blob = $this->store->getSession( self::SESSIONID );
-		$this->assertInternalType( 'array', $blob );
+		$this->assertIsArray( $blob );
 		$this->assertArrayHasKey( 'metadata', $blob );
 		$metadata = $blob['metadata'];
-		$this->assertInternalType( 'array', $metadata );
+		$this->assertIsArray( $metadata );
 		$this->assertArrayHasKey( '???', $metadata );
 		$this->assertSame( '!!!', $metadata['???'] );
 		$this->assertNotSame( false, $this->store->getSessionFromBackend( self::SESSIONID ),
@@ -649,10 +650,10 @@ class SessionBackendTest extends MediaWikiTestCase {
 		$backend->save();
 		$this->assertTrue( $this->onSessionMetadataCalled );
 		$blob = $this->store->getSession( self::SESSIONID );
-		$this->assertInternalType( 'array', $blob );
+		$this->assertIsArray( $blob );
 		$this->assertArrayHasKey( 'metadata', $blob );
 		$metadata = $blob['metadata'];
-		$this->assertInternalType( 'array', $metadata );
+		$this->assertIsArray( $metadata );
 		$this->assertArrayHasKey( '???', $metadata );
 		$this->assertSame( '!!!', $metadata['???'] );
 		$this->assertNotSame( false, $this->store->getSessionFromBackend( self::SESSIONID ),
@@ -674,10 +675,10 @@ class SessionBackendTest extends MediaWikiTestCase {
 		$backend->save();
 		$this->assertTrue( $this->onSessionMetadataCalled );
 		$blob = $this->store->getSession( self::SESSIONID );
-		$this->assertInternalType( 'array', $blob );
+		$this->assertIsArray( $blob );
 		$this->assertArrayHasKey( 'metadata', $blob );
 		$metadata = $blob['metadata'];
-		$this->assertInternalType( 'array', $metadata );
+		$this->assertIsArray( $metadata );
 		$this->assertArrayHasKey( '???', $metadata );
 		$this->assertSame( '!!!', $metadata['???'] );
 		$this->assertNotSame( false, $this->store->getSessionFromBackend( self::SESSIONID ),
@@ -699,10 +700,10 @@ class SessionBackendTest extends MediaWikiTestCase {
 		$backend->save();
 		$this->assertTrue( $this->onSessionMetadataCalled );
 		$blob = $this->store->getSession( self::SESSIONID );
-		$this->assertInternalType( 'array', $blob );
+		$this->assertIsArray( $blob );
 		$this->assertArrayHasKey( 'metadata', $blob );
 		$metadata = $blob['metadata'];
-		$this->assertInternalType( 'array', $metadata );
+		$this->assertIsArray( $metadata );
 		$this->assertArrayHasKey( '???', $metadata );
 		$this->assertSame( '!!!', $metadata['???'] );
 		$this->assertNotSame( false, $this->store->getSessionFromBackend( self::SESSIONID ),
@@ -772,10 +773,10 @@ class SessionBackendTest extends MediaWikiTestCase {
 		$backend->renew();
 		$this->assertTrue( $this->onSessionMetadataCalled );
 		$blob = $this->store->getSession( self::SESSIONID );
-		$this->assertInternalType( 'array', $blob );
+		$this->assertIsArray( $blob );
 		$this->assertArrayHasKey( 'metadata', $blob );
 		$metadata = $blob['metadata'];
-		$this->assertInternalType( 'array', $metadata );
+		$this->assertIsArray( $metadata );
 		$this->assertArrayHasKey( '???', $metadata );
 		$this->assertSame( '!!!', $metadata['???'] );
 		$this->assertNotEquals( 0, $wrap->expires );
@@ -799,10 +800,10 @@ class SessionBackendTest extends MediaWikiTestCase {
 		$backend->renew();
 		$this->assertTrue( $this->onSessionMetadataCalled );
 		$blob = $this->store->getSession( self::SESSIONID );
-		$this->assertInternalType( 'array', $blob );
+		$this->assertIsArray( $blob );
 		$this->assertArrayHasKey( 'metadata', $blob );
 		$metadata = $blob['metadata'];
-		$this->assertInternalType( 'array', $metadata );
+		$this->assertIsArray( $metadata );
 		$this->assertArrayHasKey( '???', $metadata );
 		$this->assertSame( '!!!', $metadata['???'] );
 		$this->assertNotEquals( 0, $wrap->expires );
@@ -900,7 +901,7 @@ class SessionBackendTest extends MediaWikiTestCase {
 		$manager->globalSessionRequest = $request;
 
 		session_id( self::SESSIONID );
-		\Wikimedia\quietCall( 'session_start' );
+		AtEase::quietCall( 'session_start' );
 		$_SESSION['foo'] = __METHOD__;
 		$backend->resetId();
 		$this->assertNotEquals( self::SESSIONID, $backend->getId() );
@@ -938,7 +939,7 @@ class SessionBackendTest extends MediaWikiTestCase {
 		$manager->globalSessionRequest = $request;
 
 		session_id( self::SESSIONID . 'x' );
-		\Wikimedia\quietCall( 'session_start' );
+		AtEase::quietCall( 'session_start' );
 		$backend->unpersist();
 		$this->assertSame( self::SESSIONID . 'x', session_id() );
 		session_write_close();

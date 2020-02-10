@@ -20,9 +20,9 @@
  * @file
  */
 
-use Wikimedia\Rdbms\IDatabase;
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
+use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\ScopedCallback;
 
 /**
@@ -32,7 +32,7 @@ use Wikimedia\ScopedCallback;
  *
  * See docs/deferred.txt
  */
-class LinksUpdate extends DataUpdate implements EnqueueableDataUpdate {
+class LinksUpdate extends DataUpdate {
 	// @todo make members protected, but make sure extensions don't break
 
 	/** @var int Page ID of the article linked from */
@@ -44,7 +44,10 @@ class LinksUpdate extends DataUpdate implements EnqueueableDataUpdate {
 	/** @var ParserOutput */
 	public $mParserOutput;
 
-	/** @var array Map of title strings to IDs for the links in the document */
+	/**
+	 * @var int[][] Map of title strings to IDs for the links in the document
+	 * @phan-var array<int,array<string,int>>
+	 */
 	public $mLinks;
 
 	/** @var array DB keys of the images used, in the array key only */
@@ -75,7 +78,8 @@ class LinksUpdate extends DataUpdate implements EnqueueableDataUpdate {
 	private $mRevision;
 
 	/**
-	 * @var null|array Added links if calculated.
+	 * @var array[]|null Added links if calculated.
+	 * @phan-var array<int,array{pl_from:int,pl_from_namespace:int,pl_namespace:int,pl_title:string}>|null
 	 */
 	private $linkInsertions = null;
 
@@ -85,7 +89,7 @@ class LinksUpdate extends DataUpdate implements EnqueueableDataUpdate {
 	private $linkDeletions = null;
 
 	/**
-	 * @var null|array Added external links if calculated.
+	 * @var null|array[] Added external links if calculated.
 	 */
 	private $externalLinkInsertions = null;
 
@@ -118,11 +122,15 @@ class LinksUpdate extends DataUpdate implements EnqueueableDataUpdate {
 	 * @param bool $recursive Queue jobs for recursive updates?
 	 * @throws MWException
 	 */
-	function __construct( Title $title, ParserOutput $parserOutput, $recursive = true ) {
+	public function __construct( Title $title, ParserOutput $parserOutput, $recursive = true ) {
 		parent::__construct();
 
 		$this->mTitle = $title;
-		$this->mId = $title->getArticleID( Title::GAID_FOR_UPDATE );
+
+		if ( !$this->mId ) {
+			// NOTE: subclasses may initialize mId before calling this constructor!
+			$this->mId = $title->getArticleID( Title::READ_LATEST );
+		}
 
 		if ( !$this->mId ) {
 			throw new InvalidArgumentException(
@@ -199,7 +207,7 @@ class LinksUpdate extends DataUpdate implements EnqueueableDataUpdate {
 	}
 
 	/**
-	 * Acquire a lock for performing link table updates for a page on a DB
+	 * Acquire a session-level lock for performing link table updates for a page on a DB
 	 *
 	 * @param IDatabase $dbw
 	 * @param int $pageId
@@ -208,7 +216,7 @@ class LinksUpdate extends DataUpdate implements EnqueueableDataUpdate {
 	 * @since 1.27
 	 */
 	public static function acquirePageLock( IDatabase $dbw, $pageId, $why = 'atomicity' ) {
-		$key = "LinksUpdate:$why:pageid:$pageId";
+		$key = "{$dbw->getDomainID()}:LinksUpdate:$why:pageid:$pageId"; // per-wiki
 		$scopedLock = $dbw->getScopedLockAndFlush( $key, __METHOD__, 15 );
 		if ( !$scopedLock ) {
 			$logger = LoggerFactory::getInstance( 'SecondaryDataUpdate' );
@@ -381,7 +389,9 @@ class LinksUpdate extends DataUpdate implements EnqueueableDataUpdate {
 	 * @param array $cats
 	 */
 	private function invalidateCategories( $cats ) {
-		PurgeJobUtils::invalidatePages( $this->getDB(), NS_CATEGORY, array_keys( $cats ) );
+		PurgeJobUtils::invalidatePages(
+			$this->getDB(), NS_CATEGORY, array_map( 'strval', array_keys( $cats ) )
+		);
 	}
 
 	/**
@@ -403,13 +413,13 @@ class LinksUpdate extends DataUpdate implements EnqueueableDataUpdate {
 		$lbf->commitAndWaitForReplication( __METHOD__, $this->ticket, [ 'domain' => $domainId ] );
 
 		foreach ( array_chunk( array_keys( $added ), $wgUpdateRowsPerQuery ) as $addBatch ) {
-			$wp->updateCategoryCounts( $addBatch, [], $this->mId );
+			$wp->updateCategoryCounts( array_map( 'strval', $addBatch ), [], $this->mId );
 			$lbf->commitAndWaitForReplication(
 				__METHOD__, $this->ticket, [ 'domain' => $domainId ] );
 		}
 
 		foreach ( array_chunk( array_keys( $deleted ), $wgUpdateRowsPerQuery ) as $deleteBatch ) {
-			$wp->updateCategoryCounts( [], $deleteBatch, $this->mId );
+			$wp->updateCategoryCounts( [], array_map( 'strval', $deleteBatch ), $this->mId );
 			$lbf->commitAndWaitForReplication(
 				__METHOD__, $this->ticket, [ 'domain' => $domainId ] );
 		}
@@ -419,7 +429,9 @@ class LinksUpdate extends DataUpdate implements EnqueueableDataUpdate {
 	 * @param array $images
 	 */
 	private function invalidateImageDescriptions( array $images ) {
-		PurgeJobUtils::invalidatePages( $this->getDB(), NS_FILE, array_keys( $images ) );
+		PurgeJobUtils::invalidatePages(
+			$this->getDB(), NS_FILE, array_map( 'strval', array_keys( $images ) )
+		);
 	}
 
 	/**
@@ -478,7 +490,10 @@ class LinksUpdate extends DataUpdate implements EnqueueableDataUpdate {
 
 			$deletionBatches = array_chunk( array_keys( $deletions ), $bSize );
 			foreach ( $deletionBatches as $deletionBatch ) {
-				$deleteWheres[] = [ $fromField => $this->mId, $toField => $deletionBatch ];
+				$deleteWheres[] = [
+					$fromField => $this->mId,
+					$toField => array_map( 'strval', $deletionBatch )
+				];
 			}
 		}
 
@@ -493,7 +508,7 @@ class LinksUpdate extends DataUpdate implements EnqueueableDataUpdate {
 
 		$insertBatches = array_chunk( $insertions, $bSize );
 		foreach ( $insertBatches as $insertBatch ) {
-			$this->getDB()->insert( $table, $insertBatch, __METHOD__, 'IGNORE' );
+			$this->getDB()->insert( $table, $insertBatch, __METHOD__, [ 'IGNORE' ] );
 			$lbf->commitAndWaitForReplication(
 				__METHOD__, $this->ticket, [ 'domain' => $domainId ]
 			);
@@ -508,7 +523,8 @@ class LinksUpdate extends DataUpdate implements EnqueueableDataUpdate {
 	 * Get an array of pagelinks insertions for passing to the DB
 	 * Skips the titles specified by the 2-D array $existing
 	 * @param array $existing
-	 * @return array
+	 * @return array[]
+	 * @phan-return array<int,array{pl_from:int,pl_from_namespace:int,pl_namespace:int,pl_title:string}>
 	 */
 	private function getLinkInsertions( $existing = [] ) {
 		$arr = [];
@@ -574,7 +590,7 @@ class LinksUpdate extends DataUpdate implements EnqueueableDataUpdate {
 	/**
 	 * Get an array of externallinks insertions. Skips the names specified in $existing
 	 * @param array $existing
-	 * @return array
+	 * @return array[]
 	 */
 	private function getExternalInsertions( $existing = [] ) {
 		$arr = [];
@@ -605,13 +621,17 @@ class LinksUpdate extends DataUpdate implements EnqueueableDataUpdate {
 		global $wgCategoryCollation;
 		$diffs = array_diff_assoc( $this->mCategories, $existing );
 		$arr = [];
-		$contLang = MediaWikiServices::getInstance()->getContentLanguage();
+
+		$languageConverter = MediaWikiServices::getInstance()->getLanguageConverterFactory()
+			->getLanguageConverter();
+
 		$collation = Collation::singleton();
 		foreach ( $diffs as $name => $prefix ) {
 			$nt = Title::makeTitleSafe( NS_CATEGORY, $name );
-			$contLang->findVariantLink( $name, $nt, true );
+			$languageConverter->findVariantLink( $name, $nt, true );
 
-			$type = MWNamespace::getCategoryLinkType( $this->mTitle->getNamespace() );
+			$type = MediaWikiServices::getInstance()->getNamespaceInfo()->
+				getCategoryLinkType( $this->mTitle->getNamespace() );
 
 			# Treat custom sortkeys as a prefix, so that if multiple
 			# things are forced to sort as '*' or something, they'll
@@ -664,7 +684,7 @@ class LinksUpdate extends DataUpdate implements EnqueueableDataUpdate {
 
 		$arr = [];
 		foreach ( array_keys( $diffs ) as $name ) {
-			$arr[] = $this->getPagePropRowData( $name );
+			$arr[] = $this->getPagePropRowData( (string)$name );
 		}
 
 		return $arr;
@@ -759,9 +779,9 @@ class LinksUpdate extends DataUpdate implements EnqueueableDataUpdate {
 		$del = [];
 		foreach ( $existing as $ns => $dbkeys ) {
 			if ( isset( $this->mLinks[$ns] ) ) {
-				$del[$ns] = array_diff_key( $existing[$ns], $this->mLinks[$ns] );
+				$del[$ns] = array_diff_key( $dbkeys, $this->mLinks[$ns] );
 			} else {
-				$del[$ns] = $existing[$ns];
+				$del[$ns] = $dbkeys;
 			}
 		}
 
@@ -778,9 +798,9 @@ class LinksUpdate extends DataUpdate implements EnqueueableDataUpdate {
 		$del = [];
 		foreach ( $existing as $ns => $dbkeys ) {
 			if ( isset( $this->mTemplates[$ns] ) ) {
-				$del[$ns] = array_diff_key( $existing[$ns], $this->mTemplates[$ns] );
+				$del[$ns] = array_diff_key( $dbkeys, $this->mTemplates[$ns] );
 			} else {
-				$del[$ns] = $existing[$ns];
+				$del[$ns] = $dbkeys;
 			}
 		}
 
@@ -832,7 +852,7 @@ class LinksUpdate extends DataUpdate implements EnqueueableDataUpdate {
 	 * @param array $existing
 	 * @return array
 	 */
-	function getPropertyDeletions( $existing ) {
+	private function getPropertyDeletions( $existing ) {
 		return array_diff_assoc( $existing, $this->mProperties );
 	}
 
@@ -846,9 +866,9 @@ class LinksUpdate extends DataUpdate implements EnqueueableDataUpdate {
 		$del = [];
 		foreach ( $existing as $prefix => $dbkeys ) {
 			if ( isset( $this->mInterwikis[$prefix] ) ) {
-				$del[$prefix] = array_diff_key( $existing[$prefix], $this->mInterwikis[$prefix] );
+				$del[$prefix] = array_diff_key( $dbkeys, $this->mInterwikis[$prefix] );
 			} else {
-				$del[$prefix] = $existing[$prefix];
+				$del[$prefix] = $dbkeys;
 			}
 		}
 
@@ -960,7 +980,7 @@ class LinksUpdate extends DataUpdate implements EnqueueableDataUpdate {
 
 	/**
 	 * Get an array of existing inline interwiki links, as a 2-D array
-	 * @return array (prefix => array(dbkey => 1))
+	 * @return array [ prefix => [ dbkey => 1 ] ]
 	 */
 	private function getExistingInterwikis() {
 		$res = $this->getDB()->select( 'iwlinks', [ 'iwl_prefix', 'iwl_title' ],
@@ -1061,6 +1081,7 @@ class LinksUpdate extends DataUpdate implements EnqueueableDataUpdate {
 	private function invalidateProperties( $changed ) {
 		global $wgPagePropLinkInvalidations;
 
+		$jobs = [];
 		foreach ( $changed as $name => $value ) {
 			if ( isset( $wgPagePropLinkInvalidations[$name] ) ) {
 				$inv = $wgPagePropLinkInvalidations[$name];
@@ -1068,12 +1089,16 @@ class LinksUpdate extends DataUpdate implements EnqueueableDataUpdate {
 					$inv = [ $inv ];
 				}
 				foreach ( $inv as $table ) {
-					DeferredUpdates::addUpdate(
-						new HTMLCacheUpdate( $this->mTitle, $table, 'page-props' )
+					$jobs[] = HTMLCacheUpdateJob::newForBacklinks(
+						$this->mTitle,
+						$table,
+						[ 'causeAction' => 'page-props' ]
 					);
 				}
 			}
 		}
+
+		JobQueueGroup::singleton()->lazyPush( $jobs );
 	}
 
 	/**
@@ -1133,7 +1158,7 @@ class LinksUpdate extends DataUpdate implements EnqueueableDataUpdate {
 	 * Fetch external links removed by this LinksUpdate. Only available after
 	 * the update is complete.
 	 * @since 1.33
-	 * @return null|array Array of Strings
+	 * @return null|string[]
 	 */
 	public function getRemovedExternalLinks() {
 		if ( $this->externalLinkDeletions === null ) {
@@ -1180,7 +1205,7 @@ class LinksUpdate extends DataUpdate implements EnqueueableDataUpdate {
 	/**
 	 * @return IDatabase
 	 */
-	private function getDB() {
+	protected function getDB() {
 		if ( !$this->db ) {
 			$this->db = wfGetDB( DB_MASTER );
 		}
@@ -1188,38 +1213,13 @@ class LinksUpdate extends DataUpdate implements EnqueueableDataUpdate {
 		return $this->db;
 	}
 
-	public function getAsJobSpecification() {
-		if ( $this->user ) {
-			$userInfo = [
-				'userId' => $this->user->getId(),
-				'userName' => $this->user->getName(),
-			];
-		} else {
-			$userInfo = false;
-		}
-
-		if ( $this->mRevision ) {
-			$triggeringRevisionId = $this->mRevision->getId();
-		} else {
-			$triggeringRevisionId = false;
-		}
-
-		return [
-			'wiki' => WikiMap::getWikiIdFromDbDomain( $this->getDB()->getDomainID() ),
-			'job'  => new JobSpecification(
-				'refreshLinksPrioritized',
-				[
-					// Reuse the parser cache if it was saved
-					'rootJobTimestamp' => $this->mParserOutput->getCacheTime(),
-					'useRecursiveLinksUpdate' => $this->mRecursive,
-					'triggeringUser' => $userInfo,
-					'triggeringRevisionId' => $triggeringRevisionId,
-					'causeAction' => $this->getCauseAction(),
-					'causeAgent' => $this->getCauseAgent()
-				],
-				[ 'removeDuplicates' => true ],
-				$this->getTitle()
-			)
-		];
+	/**
+	 * Whether or not this LinksUpdate will also update pages which transclude the
+	 * current page or otherwise depend on it.
+	 *
+	 * @return bool
+	 */
+	public function isRecursive() {
+		return $this->mRecursive;
 	}
 }

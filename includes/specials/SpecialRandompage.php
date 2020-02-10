@@ -35,7 +35,8 @@ class RandomPage extends SpecialPage {
 	protected $extra = []; // Extra SQL statements
 
 	public function __construct( $name = 'Randompage' ) {
-		$this->namespaces = MWNamespace::getContentNamespaces();
+		$this->namespaces = MediaWikiServices::getInstance()->getNamespaceInfo()->
+			getContentNamespaces();
 		parent::__construct( $name );
 	}
 
@@ -65,7 +66,7 @@ class RandomPage extends SpecialPage {
 
 		$title = $this->getRandomTitle();
 
-		if ( is_null( $title ) ) {
+		if ( $title === null ) {
 			$this->setHeaders();
 			// Message: randompage-nopages, randomredirect-nopages
 			$this->getOutput()->addWikiMsg( strtolower( $this->getName() ) . '-nopages',

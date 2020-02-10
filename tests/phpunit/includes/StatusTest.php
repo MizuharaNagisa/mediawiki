@@ -237,7 +237,7 @@ class StatusTest extends MediaWikiLangTestCase {
 	}
 
 	/**
-	 * @param array $messageDetails E.g. array( 'KEY' => array(/PARAMS/) )
+	 * @param array $messageDetails E.g. [ 'KEY' => [ /PARAMS/ ] ]
 	 * @return Message[]
 	 */
 	protected function getMockMessages( $messageDetails ) {
@@ -574,6 +574,23 @@ class StatusTest extends MediaWikiLangTestCase {
 	}
 
 	/**
+	 * @covers Status::getErrorMessage
+	 */
+	public function testGetErrorMessageComplexParam() {
+		$method = new ReflectionMethod( Status::class, 'getErrorMessage' );
+		$method->setAccessible( true );
+		$status = new Status();
+		$key = 'foo';
+		$params = [ 'bar', Message::numParam( 5 ) ];
+
+		/** @var Message $message */
+		$message = $method->invoke( $status, array_merge( [ $key ], $params ) );
+		$this->assertInstanceOf( Message::class, $message );
+		$this->assertEquals( $key, $message->getKey() );
+		$this->assertEquals( $params, $message->getParams() );
+	}
+
+	/**
 	 * @covers Status::getErrorMessageArray
 	 */
 	public function testGetErrorMessageArray() {
@@ -592,7 +609,7 @@ class StatusTest extends MediaWikiLangTestCase {
 			]
 		);
 
-		$this->assertInternalType( 'array', $messageArray );
+		$this->assertIsArray( $messageArray );
 		$this->assertCount( 2, $messageArray );
 		foreach ( $messageArray as $message ) {
 			$this->assertInstanceOf( Message::class, $message );
@@ -629,7 +646,7 @@ class StatusTest extends MediaWikiLangTestCase {
 			return '-' . $value . '-';
 		};
 		$status->__wakeup();
-		$this->assertEquals( false, $status->cleanCallback );
+		$this->assertFalse( $status->cleanCallback );
 	}
 
 	/**
@@ -717,6 +734,48 @@ class StatusTest extends MediaWikiLangTestCase {
 				[],
 			]
 		];
+	}
+
+	/**
+	 * Regression test for interference between cloning and references.
+	 * @coversNothing
+	 */
+	public function testWrapAndSplitByErrorType() {
+		$sv = StatusValue::newFatal( 'fatal' );
+		$sv->warning( 'warning' );
+		$s = Status::wrap( $sv );
+		list( $se, $sw ) = $s->splitByErrorType();
+		$this->assertTrue( $s->hasMessage( 'fatal' ) );
+		$this->assertTrue( $s->hasMessage( 'warning' ) );
+		$this->assertFalse( $s->isOK() );
+		$this->assertTrue( $se->hasMessage( 'fatal' ) );
+		$this->assertFalse( $se->hasMessage( 'warning' ) );
+		$this->assertFalse( $s->isOK() );
+		$this->assertFalse( $sw->hasMessage( 'fatal' ) );
+		$this->assertTrue( $sw->hasMessage( 'warning' ) );
+		$this->assertTrue( $sw->isOK() );
+	}
+
+	/**
+	 * @covers Status::setMessageLocalizer
+	 */
+	public function testSetContext() {
+		$status = Status::newFatal( 'foo' );
+		$status->fatal( 'bar' );
+
+		$messageLocalizer = $this->getMockBuilder( MessageLocalizer::class )
+			->setMethods( [ 'msg' ] )
+			->getMockForAbstractClass();
+		$messageLocalizer->expects( $this->atLeastOnce() )
+			->method( 'msg' )
+			->willReturnCallback( function ( $key ) {
+				return new RawMessage( $key );
+			} );
+		/** @var MessageLocalizer $messageLocalizer */
+		$status->setMessageLocalizer( $messageLocalizer );
+		$status->getWikiText();
+		$status->getWikiText( null, null, 'en' );
+		$status->getWikiText( 'wrap-short', 'wrap-long' );
 	}
 
 }

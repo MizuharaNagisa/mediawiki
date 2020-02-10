@@ -6,7 +6,7 @@
  */
 
 /* stylelint-disable no-duplicate-selectors */
-@import 'mediawiki.mixins';
+@import 'mediawiki.mixins.less';
 
 @calendarWidth: 21em;
 @calendarHeight: 14em;
@@ -39,7 +39,9 @@
 
 .mw-widget-calendarWidget-upButton {
 	position: absolute;
+	top: 0;
 	right: 3em;
+	pointer-events: none;
 }
 
 .mw-widget-calendarWidget-prevButton {
@@ -63,6 +65,7 @@
 .mw-widget-calendarWidget-body-wrapper {
 	.mw-widget-calendarWidget-body {
 		display: inline-block;
+		display: inline-grid;
 		// Fit 7 days, 3em each
 		width: @calendarWidth;
 		// Fit 6 weeks + heading line, 2em each
@@ -108,6 +111,7 @@
 
 	.mw-widget-calendarWidget-body {
 		display: block;
+		display: grid;
 	}
 
 	.mw-widget-calendarWidget-body:first-child {
@@ -123,6 +127,7 @@
 
 	.mw-widget-calendarWidget-body {
 		display: block;
+		display: grid;
 	}
 
 	.mw-widget-calendarWidget-body:first-child {
@@ -130,6 +135,20 @@
 		margin-top: -@calendarHeight !important; /* stylelint-disable-line value-keyword-case, declaration-no-important */
 		.transition( margin-top 500ms );
 	}
+}
+
+// Support: Browsers that render CSS Grid. All others ignore unknown `grid-*` properties.
+// This avoids any calculation issues pushing items to next line.
+.mw-widget-calendarWidget-body-month {
+	grid-template-columns: auto auto auto auto auto auto auto;
+}
+
+.mw-widget-calendarWidget-body-year {
+	grid-template-columns: auto auto;
+}
+
+.mw-widget-calendarWidget-body-duodecade {
+	grid-template-columns: auto auto auto auto auto;
 }
 
 .mw-widget-calendarWidget-day,

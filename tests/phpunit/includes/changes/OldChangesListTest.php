@@ -24,7 +24,7 @@ class OldChangesListTest extends MediaWikiLangTestCase {
 		$this->testRecentChangesHelper = new TestRecentChangesHelper();
 	}
 
-	protected function setUp() {
+	protected function setUp() : void {
 		parent::setUp();
 
 		$this->setMwGlobals( [
@@ -106,13 +106,13 @@ class OldChangesListTest extends MediaWikiLangTestCase {
 
 		$line = $oldChangesList->recentChangesLine( $recentChange, false, 1 );
 
-		$this->assertContains(
+		$this->assertStringContainsString(
 			'<abbr class="newpage" title="(recentchanges-label-newpage)">(newpageletter)</abbr>',
 			$line,
 			'new page flag'
 		);
 
-		$this->assertContains(
+		$this->assertStringContainsString(
 			'<abbr class="botedit" title="(recentchanges-label-bot)">(boteditletter)</abbr>',
 			$line,
 			'bot flag'
@@ -143,7 +143,7 @@ class OldChangesListTest extends MediaWikiLangTestCase {
 		$recentChange->numberofWatchingusers = 100;
 
 		$line = $oldChangesList->recentChangesLine( $recentChange, false, 1 );
-		$this->assertRegExp( "/(number_of_watching_users_RCview: 100)/", $line );
+		$this->assertRegExp( "/(number-of-watching-users-for-recent-changes: 100)/", $line );
 	}
 
 	public function testRecentChangesLine_watchlistCssClass() {

@@ -7,6 +7,7 @@ use MediaWiki\MediaWikiServices;
 use MediaWiki\Storage\NameTableStore;
 use MediaWiki\Storage\NameTableStoreFactory;
 use MediaWikiTestCase;
+use PHPUnit\Framework\MockObject\MockObject;
 use Wikimedia\Rdbms\ILBFactory;
 use Wikimedia\Rdbms\ILoadBalancer;
 
@@ -16,7 +17,7 @@ use Wikimedia\Rdbms\ILoadBalancer;
  */
 class NameTableStoreFactoryTest extends MediaWikiTestCase {
 	/**
-	 * @return \PHPUnit_Framework_MockObject_MockObject|ILoadBalancer
+	 * @return MockObject|ILoadBalancer
 	 */
 	private function getMockLoadBalancer( $localDomain ) {
 		$mock = $this->getMockBuilder( ILoadBalancer::class )
@@ -30,7 +31,7 @@ class NameTableStoreFactoryTest extends MediaWikiTestCase {
 	}
 
 	/**
-	 * @return \PHPUnit_Framework_MockObject_MockObject|ILBFactory
+	 * @return MockObject|ILBFactory
 	 */
 	private function getMockLoadBalancerFactory( $expectedWiki ) {
 		$mock = $this->getMockBuilder( ILBFactory::class )
@@ -103,20 +104,20 @@ class NameTableStoreFactoryTest extends MediaWikiTestCase {
 		$services = MediaWikiServices::getInstance();
 		$factory = $services->getNameTableStoreFactory();
 		$store = $factory->getChangeTagDef();
-		$this->assertType( 'array', $store->getMap() );
+		$this->assertIsArray( $store->getMap() );
 	}
 
 	public function testIntegratedGetContentModels() {
 		$services = MediaWikiServices::getInstance();
 		$factory = $services->getNameTableStoreFactory();
 		$store = $factory->getContentModels();
-		$this->assertType( 'array', $store->getMap() );
+		$this->assertIsArray( $store->getMap() );
 	}
 
 	public function testIntegratedGetSlotRoles() {
 		$services = MediaWikiServices::getInstance();
 		$factory = $services->getNameTableStoreFactory();
 		$store = $factory->getSlotRoles();
-		$this->assertType( 'array', $store->getMap() );
+		$this->assertIsArray( $store->getMap() );
 	}
 }

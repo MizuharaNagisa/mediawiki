@@ -1,7 +1,8 @@
 <?php
 
-use Wikimedia\TestingAccessWrapper;
+use MediaWiki\MediaWikiServices;
 use Wikimedia\ScopedCallback;
+use Wikimedia\TestingAccessWrapper;
 
 /**
  * @covers ParserOptions
@@ -25,7 +26,7 @@ class ParserOptionsTest extends MediaWikiTestCase {
 		];
 	}
 
-	protected function setUp() {
+	protected function setUp() : void {
 		parent::setUp();
 		self::clearCache();
 
@@ -38,15 +39,15 @@ class ParserOptionsTest extends MediaWikiTestCase {
 		$this->setTemporaryHook( 'PageRenderingHash', null );
 	}
 
-	protected function tearDown() {
+	protected function tearDown() : void {
 		self::clearCache();
 		parent::tearDown();
 	}
 
 	public function testNewCanonical() {
 		$wgUser = $this->getMutableTestUser()->getUser();
-		$wgLang = Language::factory( 'fr' );
-		$contLang = Language::factory( 'qqx' );
+		$wgLang = MediaWikiServices::getInstance()->getLanguageFactory()->getLanguage( 'fr' );
+		$contLang = MediaWikiServices::getInstance()->getLanguageFactory()->getLanguage( 'qqx' );
 
 		$this->setContentLang( $contLang );
 		$this->setMwGlobals( [
@@ -55,8 +56,8 @@ class ParserOptionsTest extends MediaWikiTestCase {
 		] );
 
 		$user = $this->getMutableTestUser()->getUser();
-		$lang = Language::factory( 'de' );
-		$lang2 = Language::factory( 'bug' );
+		$lang = MediaWikiServices::getInstance()->getLanguageFactory()->getLanguage( 'de' );
+		$lang2 = MediaWikiServices::getInstance()->getLanguageFactory()->getLanguage( 'bug' );
 		$context = new DerivativeContext( RequestContext::getMain() );
 		$context->setUser( $user );
 		$context->setLanguage( $lang );
@@ -234,21 +235,17 @@ class ParserOptionsTest extends MediaWikiTestCase {
 		$confstr .= '!onPageRenderingHash';
 	}
 
-	/**
-	 * @expectedException InvalidArgumentException
-	 * @expectedExceptionMessage Unknown parser option bogus
-	 */
 	public function testGetInvalidOption() {
 		$popt = ParserOptions::newCanonical();
+		$this->expectException( InvalidArgumentException::class );
+		$this->expectExceptionMessage( "Unknown parser option bogus" );
 		$popt->getOption( 'bogus' );
 	}
 
-	/**
-	 * @expectedException InvalidArgumentException
-	 * @expectedExceptionMessage Unknown parser option bogus
-	 */
 	public function testSetInvalidOption() {
 		$popt = ParserOptions::newCanonical();
+		$this->expectException( InvalidArgumentException::class );
+		$this->expectExceptionMessage( "Unknown parser option bogus" );
 		$popt->setOption( 'bogus', true );
 	}
 
@@ -282,6 +279,32 @@ class ParserOptionsTest extends MediaWikiTestCase {
 		$this->assertFalse( $popt1->matches( $popt2 ) );
 
 		ScopedCallback::consume( $reset );
+	}
+
+	public function testMatchesForCacheKey() {
+		$cOpts = ParserOptions::newCanonical( null, 'en' );
+
+		$uOpts = ParserOptions::newFromAnon();
+		$this->assertTrue( $cOpts->matchesForCacheKey( $uOpts ) );
+
+		$user = new User();
+		$uOpts = ParserOptions::newFromUser( $user );
+		$this->assertTrue( $cOpts->matchesForCacheKey( $uOpts ) );
+
+		$user = new User();
+		$user->setOption( 'thumbsize', 251 );
+		$uOpts = ParserOptions::newFromUser( $user );
+		$this->assertFalse( $cOpts->matchesForCacheKey( $uOpts ) );
+
+		$user = new User();
+		$user->setOption( 'stubthreshold', 800 );
+		$uOpts = ParserOptions::newFromUser( $user );
+		$this->assertFalse( $cOpts->matchesForCacheKey( $uOpts ) );
+
+		$user = new User();
+		$uOpts = ParserOptions::newFromUserAndLang( $user,
+			MediaWikiServices::getInstance()->getLanguageFactory()->getLanguage( 'zh' ) );
+		$this->assertFalse( $cOpts->matchesForCacheKey( $uOpts ) );
 	}
 
 	public function testAllCacheVaryingOptions() {

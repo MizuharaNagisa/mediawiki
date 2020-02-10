@@ -21,8 +21,9 @@
  * @ingroup SpecialPage
  */
 
-use Wikimedia\Rdbms\IResultWrapper;
+use MediaWiki\MediaWikiServices;
 use Wikimedia\Rdbms\IDatabase;
+use Wikimedia\Rdbms\IResultWrapper;
 
 /**
  * A special page listing redirects to redirecting page.
@@ -30,7 +31,7 @@ use Wikimedia\Rdbms\IDatabase;
  *
  * @ingroup SpecialPage
  */
-class DoubleRedirectsPage extends QueryPage {
+class SpecialDoubleRedirects extends QueryPage {
 	function __construct( $name = 'DoubleRedirects' ) {
 		parent::__construct( $name );
 	}
@@ -64,7 +65,6 @@ class DoubleRedirectsPage extends QueryPage {
 			'fields' => [
 				'namespace' => 'pa.page_namespace',
 				'title' => 'pa.page_title',
-				'value' => 'pa.page_title',
 
 				'b_namespace' => 'pb.page_namespace',
 				'b_title' => 'pb.page_title',
@@ -155,9 +155,14 @@ class DoubleRedirectsPage extends QueryPage {
 		// if the page is editable, add an edit link
 		if (
 			// check user permissions
-			$this->getUser()->isAllowed( 'edit' ) &&
+			MediaWikiServices::getInstance()
+				->getPermissionManager()
+				->userHasRight( $this->getUser(), 'edit' ) &&
 			// check, if the content model is editable through action=edit
-			ContentHandler::getForTitle( $titleA )->supportsDirectEditing()
+			MediaWikiServices::getInstance()
+				->getContentHandlerFactory()
+				->getContentHandler( $titleA->getContentModel() )
+				->supportsDirectEditing()
 		) {
 			$edit = $linkRenderer->makeKnownLink(
 				$titleA,
@@ -196,6 +201,11 @@ class DoubleRedirectsPage extends QueryPage {
 		$arr = $lang->getArrow() . $lang->getDirMark();
 
 		return ( "{$linkA} {$edit} {$arr} {$linkB} {$arr} {$linkC}" );
+	}
+
+	public function execute( $par ) {
+		$this->addHelpLink( 'Help:Redirects' );
+		parent::execute( $par );
 	}
 
 	/**

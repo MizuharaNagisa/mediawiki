@@ -23,6 +23,9 @@
  * @file
  * @ingroup Search
  */
+use MediaWiki\MediaWikiServices;
+use MediaWiki\Revision\SlotRecord;
+use Wikimedia\Rdbms\IDatabase;
 
 /**
  * Search engine hook base class for Postgres
@@ -40,7 +43,8 @@ class SearchPostgres extends SearchDatabase {
 	protected function doSearchTitleInDB( $term ) {
 		$q = $this->searchQuery( $term, 'titlevector', 'page_title' );
 		$olderror = error_reporting( E_ERROR );
-		$resultSet = $this->db->query( $q, 'SearchPostgres', true );
+		$dbr = $this->lb->getConnectionRef( DB_REPLICA );
+		$resultSet = $dbr->query( $q, 'SearchPostgres', IDatabase::QUERY_SILENCE_ERRORS );
 		error_reporting( $olderror );
 		return new SqlSearchResultSet( $resultSet, $this->searchTerms );
 	}
@@ -48,7 +52,8 @@ class SearchPostgres extends SearchDatabase {
 	protected function doSearchTextInDB( $term ) {
 		$q = $this->searchQuery( $term, 'textvector', 'old_text' );
 		$olderror = error_reporting( E_ERROR );
-		$resultSet = $this->db->query( $q, 'SearchPostgres', true );
+		$dbr = $this->lb->getConnectionRef( DB_REPLICA );
+		$resultSet = $dbr->query( $q, 'SearchPostgres', IDatabase::QUERY_SILENCE_ERRORS );
 		error_reporting( $olderror );
 		return new SqlSearchResultSet( $resultSet, $this->searchTerms );
 	}
@@ -109,7 +114,8 @@ class SearchPostgres extends SearchDatabase {
 		$searchstring = preg_replace( '/^[\'"](.*)[\'"]$/', "$1", $searchstring );
 
 		# # Quote the whole thing
-		$searchstring = $this->db->addQuotes( $searchstring );
+		$dbr = $this->lb->getConnectionRef( DB_REPLICA );
+		$searchstring = $dbr->addQuotes( $searchstring );
 
 		wfDebug( "parseQuery returned: $searchstring \n" );
 
@@ -129,7 +135,8 @@ class SearchPostgres extends SearchDatabase {
 
 		# # We need a separate query here so gin does not complain about empty searches
 		$sql = "SELECT to_tsquery($searchstring)";
-		$res = $this->db->query( $sql );
+		$dbr = $this->lb->getConnectionRef( DB_REPLICA );
+		$res = $dbr->query( $sql );
 		if ( !$res ) {
 			# # TODO: Better output (example to catch: one 'two)
 			die( "Sorry, that was not a valid search string. Please go back and try again" );
@@ -137,10 +144,16 @@ class SearchPostgres extends SearchDatabase {
 		$top = $res->fetchRow()[0];
 
 		$this->searchTerms = [];
+		$slotRoleStore = MediaWikiServices::getInstance()->getSlotRoleStore();
 		if ( $top === "" ) { # # e.g. if only stopwords are used XXX return something better
 			$query = "SELECT page_id, page_namespace, page_title, 0 AS score " .
-				"FROM page p, revision r, pagecontent c WHERE p.page_latest = r.rev_id " .
-				"AND r.rev_text_id = c.old_id AND 1=0";
+				"FROM page p, revision r, slots s, content c, pagecontent pc " .
+				"WHERE p.page_latest = r.rev_id " .
+				"AND s.slot_revision_id = r.rev_id " .
+				"AND s.slot_role_id = " . $slotRoleStore->getId( SlotRecord::MAIN ) . " " .
+				"AND c.content_id = s.slot_content_id " .
+				"AND pc.old_id = substring( c.content_address from '^tt:([0-9]+)$' )::int " .
+				"AND 1=0";
 		} else {
 			$m = [];
 			if ( preg_match_all( "/'([^']+)'/", $top, $m, PREG_SET_ORDER ) ) {
@@ -151,23 +164,27 @@ class SearchPostgres extends SearchDatabase {
 
 			$query = "SELECT page_id, page_namespace, page_title, " .
 				"ts_rank($fulltext, to_tsquery($searchstring), 5) AS score " .
-				"FROM page p, revision r, pagecontent c WHERE p.page_latest = r.rev_id " .
-				"AND r.rev_text_id = c.old_id AND $fulltext @@ to_tsquery($searchstring)";
+				"FROM page p, revision r, slots s, content c, pagecontent pc " .
+				"WHERE p.page_latest = r.rev_id " .
+				"AND s.slot_revision_id = r.rev_id " .
+				"AND s.slot_role_id = " . $slotRoleStore->getId( SlotRecord::MAIN ) . " " .
+				"AND c.content_id = s.slot_content_id " .
+				"AND pc.old_id = substring( c.content_address from '^tt:([0-9]+)$' )::int " .
+				"AND $fulltext @@ to_tsquery($searchstring)";
 		}
-
 		# # Namespaces - defaults to 0
-		if ( !is_null( $this->namespaces ) ) { // null -> search all
+		if ( $this->namespaces !== null ) { // null -> search all
 			if ( count( $this->namespaces ) < 1 ) {
 				$query .= ' AND page_namespace = 0';
 			} else {
-				$namespaces = $this->db->makeList( $this->namespaces );
+				$namespaces = $dbr->makeList( $this->namespaces );
 				$query .= " AND page_namespace IN ($namespaces)";
 			}
 		}
 
 		$query .= " ORDER BY score DESC, page_id DESC";
 
-		$query .= $this->db->limitResult( '', $this->limit, $this->offset );
+		$query .= $dbr->limitResult( '', $this->limit, $this->offset );
 
 		wfDebug( "searchQuery returned: $query \n" );
 
@@ -178,15 +195,25 @@ class SearchPostgres extends SearchDatabase {
 
 	function update( $pageid, $title, $text ) {
 		# # We don't want to index older revisions
-		$sql = "UPDATE pagecontent SET textvector = NULL WHERE textvector IS NOT NULL and old_id IN " .
-				"(SELECT DISTINCT rev_text_id FROM revision WHERE rev_page = " . intval( $pageid ) .
-				" ORDER BY rev_text_id DESC OFFSET 1)";
-		$this->db->query( $sql );
+		$slotRoleStore = MediaWikiServices::getInstance()->getSlotRoleStore();
+		$sql = "UPDATE pagecontent SET textvector = NULL " .
+			"WHERE textvector IS NOT NULL " .
+			"AND old_id IN " .
+			"(SELECT DISTINCT substring( c.content_address from '^tt:([0-9]+)$' )::int AS old_rev_text_id " .
+			" FROM content c, slots s, revision r " .
+			" WHERE r.rev_page = $pageid " .
+			" AND s.slot_revision_id = r.rev_id " .
+			" AND s.slot_role_id = " . $slotRoleStore->getId( SlotRecord::MAIN ) . " " .
+			" AND c.content_id = s.slot_content_id " .
+			" ORDER BY old_rev_text_id DESC OFFSET 1)";
+
+		$dbw = $this->lb->getConnectionRef( DB_MASTER );
+		$dbw->query( $sql );
+
 		return true;
 	}
 
 	function updateTitle( $id, $title ) {
 		return true;
 	}
-
 }

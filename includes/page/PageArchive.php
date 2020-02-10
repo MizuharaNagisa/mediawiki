@@ -21,10 +21,9 @@
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\RevisionStore;
-use MediaWiki\Storage\SqlBlobStore;
 use Wikimedia\Assert\Assert;
-use Wikimedia\Rdbms\IResultWrapper;
 use Wikimedia\Rdbms\IDatabase;
+use Wikimedia\Rdbms\IResultWrapper;
 
 /**
  * Used to show archived pages and eventually restore them.
@@ -43,7 +42,7 @@ class PageArchive {
 	protected $config;
 
 	public function __construct( $title, Config $config = null ) {
-		if ( is_null( $title ) ) {
+		if ( $title === null ) {
 			throw new MWException( __METHOD__ . ' given a null title.' );
 		}
 		$this->title = $title;
@@ -67,23 +66,6 @@ class PageArchive {
 
 	public function doesWrites() {
 		return true;
-	}
-
-	/**
-	 * List all deleted pages recorded in the archive table. Returns result
-	 * wrapper with (ar_namespace, ar_title, count) fields, ordered by page
-	 * namespace/title.
-	 *
-	 * @deprecated since 1.32.
-	 *
-	 * @return IResultWrapper
-	 */
-	public static function listAllPages() {
-		wfDeprecated( __METHOD__, '1.32' );
-
-		$dbr = wfGetDB( DB_REPLICA );
-
-		return self::listPages( $dbr, '' );
 	}
 
 	/**
@@ -206,7 +188,7 @@ class PageArchive {
 		// NOTE: ordering by ar_timestamp and ar_id, to remove ambiguity.
 		// XXX: Ideally, we would be ordering by ar_timestamp and ar_rev_id, but since we
 		// don't have an index on ar_rev_id, that causes a file sort.
-		$options = [ 'ORDER BY' => 'ar_timestamp DESC, ar_id DESC' ];
+		$options = [ 'ORDER BY' => [ 'ar_timestamp DESC', 'ar_id DESC' ] ];
 
 		ChangeTags::modifyDisplayQuery(
 			$queryInfo['tables'],
@@ -371,59 +353,6 @@ class PageArchive {
 	}
 
 	/**
-	 * Get the text from an archive row containing ar_text_id.
-	 *
-	 * @deprecated since 1.32. In the MCR schema, ar_text_id no longer exists.
-	 * Calling code should switch to getArchiveRevision().
-	 *
-	 * @todo remove in 1.33
-	 *
-	 * @param object $row Database row
-	 * @return string
-	 */
-	public function getTextFromRow( $row ) {
-		wfDeprecated( __METHOD__, '1.32' );
-
-		if ( empty( $row->ar_text_id ) ) {
-			throw new InvalidArgumentException( '$row->ar_text_id must be set and not empty!' );
-		}
-
-		$address = SqlBlobStore::makeAddressFromTextId( $row->ar_text_id );
-		$blobStore = MediaWikiServices::getInstance()->getBlobStore();
-
-		return $blobStore->getBlob( $address );
-	}
-
-	/**
-	 * Fetch (and decompress if necessary) the stored text of the most
-	 * recently edited deleted revision of the page.
-	 *
-	 * If there are no archived revisions for the page, returns NULL.
-	 *
-	 * @note this bypasses any audience checks.
-	 *
-	 * @deprecated since 1.32. For compatibility with the MCR schema,
-	 * calling code should switch to getLastRevisionId() and getArchiveRevision().
-	 *
-	 * @todo remove in 1.33
-	 *
-	 * @return string|null
-	 */
-	public function getLastRevisionText() {
-		wfDeprecated( __METHOD__, '1.32' );
-
-		$revId = $this->getLastRevisionId();
-
-		if ( $revId ) {
-			$rev = $this->getArchivedRevision( $revId );
-			$content = $rev->getContent( RevisionRecord::RAW );
-			return $content->serialize();
-		}
-
-		return null;
-	}
-
-	/**
 	 * Returns the ID of the latest deleted revision.
 	 *
 	 * @return int|false The revision's ID, or false if there is no deleted revision.
@@ -436,7 +365,7 @@ class PageArchive {
 			[ 'ar_namespace' => $this->title->getNamespace(),
 				'ar_title' => $this->title->getDBkey() ],
 			__METHOD__,
-			[ 'ORDER BY' => 'ar_timestamp DESC, ar_id DESC' ]
+			[ 'ORDER BY' => [ 'ar_timestamp DESC', 'ar_id DESC' ] ]
 		);
 
 		return $revId ? intval( $revId ) : false;
@@ -477,8 +406,8 @@ class PageArchive {
 	 * @param User|null $user User performing the action, or null to use $wgUser
 	 * @param string|string[]|null $tags Change tags to add to log entry
 	 *   ($user should be able to add the specified tags before this is called)
-	 * @return array|bool array(number of file revisions restored, number of image revisions
-	 *   restored, log message) on success, false on failure.
+	 * @return array|bool [ number of file revisions restored, number of image revisions
+	 *   restored, log message ] on success, false on failure.
 	 */
 	public function undelete( $timestamps, $comment = '', $fileVersions = [],
 		$unsuppress = false, User $user = null, $tags = null
@@ -491,7 +420,9 @@ class PageArchive {
 		$restoreFiles = $restoreAll || !empty( $fileVersions );
 
 		if ( $restoreFiles && $this->title->getNamespace() == NS_FILE ) {
-			$img = wfLocalFile( $this->title );
+			/** @var LocalFile $img */
+			$img = MediaWikiServices::getInstance()->getRepoGroup()->getLocalRepo()
+				->newFile( $this->title );
 			$img->load( File::READ_LATEST );
 			$this->fileStatus = $img->restore( $fileVersions, $unsuppress );
 			if ( !$this->fileStatus->isOK() ) {
@@ -530,7 +461,7 @@ class PageArchive {
 		$logEntry->setPerformer( $user );
 		$logEntry->setTarget( $this->title );
 		$logEntry->setComment( $comment );
-		$logEntry->setTags( $tags );
+		$logEntry->addTags( $tags );
 		$logEntry->setParameters( [
 			':assoc:count' => [
 				'revisions' => $textRestored,
@@ -825,10 +756,14 @@ class PageArchive {
 
 			Hooks::run( 'ArticleUndelete',
 				[ &$this->title, $created, $comment, $oldPageId, $restoredPages ] );
+
 			if ( $this->title->getNamespace() == NS_FILE ) {
-				DeferredUpdates::addUpdate(
-					new HTMLCacheUpdate( $this->title, 'imagelinks', 'file-restore' )
+				$job = HTMLCacheUpdateJob::newForBacklinks(
+					$this->title,
+					'imagelinks',
+					[ 'causeAction' => 'file-restore' ]
 				);
+				JobQueueGroup::singleton()->lazyPush( $job );
 			}
 		}
 

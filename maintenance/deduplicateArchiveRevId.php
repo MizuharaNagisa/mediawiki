@@ -13,7 +13,10 @@ require_once __DIR__ . '/Maintenance.php';
  */
 class DeduplicateArchiveRevId extends LoggedUpdateMaintenance {
 
-	/** @var array|null */
+	/**
+	 * @var array[]|null
+	 * @phan-var array{tables:string[],fields:string[],joins:array}|null
+	 */
 	private $arActorQuery = null;
 
 	private $deleted = 0;
@@ -33,8 +36,13 @@ class DeduplicateArchiveRevId extends LoggedUpdateMaintenance {
 
 	protected function doDBUpdates() {
 		$this->output( "Deduplicating ar_rev_id...\n" );
-
 		$dbw = $this->getDB( DB_MASTER );
+		// Sanity check. If this is a new install, we don't need to do anything here.
+		if ( PopulateArchiveRevId::isNewInstall( $dbw ) ) {
+			$this->output( "New install, nothing to do here.\n" );
+			return true;
+		}
+
 		PopulateArchiveRevId::checkMysqlAutoIncrementBug( $dbw );
 
 		$minId = $dbw->selectField( 'archive', 'MIN(ar_rev_id)', [], __METHOD__ );
@@ -53,14 +61,14 @@ class DeduplicateArchiveRevId extends LoggedUpdateMaintenance {
 			// to try to prevent deletions or undeletions from confusing things.
 			$dbw->selectRowCount(
 				'archive',
-				1,
+				'1',
 				[ 'ar_rev_id >= ' . (int)$id, 'ar_rev_id <= ' . (int)$endId ],
 				__METHOD__,
 				[ 'FOR UPDATE' ]
 			);
 			$dbw->selectRowCount(
 				'revision',
-				1,
+				'1',
 				[ 'rev_id >= ' . (int)$id, 'rev_id <= ' . (int)$endId ],
 				__METHOD__,
 				[ 'LOCK IN SHARE MODE' ]

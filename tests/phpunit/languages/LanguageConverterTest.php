@@ -1,12 +1,15 @@
 <?php
 
+/**
+ * @group Language
+ */
 class LanguageConverterTest extends MediaWikiLangTestCase {
-	/** @var LanguageToTest */
-	protected $lang = null;
+	/** @var Language */
+	protected $lang;
 	/** @var TestConverter */
-	protected $lc = null;
+	protected $lc;
 
-	protected function setUp() {
+	protected function setUp() : void {
 		parent::setUp();
 
 		$this->setContentLang( 'tg' );
@@ -17,7 +20,13 @@ class LanguageConverterTest extends MediaWikiLangTestCase {
 			'wgUser' => new User,
 		] );
 
-		$this->lang = new LanguageToTest();
+		$this->lang = $this->createMock( Language::class );
+		$this->lang->method( 'getNsText' )->with( NS_MEDIAWIKI )->willReturn( 'MediaWiki' );
+		$this->lang->method( 'ucfirst' )->will( $this->returnCallback( function ( $s ) {
+			return ucfirst( $s );
+		} ) );
+		$this->lang->expects( $this->never() )
+			->method( $this->anythingBut( 'factory', 'getNsText', 'ucfirst' ) );
 		$this->lc = new TestConverter(
 			$this->lang, 'tg',
 			# Adding 'sgs' as a variant to ensure we handle deprecated codes
@@ -26,7 +35,7 @@ class LanguageConverterTest extends MediaWikiLangTestCase {
 		);
 	}
 
-	protected function tearDown() {
+	protected function tearDown() : void {
 		unset( $this->lc );
 		unset( $this->lang );
 
@@ -323,20 +332,12 @@ class TestConverter extends LanguageConverter {
 		'г' => 'g',
 	];
 
-	function loadDefaultTables() {
+	public function loadDefaultTables() {
 		$this->mTables = [
 			'sgs' => new ReplacementArray(),
 			'simple' => new ReplacementArray(),
 			'tg-latn' => new ReplacementArray( $this->table ),
 			'tg' => new ReplacementArray()
 		];
-	}
-}
-
-class LanguageToTest extends Language {
-	function __construct() {
-		parent::__construct();
-		$variants = [ 'tg', 'tg-latn' ];
-		$this->mConverter = new TestConverter( $this, 'tg', $variants );
 	}
 }

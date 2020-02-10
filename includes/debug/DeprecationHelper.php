@@ -50,7 +50,7 @@ trait DeprecationHelper {
 	 * the name of the class defining the property, <component> is the MediaWiki component
 	 * (extension, skin etc.) for use in the deprecation warning) or null if it is MediaWiki.
 	 * E.g. [ 'mNewRev' => [ '1.32', 'DifferenceEngine', null ]
-	 * @var string[]
+	 * @var string[][]
 	 */
 	protected $deprecatedPublicProperties = [];
 
@@ -68,7 +68,7 @@ trait DeprecationHelper {
 	protected function deprecatePublicProperty(
 		$property, $version, $class = null, $component = null
 	) {
-		$this->deprecatedPublicProperties[$property] = [ $version, $class ?: get_class(), $component ];
+		$this->deprecatedPublicProperties[$property] = [ $version, $class ?: __CLASS__, $component ];
 	}
 
 	public function __get( $name ) {
@@ -79,8 +79,9 @@ trait DeprecationHelper {
 			return $this->$name;
 		}
 
-		$qualifiedName = get_class() . '::$' . $name;
-		if ( $this->deprecationHelperGetPropertyOwner( $name ) ) {
+		$ownerClass = $this->deprecationHelperGetPropertyOwner( $name );
+		$qualifiedName = ( $ownerClass ?: get_class( $this ) ) . '::$' . $name;
+		if ( $ownerClass ) {
 			// Someone tried to access a normal non-public property. Try to behave like PHP would.
 			trigger_error( "Cannot access non-public property $qualifiedName", E_USER_ERROR );
 		} else {
@@ -99,8 +100,9 @@ trait DeprecationHelper {
 			return;
 		}
 
-		$qualifiedName = get_class() . '::$' . $name;
-		if ( $this->deprecationHelperGetPropertyOwner( $name ) ) {
+		$ownerClass = $this->deprecationHelperGetPropertyOwner( $name );
+		$qualifiedName = ( $ownerClass ?: get_class( $this ) ) . '::$' . $name;
+		if ( $ownerClass ) {
 			// Someone tried to access a normal non-public property. Try to behave like PHP would.
 			trigger_error( "Cannot access non-public property $qualifiedName", E_USER_ERROR );
 		} else {
@@ -113,22 +115,12 @@ trait DeprecationHelper {
 	 * Like property_exists but also check for non-visible private properties and returns which
 	 * class in the inheritance chain declared the property.
 	 * @param string $property
-	 * @return string|bool Best guess for the class in which the property is defined.
+	 * @return string|bool Best guess for the class in which the property is defined. False if
+	 *   the object does not have such a property.
 	 */
 	private function deprecationHelperGetPropertyOwner( $property ) {
-		// Easy branch: check for protected property / private property of the current class.
-		if ( property_exists( $this, $property ) ) {
-			// The class name is not necessarily correct here but getting the correct class
-			// name would be expensive, this will work most of the time and getting it
-			// wrong is not a big deal.
-			return __CLASS__;
-		}
-		// property_exists() returns false when the property does exist but is private (and not
-		// defined by the current class, for some value of "current" that differs slightly
-		// between engines).
-		// Since PHP triggers an error on public access of non-public properties but happily
-		// allows public access to undefined properties, we need to detect this case as well.
-		// Reflection is slow so use array cast hack to check for that:
+		// Returning false is a non-error path and should avoid slow checks like reflection.
+		// Use array cast hack instead.
 		$obfuscatedProps = array_keys( (array)$this );
 		$obfuscatedPropTail = "\0$property";
 		foreach ( $obfuscatedProps as $obfuscatedProp ) {
@@ -136,8 +128,9 @@ trait DeprecationHelper {
 			if ( strpos( $obfuscatedProp, $obfuscatedPropTail, 1 ) !== false ) {
 				$classname = substr( $obfuscatedProp, 1, -strlen( $obfuscatedPropTail ) );
 				if ( $classname === '*' ) {
-					// sanity; this shouldn't be possible as protected properties were handled earlier
-					$classname = __CLASS__;
+					// protected property; we didn't get the name, but we are on an error path
+					// now so it's fine to use reflection
+					return ( new ReflectionProperty( $this, $property ) )->getDeclaringClass()->getName();
 				}
 				return $classname;
 			}
@@ -145,4 +138,47 @@ trait DeprecationHelper {
 		return false;
 	}
 
+	/**
+	 * This function is used to introduce new argument into function or __construct.
+	 * It returns provided $value if it's not null.
+	 * If $value is null it raises wfDeprecated exception with name of property and returns fallback.
+	 *
+	 *
+	 * * Example usage:
+	 *     private $newVariable;
+	 *     function __construct( $oldVariable, $newVariable ) {
+	 *         ....
+	 *         $this->newVariable = DeprecationHelper::newArgumentWithDeprecation(
+	 *             __METHOD__,
+	 *             "$newVariable",
+	 *             $newVariable,
+	 *             function() { return 0; } // Any way to evaluate default value for $newVariable
+	 *         );
+	 *         ....
+	 *     }
+	 *
+	 *     $foo = new Foo;
+	 *     $foo->bar; // works but logs a warning
+	 *
+	 * @param string $method full class method
+	 * @param string $name new argument name
+	 * @param string $version version since argument was introduced
+	 * @param mixed|null $value
+	 * @param callable $fallback Closure of type (): mixed - it used if $value is null
+	 *
+	 * @return mixed
+	 */
+	public static function newArgumentWithDeprecation(
+		string $method,
+		string $name,
+		string $version,
+		$value,
+		callable $fallback
+	) {
+		if ( $value === null ) {
+			wfDeprecated( $method . " without $name parameter", $version );
+			return $fallback();
+		}
+		return $value;
+	}
 }

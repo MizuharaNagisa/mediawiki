@@ -21,9 +21,9 @@
  * @file
  */
 
-use MediaWiki\Auth\AuthManager;
 use MediaWiki\Auth\AuthenticationRequest;
 use MediaWiki\Auth\AuthenticationResponse;
+use MediaWiki\Auth\AuthManager;
 use MediaWiki\Logger\LoggerFactory;
 
 /**
@@ -107,7 +107,6 @@ class ApiLogin extends ApiBase {
 		}
 
 		$authRes = false;
-		$context = new DerivativeContext( $this->getContext() );
 		$loginType = 'N/A';
 
 		// Check login token
@@ -197,7 +196,7 @@ class ApiLogin extends ApiBase {
 				$injected_html = '';
 				Hooks::run( 'UserLoginComplete', [ &$user, &$injected_html, true ] );
 
-				$result['lguserid'] = intval( $user->getId() );
+				$result['lguserid'] = (int)$user->getId();
 				$result['lgusername'] = $user->getName();
 				break;
 
@@ -268,8 +267,6 @@ class ApiLogin extends ApiBase {
 
 	protected function getExamplesMessages() {
 		return [
-			'action=login&lgname=user&lgpassword=password'
-				=> 'apihelp-login-example-gettoken',
 			'action=login&lgname=user&lgpassword=password&lgtoken=123ABC'
 				=> 'apihelp-login-example-login',
 		];
@@ -290,7 +287,7 @@ class ApiLogin extends ApiBase {
 		];
 		if ( $response->message ) {
 			$ret['message'] = $response->message->inLanguage( 'en' )->plain();
-		};
+		}
 		$reqs = [
 			'neededRequests' => $response->neededRequests,
 			'createRequest' => $response->createRequest,

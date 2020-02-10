@@ -10,7 +10,7 @@ use MediaWiki\MediaWikiServices;
 class TextContentTest extends MediaWikiLangTestCase {
 	protected $context;
 
-	protected function setUp() {
+	protected function setUp() : void {
 		parent::setUp();
 
 		// trigger purging of all page related tables
@@ -40,7 +40,7 @@ class TextContentTest extends MediaWikiLangTestCase {
 		MWTidy::destroySingleton();
 	}
 
-	protected function tearDown() {
+	protected function tearDown() : void {
 		MWTidy::destroySingleton();
 		parent::tearDown();
 	}
@@ -177,7 +177,7 @@ class TextContentTest extends MediaWikiLangTestCase {
 		$content = $this->newContent( $text );
 		$t = $content->getRedirectTarget();
 
-		if ( is_null( $expected ) ) {
+		if ( $expected === null ) {
 			$this->assertNull( $t, "text should not have generated a redirect target: $text" );
 		} else {
 			$this->assertEquals( $expected, $t->getPrefixedText() );
@@ -191,7 +191,7 @@ class TextContentTest extends MediaWikiLangTestCase {
 	public function testIsRedirect( $text, $expected ) {
 		$content = $this->newContent( $text );
 
-		$this->assertEquals( !is_null( $expected ), $content->isRedirect() );
+		$this->assertEquals( $expected !== null, $content->isRedirect() );
 	}
 
 	public static function dataIsCountable() {

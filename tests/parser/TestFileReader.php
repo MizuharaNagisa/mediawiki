@@ -29,6 +29,7 @@ class TestFileReader {
 	private $lineNum = 0;
 	private $runDisabled;
 	private $regex;
+	private $format = 1;
 
 	private $articles = [];
 	private $requirements = [];
@@ -74,11 +75,42 @@ class TestFileReader {
 	private function addCurrentTest() {
 		// "input" and "result" are old section names allowed
 		// for backwards-compatibility.
-		$input = $this->checkSection( [ 'wikitext', 'input' ], false );
-		$nonTidySection = $this->checkSection(
+		$input = $this->checkSection(
+			[ 'wikitext', 'input' ], false );
+		$output = $this->checkSection(
 			[ 'html/php', 'html/*', 'html', 'result' ], false );
-		// Some tests have "with tidy" and "without tidy" variants
-		$tidySection = $this->checkSection( [ 'html/php+tidy', 'html+tidy' ], false );
+		$tidySection = $this->checkSection(
+			[ 'html/php+tidy', 'html+tidy' ], false );
+		$nonTidySection = $this->checkSection(
+			[ 'html/php+untidy', 'html+untidy' ], false );
+		if ( $this->format < 2 ) {
+			if ( $nonTidySection === false ) {
+				// untidy by default
+				$nonTidySection = $output;
+			}
+		} else {
+			if ( $this->checkSection( [ 'input' ], false ) ) {
+				wfDeprecated( 'input section in parserTest', '1.35' );
+			}
+			if ( $this->checkSection( [ 'result' ], false ) ) {
+				wfDeprecated( 'result section in parserTest', '1.35' );
+			}
+			if ( $output && $tidySection ) {
+				wfDeprecated(
+					'untidy section should be renamed at ' .
+					"{$this->file}:{$this->sectionLineNum['test']}", '1.35'
+				);
+			}
+			if ( $tidySection === false ) {
+				// tidy by default
+				$tidySection = $output;
+			}
+			if ( $nonTidySection && !$tidySection ) {
+				// Tests with a "without tidy" section but no "with tidy" section
+				// are deprecated!
+				wfDeprecated( "test without tidy at {$this->file}:{$this->sectionLineNum['test']}", '1.35' );
+			}
+		}
 
 		// Remove trailing newline
 		$data = array_map( 'ParserTestRunner::chomp', $this->sectionData );
@@ -93,7 +125,6 @@ class TestFileReader {
 			throw new MWException( "Test at {$this->file}:{$this->sectionLineNum['test']} " .
 				"lacks input section" );
 		}
-
 		if ( preg_match( '/\\bdisabled\\b/i', $data['options'] ) &&	!$this->runDisabled ) {
 			// Disabled
 			return;
@@ -159,6 +190,13 @@ class TestFileReader {
 			$this->lineNum++;
 			$matches = [];
 
+			// Support test file format versioning.
+			if ( $this->lineNum === 1 &&
+				 preg_match( '/^!!\s*VERSION\s+(\d+)/i', $line, $matches ) ) {
+				$this->format = intval( $matches[1] );
+				continue;
+			}
+
 			if ( preg_match( '/^!!\s*(\S+)/', $line, $matches ) ) {
 				$this->section = strtolower( $matches[1] );
 
@@ -199,22 +237,6 @@ class TestFileReader {
 
 						if ( $line ) {
 							$this->addRequirement( 'functionHook', $line );
-						}
-					}
-
-					$this->clearSection();
-
-					continue;
-				}
-
-				if ( $this->section == 'endtransparenthooks' ) {
-					$this->checkSection( 'transparenthooks' );
-
-					foreach ( explode( "\n", $this->sectionData['transparenthooks'] ) as $line ) {
-						$line = trim( $line );
-
-						if ( $line ) {
-							$this->addRequirement( 'transparentHook', $line );
 						}
 					}
 
@@ -270,7 +292,7 @@ class TestFileReader {
 	 * @throws MWException
 	 */
 	private function checkSection( $tokens, $fatal = true ) {
-		if ( is_null( $this->section ) ) {
+		if ( $this->section === null ) {
 			throw new MWException( __METHOD__ . " can not verify a null section!\n" );
 		}
 		if ( !is_array( $tokens ) ) {

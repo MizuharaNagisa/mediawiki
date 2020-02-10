@@ -118,7 +118,9 @@ class RevertAction extends FormAction {
 		$this->useTransactionalTimeLimit();
 
 		$old = $this->getRequest()->getText( 'oldimage' );
+		/** @var LocalFile $localFile */
 		$localFile = $this->page->getFile();
+		'@phan-var LocalFile $localFile';
 		$oldFile = OldLocalFile::newFromArchiveName( $this->getTitle(), $localFile->getRepo(), $old );
 
 		$source = $localFile->getArchiveVirtualUrl( $old );
@@ -136,7 +138,10 @@ class RevertAction extends FormAction {
 			0,
 			false,
 			false,
-			$this->getUser()
+			$this->getUser(),
+			[],
+			true,
+			true
 		);
 	}
 

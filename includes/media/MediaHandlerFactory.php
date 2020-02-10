@@ -33,7 +33,7 @@ class MediaHandlerFactory {
 	 *
 	 * @var array
 	 */
-	private static $coreHandlers = [
+	private const CORE_HANDLERS = [
 		'image/jpeg' => JpegHandler::class,
 		'image/png' => PNGHandler::class,
 		'image/gif' => GIFHandler::class,
@@ -62,15 +62,11 @@ class MediaHandlerFactory {
 	private $handlers;
 
 	public function __construct( array $registry ) {
-		$this->registry = $registry + self::$coreHandlers;
+		$this->registry = $registry + self::CORE_HANDLERS;
 	}
 
 	protected function getHandlerClass( $type ) {
-		if ( isset( $this->registry[$type] ) ) {
-			return $this->registry[$type];
-		} else {
-			return false;
-		}
+		return $this->registry[$type] ?? false;
 	}
 
 	/**

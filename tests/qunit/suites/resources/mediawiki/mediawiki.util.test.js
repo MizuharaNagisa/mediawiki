@@ -77,9 +77,14 @@
 	QUnit.module( 'mediawiki.util', QUnit.newMwEnvironment( {
 		setup: function () {
 			$.fn.updateTooltipAccessKeys.setTestMode( true );
+			this.origConfig = mw.util.setOptionsForTest( {
+				FragmentMode: [ 'legacy', 'html5' ],
+				LoadScript: '/w/load.php'
+			} );
 		},
 		teardown: function () {
 			$.fn.updateTooltipAccessKeys.setTestMode( false );
+			mw.util.setOptionsForTest( this.origConfig );
 		},
 		messages: {
 			// Used by accessKeyLabel in test for addPortletLink
@@ -114,7 +119,7 @@
 			// Distant future: no legacy fallbacks
 			[ allNew, text, html5Encoded ]
 		].forEach( function ( testCase ) {
-			mw.config.set( 'wgFragmentMode', testCase[ 0 ] );
+			mw.util.setOptionsForTest( { FragmentMode: testCase[ 0 ] } );
 
 			assert.strictEqual( util.escapeIdForAttribute( testCase[ 1 ] ), testCase[ 2 ] );
 		} );
@@ -141,7 +146,7 @@
 			// Distant future: no legacy fallbacks
 			[ allNew, text, html5Encoded ]
 		].forEach( function ( testCase ) {
-			mw.config.set( 'wgFragmentMode', testCase[ 0 ] );
+			mw.util.setOptionsForTest( { FragmentMode: testCase[ 0 ] } );
 
 			assert.strictEqual( util.escapeIdForLink( testCase[ 1 ] ), testCase[ 2 ] );
 		} );
@@ -150,7 +155,7 @@
 	QUnit.test( 'wikiUrlencode', function ( assert ) {
 		assert.strictEqual( util.wikiUrlencode( 'Test:A & B/Here' ), 'Test:A_%26_B/Here' );
 		// See also wfUrlencodeTest.php#provideURLS
-		// eslint-disable-next-line jquery/no-each-util
+		// eslint-disable-next-line no-jquery/no-each-util
 		$.each( {
 			'+': '%2B',
 			'&': '%26',
@@ -210,32 +215,33 @@
 		href = util.getUrl( '#Fragment', { action: 'edit' } );
 		assert.strictEqual( href, '/w/index.php?action=edit#Fragment', 'empty title with query string and fragment' );
 
-		mw.config.set( 'wgFragmentMode', [ 'legacy' ] );
+		mw.util.setOptionsForTest( { FragmentMode: [ 'legacy' ] } );
 		href = util.getUrl( 'Foo:Sandbox \xC4#Fragment \xC4', { action: 'edit' } );
 		assert.strictEqual( href, '/w/index.php?title=Foo:Sandbox_%C3%84&action=edit#Fragment_.C3.84', 'title with query string, fragment, and special characters' );
 
-		mw.config.set( 'wgFragmentMode', [ 'html5' ] );
+		mw.util.setOptionsForTest( { FragmentMode: [ 'html5' ] } );
 		href = util.getUrl( 'Foo:Sandbox \xC4#Fragment \xC4', { action: 'edit' } );
 		assert.strictEqual( href, '/w/index.php?title=Foo:Sandbox_%C3%84&action=edit#Fragment_Ä', 'title with query string, fragment, and special characters' );
 
 		href = util.getUrl( 'Foo:%23#Fragment', { action: 'edit' } );
 		assert.strictEqual( href, '/w/index.php?title=Foo:%2523&action=edit#Fragment', 'title containing %23 (#), fragment, and a query string' );
 
-		mw.config.set( 'wgFragmentMode', [ 'legacy' ] );
+		mw.util.setOptionsForTest( { FragmentMode: [ 'legacy' ] } );
 		href = util.getUrl( '#+&=:;@$-_.!*/[]<>\'§', { action: 'edit' } );
 		assert.strictEqual( href, '/w/index.php?action=edit#.2B.26.3D:.3B.40.24-_..21.2A.2F.5B.5D.3C.3E.27.C2.A7', 'fragment with various characters' );
 
-		mw.config.set( 'wgFragmentMode', [ 'html5' ] );
+		mw.util.setOptionsForTest( { FragmentMode: [ 'html5' ] } );
 		href = util.getUrl( '#+&=:;@$-_.!*/[]<>\'§', { action: 'edit' } );
 		assert.strictEqual( href, '/w/index.php?action=edit#+&=:;@$-_.!*/[]<>\'§', 'fragment with various characters' );
 	} );
 
 	QUnit.test( 'wikiScript', function ( assert ) {
+		mw.util.setOptionsForTest( {
+			LoadScript: '/w/l.php'
+		} );
 		mw.config.set( {
 			// customized wgScript for T41103
 			wgScript: '/w/i.php',
-			// customized wgLoadScript for T41103
-			wgLoadScript: '/w/l.php',
 			wgScriptPath: '/w'
 		} );
 
@@ -245,8 +251,8 @@
 		assert.strictEqual( util.wikiScript( 'index' ), mw.config.get( 'wgScript' ),
 			'wikiScript( index ) returns wgScript'
 		);
-		assert.strictEqual( util.wikiScript( 'load' ), mw.config.get( 'wgLoadScript' ),
-			'wikiScript( load ) returns wgLoadScript'
+		assert.strictEqual( util.wikiScript( 'load' ), '/w/l.php',
+			'wikiScript( load ) returns /w/l.php'
 		);
 		assert.strictEqual( util.wikiScript( 'api' ), '/w/api.php', 'API path' );
 	} );
@@ -294,7 +300,7 @@
 	 * one element can have a given id.
 	 */
 	QUnit.test( 'addPortletLink', function ( assert ) {
-		var tbRL, cuQuux, $cuQuux, tbMW, $tbMW, tbRLDM, caFoo,
+		var tbRL, cuQuux, $cuQuux, tbMW, $tbMW, tbRLDM, caFoo, listPortletItem,
 			addedAfter, tbRLDMnonexistentid, tbRLDMemptyjquery;
 
 		$( '#qunit-fixture' ).append(
@@ -313,6 +319,7 @@
 					'</li>' +
 				'</ul>' +
 			'</div>' +
+			'<ul id="p-list"></ul>' +
 			'<div id="p-test-views" class="vectorTabs">' +
 				'<h3>Views</h3>' +
 				'<ul></ul>' +
@@ -336,7 +343,12 @@
 			'List item attributes'
 		);
 		assert.propEqual(
-			$tbMW.find( 'a' ).getAttrs(),
+			$tbMW.children().get().map( function ( node ) { return node.nodeName; } ),
+			[ 'A' ],
+			'List item children'
+		);
+		assert.propEqual(
+			$tbMW.children( 'a' ).getAttrs(),
 			{
 				href: '//example.org/',
 				title: 'Go to Example [test-x]',
@@ -353,11 +365,6 @@
 			$tbMW.next()[ 0 ],
 			tbRL,
 			'Next node (set as Node object)'
-		);
-		assert.strictEqual(
-			$tbMW.find( 'span' ).length,
-			0,
-			'No <span> wrap for porlets without vectorTabs class'
 		);
 
 		cuQuux = util.addPortletLink( 'p-test-custom', '#', 'Quux', null, 'Example [shift-x]', 'q' );
@@ -378,7 +385,11 @@
 		assert.strictEqual( $( tbRLDM ).next()[ 0 ], tbRL, 'Next node (set as CSS selector)' );
 
 		caFoo = util.addPortletLink( 'p-test-views', '#', 'Foo' );
-		assert.strictEqual( $( caFoo ).find( 'span' ).length, 1, 'Added <span> element for porlet with vectorTabs class' );
+		assert.propEqual(
+			[].map.call( caFoo.children, function ( node ) { return node.nodeName; } ),
+			[ 'A' ],
+			'List item children for porlet with vectorTabs class'
+		);
 
 		addedAfter = util.addPortletLink( 'p-test-tb', '#', 'After foo', 'post-foo', 'After foo', null, $( tbRL ) );
 		assert.strictEqual( $( addedAfter ).next()[ 0 ], tbRL, 'Next node (set as jQuery object)' );
@@ -387,7 +398,7 @@
 			'Default modules', 't-rldm-nonexistent', 'List of all default modules ', 'd', '#t-rl-nonexistent' );
 		assert.strictEqual(
 			tbRLDMnonexistentid,
-			$( '#p-test-tb li:last' )[ 0 ],
+			$( '#p-test-tb li' ).last()[ 0 ],
 			'Next node as non-matching CSS selector falls back to appending'
 		);
 
@@ -395,8 +406,14 @@
 			'Default modules', 't-rldm-empty-jquery', 'List of all default modules ', 'd', $( '#t-rl-nonexistent' ) );
 		assert.strictEqual(
 			tbRLDMemptyjquery,
-			$( '#p-test-tb li:last' )[ 0 ],
+			$( '#p-test-tb li' ).last()[ 0 ],
 			'Next node as empty jQuery object falls back to appending'
+		);
+
+		listPortletItem = util.addPortletLink( 'p-list', 'foo.html', 'Foo' );
+		assert.strictEqual(
+			$( listPortletItem ).parents( 'ul' ).length, 1,
+			'Minerva support: The portlet is the list and a new item is added'
 		);
 	} );
 
@@ -432,6 +449,63 @@
 
 		IPV6_CASES.forEach( function ( ipCase ) {
 			assert.strictEqual( util.isIPv6Address( ipCase[ 1 ] ), ipCase[ 0 ], ipCase[ 2 ] );
+		} );
+	} );
+
+	QUnit.test( 'escapeRegExp', function ( assert ) {
+		var specials, normal;
+
+		specials = [
+			'\\',
+			'{',
+			'}',
+			'(',
+			')',
+			'[',
+			']',
+			'|',
+			'.',
+			'?',
+			'*',
+			'+',
+			'-',
+			'^',
+			'$'
+		];
+
+		normal = [
+			'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+			'abcdefghijklmnopqrstuvwxyz',
+			'0123456789'
+		].join( '' );
+
+		specials.forEach( function ( str ) {
+			assert.propEqual( str.match( new RegExp( mw.util.escapeRegExp( str ) ) ), [ str ], 'Match ' + str );
+		} );
+
+		assert.strictEqual( mw.util.escapeRegExp( normal ), normal, 'Alphanumerals are left alone' );
+	} );
+
+	QUnit.test( 'debounce', function ( assert ) {
+		var fn,
+			q = [],
+			done = assert.async();
+
+		fn = mw.util.debounce( 0, function ( data ) {
+			q.push( data );
+		} );
+
+		fn( 1 );
+		fn( 2 );
+		fn( 3 );
+
+		setTimeout( function () {
+			assert.deepEqual(
+				q,
+				[ 3 ],
+				'Last one ran'
+			);
+			done();
 		} );
 	} );
 }() );

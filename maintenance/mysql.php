@@ -23,8 +23,9 @@
  * @ingroup Maintenance
  */
 
-use MediaWiki\Shell\Shell;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Shell\Shell;
+use Wikimedia\IPUtils;
 
 require_once __DIR__ . '/Maintenance.php';
 
@@ -72,8 +73,6 @@ class MysqlMaintenance extends Maintenance {
 			$host = $this->getOption( 'host' );
 			$serverCount = $lb->getServerCount();
 			for ( $index = 0; $index < $serverCount; ++$index ) {
-				$serverInfo = $lb->getServerInfo( $index );
-
 				if ( $lb->getServerName( $index ) === $host ) {
 					break;
 				}
@@ -128,7 +127,7 @@ class MysqlMaintenance extends Maintenance {
 
 		// Split host and port as in DatabaseMysqli::mysqlConnect()
 		$realServer = $info['host'];
-		$hostAndPort = IP::splitHostAndPort( $realServer );
+		$hostAndPort = IPUtils::splitHostAndPort( $realServer );
 		$socket = false;
 		$port = false;
 		if ( $hostAndPort ) {
@@ -139,9 +138,7 @@ class MysqlMaintenance extends Maintenance {
 		} elseif ( substr_count( $realServer, ':' ) == 1 ) {
 			// If we have a colon and something that's not a port number
 			// inside the hostname, assume it's the socket location
-			$hostAndSocket = explode( ':', $realServer, 2 );
-			$realServer = $hostAndSocket[0];
-			$socket = $hostAndSocket[1];
+			list( $realServer, $socket ) = explode( ':', $realServer, 2 );
 		}
 
 		if ( $dbName === false ) {

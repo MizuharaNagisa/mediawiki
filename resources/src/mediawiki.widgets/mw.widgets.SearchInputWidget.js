@@ -14,8 +14,6 @@
 	 *
 	 * @constructor
 	 * @param {Object} [config] Configuration options
-	 * @cfg {boolean} [pushPending=false] Visually mark the input field as "pending", while
-	 *  requesting suggestions.
 	 * @cfg {boolean} [performSearchOnClick=true] If true, the script will start a search when-
 	 *  ever a user hits a suggestion. If false, the text of the suggestion is inserted into the
 	 *  text field only.
@@ -32,6 +30,7 @@
 		config = $.extend( {
 			icon: 'search',
 			maxLength: undefined,
+			showPendingRequest: false,
 			performSearchOnClick: true,
 			dataLocation: 'header'
 		}, config );
@@ -43,9 +42,6 @@
 		this.$element.addClass( 'mw-widget-searchInputWidget' );
 		this.lookupMenu.$element.addClass( 'mw-widget-searchWidget-menu' );
 		this.lastLookupItems = [];
-		if ( !config.pushPending ) {
-			this.pushPending = false;
-		}
 		if ( config.dataLocation ) {
 			this.dataLocation = config.dataLocation;
 		}
@@ -194,7 +190,7 @@
 			urls = data.data[ 3 ],
 			self = this;
 
-		// eslint-disable-next-line jquery/no-each-util
+		// eslint-disable-next-line no-jquery/no-each-util
 		$.each( titles, function ( i, result ) {
 			items.push( new mw.widgets.TitleOptionWidget(
 				self.getOptionWidgetData(

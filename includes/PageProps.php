@@ -129,12 +129,10 @@ class PageProps {
 				if ( $propertyValue === false ) {
 					$queryIDs[] = $pageID;
 					break;
+				} elseif ( $gotArray ) {
+					$values[$pageID][$propertyName] = $propertyValue;
 				} else {
-					if ( $gotArray ) {
-						$values[$pageID][$propertyName] = $propertyValue;
-					} else {
-						$values[$pageID] = $propertyValue;
-					}
+					$values[$pageID] = $propertyValue;
 				}
 			}
 		}
@@ -217,7 +215,8 @@ class PageProps {
 			foreach ( $result as $row ) {
 				$pageID = $row->pp_page;
 				if ( $currentPageID != $pageID ) {
-					if ( $pageProperties != [] ) {
+					if ( $pageProperties ) {
+						// @phan-suppress-next-line PhanTypeMismatchArgument False positive
 						$this->cacheProperties( $currentPageID, $pageProperties );
 						$values[$currentPageID] = $pageProperties;
 					}

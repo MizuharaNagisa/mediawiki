@@ -8,7 +8,7 @@ class PNGHandlerTest extends MediaWikiMediaTestCase {
 	/** @var PNGHandler */
 	protected $handler;
 
-	protected function setUp() {
+	protected function setUp() : void {
 		parent::setUp();
 		$this->handler = new PNGHandler();
 	}
@@ -147,7 +147,7 @@ class PNGHandlerTest extends MediaWikiMediaTestCase {
 	public function testGetLength( $filename, $expectedLength ) {
 		$file = $this->dataFile( $filename, 'image/png' );
 		$actualLength = $file->getLength();
-		$this->assertEquals( $expectedLength, $actualLength, '', 0.00001 );
+		$this->assertEqualsWithDelta( $expectedLength, $actualLength, 0.00001 );
 	}
 
 	public function provideGetLength() {

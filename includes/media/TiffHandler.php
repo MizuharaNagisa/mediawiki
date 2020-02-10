@@ -62,9 +62,9 @@ class TiffHandler extends ExifBitmapHandler {
 	 * @param string $ext
 	 * @param string $mime
 	 * @param array|null $params
-	 * @return bool
+	 * @return array
 	 */
-	function getThumbType( $ext, $mime, $params = null ) {
+	public function getThumbType( $ext, $mime, $params = null ) {
 		global $wgTiffThumbnailType;
 
 		return $wgTiffThumbnailType;
@@ -76,7 +76,7 @@ class TiffHandler extends ExifBitmapHandler {
 	 * @throws MWException
 	 * @return string
 	 */
-	function getMetadata( $image, $filename ) {
+	public function getMetadata( $image, $filename ) {
 		global $wgShowEXIF;
 
 		if ( $wgShowEXIF ) {

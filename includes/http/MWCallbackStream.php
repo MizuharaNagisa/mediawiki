@@ -18,8 +18,8 @@
  * @file
  */
 
-use Psr\Http\Message\StreamInterface;
 use GuzzleHttp\Psr7\StreamDecoratorTrait;
+use Psr\Http\Message\StreamInterface;
 
 /**
  * Callback-aware stream.  Allows using a callback function to receive data in contexts where
@@ -29,6 +29,7 @@ use GuzzleHttp\Psr7\StreamDecoratorTrait;
  *
  * @private for use by GuzzleHttpRequest only
  * @since 1.33
+ * @property StreamInterface $stream Defined in StreamDecoratorTrait via @property, not read by phan
  */
 class MWCallbackStream implements StreamInterface {
 	use StreamDecoratorTrait;

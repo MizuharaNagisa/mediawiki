@@ -1,6 +1,6 @@
 <?php
 /**
- * Image authorisation script
+ * The web entry point for serving non-public images to logged-in users.
  *
  * To use this, see https://www.mediawiki.org/wiki/Manual:Image_Authorization
  *
@@ -36,9 +36,11 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
+ * @ingroup entrypoint
  */
 
 define( 'MW_NO_OUTPUT_COMPRESSION', 1 );
+define( 'MW_ENTRY_POINT', 'img_auth' );
 require __DIR__ . '/includes/WebStart.php';
 
 # Set action base paths so that WebRequest::getPathInfo()
@@ -49,13 +51,14 @@ $wgActionPaths = [ "$wgUploadPath/" ];
 wfImageAuthMain();
 
 $mediawiki = new MediaWiki();
-$mediawiki->doPostOutputShutdown( 'fast' );
+$mediawiki->doPostOutputShutdown();
 
 function wfImageAuthMain() {
 	global $wgImgAuthUrlPathMap;
+	$permissionManager = \MediaWiki\MediaWikiServices::getInstance()->getPermissionManager();
 
 	$request = RequestContext::getMain()->getRequest();
-	$publicWiki = in_array( 'read', User::getGroupPermissions( [ '*' ] ), true );
+	$publicWiki = in_array( 'read', $permissionManager->getGroupPermissions( [ '*' ] ), true );
 
 	// Get the requested file path (source file or thumbnail)
 	$matches = WebRequest::getPathInfo();
@@ -69,15 +72,7 @@ function wfImageAuthMain() {
 		$path = "/" . $path;
 	}
 
-	// Check for T30235: QUERY_STRING overriding the correct extension
-	$whitelist = [];
-	$extension = FileBackend::extensionFromPath( $path, 'rawcase' );
-	if ( $extension != '' ) {
-		$whitelist[] = $extension;
-	}
-	if ( !$request->checkUrlExtension( $whitelist ) ) {
-		return;
-	}
+	$user = RequestContext::getMain()->getUser();
 
 	// Various extensions may have their own backends that need access.
 	// Check if there is a special backend and storage base path for this file.
@@ -87,7 +82,7 @@ function wfImageAuthMain() {
 			$be = FileBackendGroup::singleton()->backendFromPath( $storageDir );
 			$filename = $storageDir . substr( $path, strlen( $prefix ) ); // strip prefix
 			// Check basic user authorization
-			if ( !RequestContext::getMain()->getUser()->isAllowed( 'read' ) ) {
+			if ( !$user->isAllowed( 'read' ) ) {
 				wfForbidden( 'img-auth-accessdenied', 'img-auth-noread', $path );
 				return;
 			}
@@ -136,19 +131,20 @@ function wfImageAuthMain() {
 
 	$headers = []; // extra HTTP headers to send
 
+	$title = Title::makeTitleSafe( NS_FILE, $name );
+
 	if ( !$publicWiki ) {
 		// For private wikis, run extra auth checks and set cache control headers
-		$headers[] = 'Cache-Control: private';
-		$headers[] = 'Vary: Cookie';
+		$headers['Cache-Control'] = 'private';
+		$headers['Vary'] = 'Cookie';
 
-		$title = Title::makeTitleSafe( NS_FILE, $name );
 		if ( !$title instanceof Title ) { // files have valid titles
 			wfForbidden( 'img-auth-accessdenied', 'img-auth-badtitle', $name );
 			return;
 		}
 
 		// Run hook for extension authorization plugins
-		/** @var $result array */
+		/** @var array $result */
 		$result = null;
 		if ( !Hooks::run( 'ImgAuthBeforeStream', [ &$title, &$path, &$name, &$result ] ) ) {
 			wfForbidden( $result[0], $result[1], array_slice( $result, 2 ) );
@@ -157,27 +153,31 @@ function wfImageAuthMain() {
 
 		// Check user authorization for this title
 		// Checks Whitelist too
-		if ( !$title->userCan( 'read' ) ) {
+
+		if ( !$permissionManager->userCan( 'read', $user, $title ) ) {
 			wfForbidden( 'img-auth-accessdenied', 'img-auth-noread', $name );
 			return;
 		}
 	}
 
-	$options = []; // HTTP header options
 	if ( isset( $_SERVER['HTTP_RANGE'] ) ) {
-		$options['range'] = $_SERVER['HTTP_RANGE'];
+		$headers['Range'] = $_SERVER['HTTP_RANGE'];
 	}
 	if ( isset( $_SERVER['HTTP_IF_MODIFIED_SINCE'] ) ) {
-		$options['if-modified-since'] = $_SERVER['HTTP_IF_MODIFIED_SINCE'];
+		$headers['If-Modified-Since'] = $_SERVER['HTTP_IF_MODIFIED_SINCE'];
 	}
 
 	if ( $request->getCheck( 'download' ) ) {
-		$headers[] = 'Content-Disposition: attachment';
+		$headers['Content-Disposition'] = 'attachment';
 	}
 
+	// Allow modification of headers before streaming a file
+	Hooks::run( 'ImgAuthModifyHeaders', [ $title->getTitleValue(), &$headers ] );
+
 	// Stream the requested file
+	list( $headers, $options ) = HTTPFileStreamer::preprocessHeaders( $headers );
 	wfDebugLog( 'img_auth', "Streaming `" . $filename . "`." );
-	$repo->streamFile( $filename, $headers, $options );
+	$repo->streamFileWithStatus( $filename, $headers, $options );
 }
 
 /**
@@ -186,18 +186,17 @@ function wfImageAuthMain() {
  * subsequent arguments to $msg2 will be passed as parameters only for replacing in $msg2
  * @param string $msg1
  * @param string $msg2
+ * @param mixed ...$args To pass as params to wfMessage() with $msg2. Either variadic, or a single
+ *   array argument.
  */
-function wfForbidden( $msg1, $msg2 ) {
+function wfForbidden( $msg1, $msg2, ...$args ) {
 	global $wgImgAuthDetails;
 
-	$args = func_get_args();
-	array_shift( $args );
-	array_shift( $args );
 	$args = ( isset( $args[0] ) && is_array( $args[0] ) ) ? $args[0] : $args;
 
-	$msgHdr = wfMessage( $msg1 )->escaped();
+	$msgHdr = wfMessage( $msg1 )->text();
 	$detailMsgKey = $wgImgAuthDetails ? $msg2 : 'badaccess-group0';
-	$detailMsg = wfMessage( $detailMsgKey, $args )->escaped();
+	$detailMsg = wfMessage( $detailMsgKey, $args )->text();
 
 	wfDebugLog( 'img_auth',
 		"wfForbidden Hdr: " . wfMessage( $msg1 )->inLanguage( 'en' )->text() . " Msg: " .
@@ -207,17 +206,9 @@ function wfForbidden( $msg1, $msg2 ) {
 	HttpStatus::header( 403 );
 	header( 'Cache-Control: no-cache' );
 	header( 'Content-Type: text/html; charset=utf-8' );
-	echo <<<ENDS
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8" />
-<title>$msgHdr</title>
-</head>
-<body>
-<h1>$msgHdr</h1>
-<p>$detailMsg</p>
-</body>
-</html>
-ENDS;
+	$templateParser = new TemplateParser();
+	echo $templateParser->processTemplate( 'ImageAuthForbidden', [
+		'msgHdr' => $msgHdr,
+		'detailMsg' => $detailMsg,
+	] );
 }

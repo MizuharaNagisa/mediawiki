@@ -1,4 +1,5 @@
 <?php
+
 use MediaWiki\MediaWikiServices;
 use Wikimedia\TestingAccessWrapper;
 
@@ -8,7 +9,7 @@ use Wikimedia\TestingAccessWrapper;
  */
 class ContentHandlerTest extends MediaWikiTestCase {
 
-	protected function setUp() {
+	protected function setUp() : void {
 		parent::setUp();
 
 		$this->setMwGlobals( [
@@ -38,7 +39,7 @@ class ContentHandlerTest extends MediaWikiTestCase {
 		MediaWikiServices::getInstance()->resetServiceForTesting( 'LinkCache' );
 	}
 
-	protected function tearDown() {
+	protected function tearDown() : void {
 		// Reset LinkCache
 		MediaWikiServices::getInstance()->resetServiceForTesting( 'LinkCache' );
 
@@ -158,6 +159,7 @@ class ContentHandlerTest extends MediaWikiTestCase {
 		$handler = ContentHandler::getForTitle( $title );
 		$lang = $handler->getPageLanguage( $title );
 
+		$this->assertInstanceOf( Language::class, $lang );
 		$this->assertEquals( $expected->getCode(), $lang->getCode() );
 	}
 
@@ -179,7 +181,7 @@ class ContentHandlerTest extends MediaWikiTestCase {
 		$content = null;
 
 		$text = ContentHandler::getContentText( $content );
-		$this->assertEquals( '', $text );
+		$this->assertSame( '', $text );
 	}
 
 	public static function dataGetContentText_TextContent() {
@@ -205,7 +207,7 @@ class ContentHandlerTest extends MediaWikiTestCase {
 
 	/**
 	 * ContentHandler::getContentText should have thrown an exception for non-text Content object
-	 * @expectedException MWException
+	 *
 	 * @covers ContentHandler::getContentText
 	 */
 	public function testGetContentText_NonTextContent_fail() {
@@ -213,6 +215,7 @@ class ContentHandlerTest extends MediaWikiTestCase {
 
 		$content = new DummyContentForTesting( "hello world" );
 
+		$this->expectException( MWException::class );
 		ContentHandler::getContentText( $content );
 	}
 
@@ -470,7 +473,7 @@ class ContentHandlerTest extends MediaWikiTestCase {
 
 		$out = $page->getContentHandler()->getParserOutputForIndexing( $page );
 		$this->assertInstanceOf( ParserOutput::class, $out );
-		$this->assertContains( 'one who smiths', $out->getRawText() );
+		$this->assertStringContainsString( 'one who smiths', $out->getRawText() );
 	}
 
 	/**
@@ -518,7 +521,7 @@ class ContentHandlerTest extends MediaWikiTestCase {
 		$customContentHandler->expects( $this->any() )
 			->method( 'createDifferenceEngine' )
 			->willReturn( $customDifferenceEngine );
-		/** @var $customContentHandler ContentHandler */
+		/** @var ContentHandler $customContentHandler */
 		$slotDiffRenderer = $customContentHandler->getSlotDiffRenderer( RequestContext::getMain() );
 		$this->assertInstanceOf( DifferenceEngineSlotDiffRenderer::class, $slotDiffRenderer );
 		$this->assertSame(
@@ -552,7 +555,7 @@ class ContentHandlerTest extends MediaWikiTestCase {
 		$customContentHandler2->expects( $this->any() )
 			->method( 'getSlotDiffRendererInternal' )
 			->willReturn( $customSlotDiffRenderer );
-		/** @var $customContentHandler2 ContentHandler */
+		/** @var ContentHandler $customContentHandler2 */
 		$slotDiffRenderer = $customContentHandler2->getSlotDiffRenderer( RequestContext::getMain() );
 		$this->assertSame( $customSlotDiffRenderer, $slotDiffRenderer );
 	}
@@ -576,7 +579,7 @@ class ContentHandlerTest extends MediaWikiTestCase {
 		$customContentHandler->expects( $this->any() )
 			->method( 'createDifferenceEngine' )
 			->willReturn( $customDifferenceEngine );
-		/** @var $customContentHandler ContentHandler */
+		/** @var ContentHandler $customContentHandler */
 
 		$customSlotDiffRenderer = $this->getMockBuilder( SlotDiffRenderer::class )
 			->disableOriginalConstructor()
@@ -591,7 +594,7 @@ class ContentHandlerTest extends MediaWikiTestCase {
 		$customContentHandler2->expects( $this->any() )
 			->method( 'getSlotDiffRendererInternal' )
 			->willReturn( $customSlotDiffRenderer );
-		/** @var $customContentHandler2 ContentHandler */
+		/** @var ContentHandler $customContentHandler2 */
 
 		$customSlotDiffRenderer2 = $this->getMockBuilder( SlotDiffRenderer::class )
 			->disableOriginalConstructor()

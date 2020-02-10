@@ -1,7 +1,5 @@
 <?php
 /**
- * Media-handling base classes and generic functionality.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -21,6 +19,13 @@
  * @ingroup Media
  */
 use MediaWiki\MediaWikiServices;
+
+/**
+ * @defgroup Media Media
+ *
+ * Media handlers and other classes relating to Multimedia support,
+ * with the exception of FileRepo and FileBackend, which have their own groups.
+ */
 
 /**
  * Base media handler class
@@ -87,7 +92,7 @@ abstract class MediaHandler {
 	 * @param File $image
 	 * @param array &$params
 	 */
-	abstract function normaliseParams( $image, &$params );
+	abstract public function normaliseParams( $image, &$params );
 
 	/**
 	 * Get an image size array like that returned by getimagesize(), or false if it
@@ -103,8 +108,8 @@ abstract class MediaHandler {
 	 * @param File|FSFile $image The image object, or false if there isn't one.
 	 *   Warning, FSFile::getPropsFromPath might pass an FSFile instead of File (!)
 	 * @param string $path The filename
-	 * @return array|bool Follow the format of PHP getimagesize() internal function.
-	 *   See https://secure.php.net/getimagesize. MediaWiki will only ever use the
+	 * @return array|false Follow the format of PHP getimagesize() internal function.
+	 *   See https://www.php.net/getimagesize. MediaWiki will only ever use the
 	 *   first two array keys (the width and height), and the 'bits' associative
 	 *   key. All other array keys are ignored. Returning a 'bits' key is optional
 	 *   as not all formats have a notion of "bitdepth". Returns false on failure.
@@ -119,7 +124,7 @@ abstract class MediaHandler {
 	 * @param string $path The filename
 	 * @return string A string of metadata in php serialized form (Run through serialize())
 	 */
-	function getMetadata( $image, $path ) {
+	public function getMetadata( $image, $path ) {
 		return '';
 	}
 
@@ -193,9 +198,9 @@ abstract class MediaHandler {
 	 *  performance problems.
 	 * @param File $image
 	 * @param string $metadata The metadata in serialized form
-	 * @return bool
+	 * @return bool|int
 	 */
-	function isMetadataValid( $image, $metadata ) {
+	public function isMetadataValid( $image, $metadata ) {
 		return self::METADATA_GOOD;
 	}
 
@@ -287,7 +292,7 @@ abstract class MediaHandler {
 	 * @param array|null $params Handler specific rendering parameters
 	 * @return array Thumbnail extension and MIME type
 	 */
-	function getThumbType( $ext, $mime, $params = null ) {
+	public function getThumbType( $ext, $mime, $params = null ) {
 		$magic = MediaWiki\MediaWikiServices::getInstance()->getMimeAnalyzer();
 		if ( !$ext || $magic->isMatchingExtension( $ext, $mime ) === false ) {
 			// The extension is not valid for this MIME type and we do
@@ -338,9 +343,9 @@ abstract class MediaHandler {
 	 * Page count for a multi-page document, false if unsupported or unknown
 	 *
 	 * @param File $file
-	 * @return bool
+	 * @return int|false
 	 */
-	function pageCount( File $file ) {
+	public function pageCount( File $file ) {
 		return false;
 	}
 
@@ -381,7 +386,7 @@ abstract class MediaHandler {
 	 * False if the handler is disabled for all files
 	 * @return bool
 	 */
-	function isEnabled() {
+	public function isEnabled() {
 		return true;
 	}
 
@@ -401,7 +406,7 @@ abstract class MediaHandler {
 	 * @param int $page What page to get dimensions of
 	 * @return array|bool
 	 */
-	function getPageDimensions( File $image, $page ) {
+	public function getPageDimensions( File $image, $page ) {
 		$gis = $this->getImageSize( $image, $image->getLocalRefPath() );
 		if ( $gis ) {
 			return [
@@ -477,7 +482,7 @@ abstract class MediaHandler {
 	 * @param bool|IContextSource $context Context to use (optional)
 	 * @return array|bool
 	 */
-	function formatMetadata( $image, $context = false ) {
+	public function formatMetadata( $image, $context = false ) {
 		return false;
 	}
 
@@ -582,7 +587,7 @@ abstract class MediaHandler {
 	 * @param File $file
 	 * @return string
 	 */
-	function getLongDesc( $file ) {
+	public function getLongDesc( $file ) {
 		return self::getGeneralLongDesc( $file );
 	}
 
@@ -660,7 +665,7 @@ abstract class MediaHandler {
 	 * @param string $fileName The local path to the file.
 	 * @return Status
 	 */
-	function verifyUpload( $fileName ) {
+	public function verifyUpload( $fileName ) {
 		return Status::newGood();
 	}
 
@@ -874,7 +879,7 @@ abstract class MediaHandler {
 	/**
 	 * Converts a dimensions array about a potentially multipage document from an
 	 * exhaustive list of ordered page numbers to a list of page ranges
-	 * @param array $pagesByDimensions
+	 * @param array[] $pagesByDimensions
 	 * @return string
 	 * @since 1.30
 	 */

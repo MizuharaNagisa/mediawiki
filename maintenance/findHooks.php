@@ -34,6 +34,8 @@
  * @author Antoine Musso <hashar at free dot fr>
  */
 
+use MediaWiki\MediaWikiServices;
+
 require_once __DIR__ . '/Maintenance.php';
 
 /**
@@ -80,7 +82,7 @@ class FindHooks extends Maintenance {
 			"$IP/",
 		];
 		$extraFiles = [
-			"$IP/tests/phpunit/MediaWikiTestCase.php",
+			"$IP/tests/phpunit/MediaWikiIntegrationTestCase.php",
 		];
 
 		foreach ( $recurseDirs as $dir ) {
@@ -117,6 +119,7 @@ class FindHooks extends Maintenance {
 				// Could not get parameter information
 				continue;
 			}
+			'@phan-var array $args';
 			if ( count( $argsDoc ) !== count( $args ) ) {
 				$badParameterCount[] = $hook . ': Doc: ' . count( $argsDoc ) . ' vs. Code: ' . count( $args );
 			} else {
@@ -216,7 +219,7 @@ class FindHooks extends Maintenance {
 
 		$retval = [];
 		while ( true ) {
-			$json = Http::get(
+			$json = MediaWikiServices::getInstance()->getHttpRequestFactory()->get(
 				wfAppendQuery( 'https://www.mediawiki.org/w/api.php', $params ),
 				[],
 				__METHOD__
@@ -304,7 +307,7 @@ class FindHooks extends Maintenance {
 	/**
 	 * Get hooks from a directory of PHP files.
 	 * @param string $dir Directory path to start at
-	 * @param int $recursive Pass self::FIND_RECURSIVE
+	 * @param int $recurse Pass self::FIND_RECURSIVE
 	 * @return array Array: key => hook name; value => array of arguments or string 'unknown'
 	 */
 	private function getHooksFromDir( $dir, $recurse = 0 ) {
@@ -320,6 +323,7 @@ class FindHooks extends Maintenance {
 			$iterator = new DirectoryIterator( $dir );
 		}
 
+		/** @var SplFileInfo $info */
 		foreach ( $iterator as $info ) {
 			// Ignore directories, work only on php files,
 			if ( $info->isFile() && in_array( $info->getExtension(), [ 'php', 'inc' ] )

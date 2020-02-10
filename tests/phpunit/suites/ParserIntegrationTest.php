@@ -1,4 +1,5 @@
 <?php
+
 use Wikimedia\ScopedCallback;
 
 /**
@@ -19,7 +20,6 @@ use Wikimedia\ScopedCallback;
  * @covers CoreTagHooks
  * @covers Sanitizer
  * @covers Preprocessor
- * @covers Preprocessor_DOM
  * @covers Preprocessor_Hash
  * @covers DateFormatter
  * @covers LinkHolderArray
@@ -50,14 +50,18 @@ class ParserIntegrationTest extends PHPUnit\Framework\TestCase {
 	public function testParse() {
 		$this->ptRunner->getRecorder()->setTestCase( $this );
 		$result = $this->ptRunner->runTest( $this->ptTest );
+		if ( $result === false ) {
+			// Test intentionally skipped.
+			$result = new ParserTestResult( $this->ptTest, "SKIP", "SKIP" );
+		}
 		$this->assertEquals( $result->expected, $result->actual );
 	}
 
-	public function setUp() {
+	public function setUp() : void {
 		$this->ptTeardownScope = $this->ptRunner->staticSetup();
 	}
 
-	public function tearDown() {
+	public function tearDown() : void {
 		if ( $this->ptTeardownScope ) {
 			ScopedCallback::consume( $this->ptTeardownScope );
 		}

@@ -1,5 +1,6 @@
 <?php
 
+use MediaWiki\MediaWikiServices;
 use Wikimedia\TestingAccessWrapper;
 
 /**
@@ -23,16 +24,18 @@ class ContentHandlerSanityTest extends MediaWikiTestCase {
 
 	public static function provideHandlers() {
 		$models = ContentHandler::getContentModels();
+		$contentHandlerFactory = MediaWikiServices::getInstance()->getContentHandlerFactory();
 		$handlers = [];
 		foreach ( $models as $model ) {
-			$handlers[] = [ ContentHandler::getForModelID( $model ) ];
+			$handlers[] = [
+				$contentHandlerFactory->getContentHandler( $model )
+			];
 		}
 
 		return $handlers;
 	}
 
 	/**
-	 * @coversNothing
 	 * @dataProvider provideHandlers
 	 * @param ContentHandler $handler
 	 */

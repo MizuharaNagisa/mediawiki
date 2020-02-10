@@ -4,8 +4,8 @@ namespace MediaWiki\Tests\Storage;
 
 use Content;
 use MediaWiki\Revision\MutableRevisionSlots;
-use MediaWiki\Revision\RevisionSlots;
 use MediaWiki\Revision\RevisionAccessException;
+use MediaWiki\Revision\RevisionSlots;
 use MediaWiki\Revision\SlotRecord;
 use MediaWiki\Storage\RevisionSlotsUpdate;
 use MediaWikiTestCase;
@@ -175,7 +175,7 @@ class RevisionSlotsUpdateTest extends MediaWikiTestCase {
 		$slots->removeSlot( SlotRecord::MAIN );
 
 		// getting a slot after removing it should fail
-		$this->setExpectedException( RevisionAccessException::class );
+		$this->expectException( RevisionAccessException::class );
 		$slots->getModifiedSlot( SlotRecord::MAIN );
 	}
 

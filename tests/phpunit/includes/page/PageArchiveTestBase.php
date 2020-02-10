@@ -1,6 +1,8 @@
 <?php
+
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Revision\RevisionRecord;
+use Wikimedia\IPUtils;
 
 /**
  * Base class for tests of PageArchive against different database schemas.
@@ -13,13 +15,13 @@ abstract class PageArchiveTestBase extends MediaWikiTestCase {
 	protected $pageId;
 
 	/**
-	 * @var PageArchive $archivedPage
+	 * @var PageArchive
 	 */
 	protected $archivedPage;
 
 	/**
 	 * A logged out user who edited the page before it was archived.
-	 * @var string $ipEditor
+	 * @var string
 	 */
 	protected $ipEditor;
 
@@ -35,7 +37,7 @@ abstract class PageArchiveTestBase extends MediaWikiTestCase {
 	 */
 	protected $ipRev;
 
-	function __construct( $name = null, array $data = [], $dataName = '' ) {
+	public function __construct( $name = null, array $data = [], $dataName = '' ) {
 		parent::__construct( $name, $data, $dataName );
 
 		$this->tablesUsed = array_merge(
@@ -77,18 +79,15 @@ abstract class PageArchiveTestBase extends MediaWikiTestCase {
 		return true;
 	}
 
-	protected function setUp() {
+	protected function setUp() : void {
 		parent::setUp();
 
 		$this->tablesUsed += $this->getMcrTablesToReset();
 
-		$this->setMwGlobals( 'wgActorTableSchemaMigrationStage', SCHEMA_COMPAT_OLD );
-		$this->setMwGlobals( 'wgContentHandlerUseDB', $this->getContentHandlerUseDB() );
-		$this->setMwGlobals(
-			'wgMultiContentRevisionSchemaMigrationStage',
-			$this->getMcrMigrationStage()
-		);
-		$this->overrideMwServices();
+		$this->setMwGlobals( [
+			'wgContentHandlerUseDB' => $this->getContentHandlerUseDB(),
+			'wgMultiContentRevisionSchemaMigrationStage' => $this->getMcrMigrationStage(),
+		] );
 
 		// First create our dummy page
 		$page = Title::newFromText( 'PageArchiveTest_thePage' );
@@ -179,7 +178,7 @@ abstract class PageArchiveTestBase extends MediaWikiTestCase {
 		// Should be back in ip_changes
 		$row = $dbr->selectRow( 'ip_changes', [ 'ipc_hex' ], [ 'ipc_rev_id' => $this->ipRev->getId() ] );
 		$this->assertNotFalse( $row, 'row exists in ip_changes table' );
-		$this->assertEquals( IP::toHex( $this->ipEditor ), $row->ipc_hex );
+		$this->assertEquals( IPUtils::toHex( $this->ipEditor ), $row->ipc_hex );
 	}
 
 	abstract protected function getExpectedArchiveRows();
@@ -250,27 +249,6 @@ abstract class PageArchiveTestBase extends MediaWikiTestCase {
 		yield 'ar_text_id is null' => [ [ 'ar_text_id' => null ] ];
 		yield 'ar_text_id is zero' => [ [ 'ar_text_id' => 0 ] ];
 		yield 'ar_text_id is "0"' => [ [ 'ar_text_id' => '0' ] ];
-	}
-
-	/**
-	 * @dataProvider provideGetTextFromRowThrowsInvalidArgumentException
-	 * @covers PageArchive::getTextFromRow
-	 */
-	public function testGetTextFromRowThrowsInvalidArgumentException( array $row ) {
-		$this->hideDeprecated( PageArchive::class . '::getTextFromRow' );
-		$this->setExpectedException( InvalidArgumentException::class );
-
-		$this->archivedPage->getTextFromRow( (object)$row );
-	}
-
-	/**
-	 * @covers PageArchive::getLastRevisionText
-	 */
-	public function testGetLastRevisionText() {
-		$this->hideDeprecated( PageArchive::class . '::getLastRevisionText' );
-
-		$text = $this->archivedPage->getLastRevisionText();
-		$this->assertSame( 'Lorem Ipsum', $text );
 	}
 
 	/**

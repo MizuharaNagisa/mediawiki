@@ -498,7 +498,7 @@ class ApiResult implements ApiSerializable {
 			throw new InvalidArgumentException( 'Content value must be named' );
 		}
 		$this->addContentField( $path, $name, $flags );
-		$this->addValue( $path, $name, $value, $flags );
+		return $this->addValue( $path, $name, $value, $flags );
 	}
 
 	/**
@@ -514,7 +514,7 @@ class ApiResult implements ApiSerializable {
 			self::OVERRIDE | self::NO_SIZE_CHECK );
 	}
 
-	/**@}*/
+	/** @} */
 
 	/************************************************************************//**
 	 * @name   Metadata
@@ -777,7 +777,7 @@ class ApiResult implements ApiSerializable {
 		self::setArrayTypeRecursive( $arr, $tag, $kvpKeyName );
 	}
 
-	/**@}*/
+	/** @} */
 
 	/************************************************************************//**
 	 * @name   Utility
@@ -1217,7 +1217,7 @@ class ApiResult implements ApiSerializable {
 		}
 	}
 
-	/**@}*/
+	/** @} */
 
 }
 

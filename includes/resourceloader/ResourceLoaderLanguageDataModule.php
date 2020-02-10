@@ -1,7 +1,5 @@
 <?php
 /**
- * ResourceLoader module for populating language specific data.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -19,11 +17,15 @@
  *
  * @file
  * @author Santhosh Thottingal
- * @author Timo Tijhof
  */
 
+use MediaWiki\MediaWikiServices;
+
 /**
- * ResourceLoader module for populating language specific data, such as grammar forms.
+ * Module for populating language specific data, such as grammar forms.
+ *
+ * @ingroup ResourceLoader
+ * @internal
  */
 class ResourceLoaderLanguageDataModule extends ResourceLoaderFileModule {
 
@@ -36,7 +38,8 @@ class ResourceLoaderLanguageDataModule extends ResourceLoaderFileModule {
 	 * @return array
 	 */
 	protected function getData( ResourceLoaderContext $context ) {
-		$language = Language::factory( $context->getLanguage() );
+		$language = MediaWikiServices::getInstance()->getLanguageFactory()
+			->getLanguage( $context->getLanguage() );
 		return [
 			'digitTransformTable' => $language->digitTransformTable(),
 			'separatorTransformTable' => $language->separatorTransformTable(),
@@ -55,16 +58,11 @@ class ResourceLoaderLanguageDataModule extends ResourceLoaderFileModule {
 	 * @return string JavaScript code
 	 */
 	public function getScript( ResourceLoaderContext $context ) {
-		$fileScript = parent::getScript( $context );
-		$langDataScript = Xml::encodeJsCall(
-			'mw.language.setData',
-			[
-				$context->getLanguage(),
-				$this->getData( $context )
-			],
-			ResourceLoader::inDebugMode()
-		);
-		return $fileScript . $langDataScript;
+		return parent::getScript( $context )
+			. 'mw.language.setData('
+			. $context->encodeJson( $context->getLanguage() ) . ','
+			. $context->encodeJson( $this->getData( $context ) )
+			. ');';
 	}
 
 	/**

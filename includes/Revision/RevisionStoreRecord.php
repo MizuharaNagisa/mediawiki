@@ -51,18 +51,17 @@ class RevisionStoreRecord extends RevisionRecord {
 	 * @param object $row A row from the revision table. Use RevisionStore::getQueryInfo() to build
 	 *        a query that yields the required fields.
 	 * @param RevisionSlots $slots The slots of this revision.
-	 * @param bool|string $wikiId the wiki ID of the site this Revision belongs to,
-	 *        or false for the local site.
+	 * @param bool|string $dbDomain DB domain of the relevant wiki or false for the current one.
 	 */
-	function __construct(
+	public function __construct(
 		Title $title,
 		UserIdentity $user,
 		CommentStoreComment $comment,
 		$row,
 		RevisionSlots $slots,
-		$wikiId = false
+		$dbDomain = false
 	) {
-		parent::__construct( $title, $slots, $wikiId );
+		parent::__construct( $title, $slots, $dbDomain );
 		Assert::parameterType( 'object', $row, '$row' );
 
 		$this->mId = intval( $row->rev_id );
@@ -98,7 +97,8 @@ class RevisionStoreRecord extends RevisionRecord {
 			&& $this->mPageId !== $this->mTitle->getArticleID()
 		) {
 			throw new InvalidArgumentException(
-				'The given Title does not belong to page ID ' . $this->mPageId .
+				'The given Title (' . $this->mTitle->getPrefixedText() . ')' .
+				' does not belong to page ID ' . $this->mPageId .
 				' but actually belongs to ' . $this->mTitle->getArticleID()
 			);
 		}
@@ -152,7 +152,7 @@ class RevisionStoreRecord extends RevisionRecord {
 
 	/**
 	 * @throws RevisionAccessException if the size was unknown and could not be calculated.
-	 * @return string The nominal revision size, never null. May be computed on the fly.
+	 * @return int The nominal revision size, never null. May be computed on the fly.
 	 */
 	public function getSize() {
 		// If length is null, calculate and remember it (potentially SLOW!).

@@ -54,6 +54,8 @@ class PasswordPolicyChecks {
 
 	/**
 	 * Check password is longer than minimum, fatal.
+	 * Intended for locking out users with passwords too short to trust, requiring them
+	 * to recover their account by some other means.
 	 * @param int $policyVal minimal length
 	 * @param User $user
 	 * @param string $password
@@ -98,6 +100,26 @@ class PasswordPolicyChecks {
 			$policyVal && hash_equals( $contLang->lc( $username ), $contLang->lc( $password ) )
 		) {
 			$status->error( 'password-name-match' );
+		}
+		return $status;
+	}
+
+	/**
+	 * Check if password is a (case-insensitive) substring within the username.
+	 * @param bool $policyVal true to force compliance.
+	 * @param User $user
+	 * @param string $password
+	 * @return Status error if password is a substring within username, and policy is true
+	 */
+	public static function checkPasswordCannotBeSubstringInUsername(
+		$policyVal,
+		User $user,
+		$password
+	) {
+		$status = Status::newGood();
+		$username = $user->getName();
+		if ( $policyVal && stripos( $username, $password ) !== false ) {
+			$status->error( 'password-substring-username-match' );
 		}
 		return $status;
 	}
@@ -151,9 +173,7 @@ class PasswordPolicyChecks {
 		global $wgPopularPasswordFile, $wgSitename;
 		$status = Status::newGood();
 		if ( $policyVal > 0 ) {
-			wfDeprecated( __METHOD__, '1.33' );
-
-			$langEn = Language::factory( 'en' );
+			$langEn = MediaWikiServices::getInstance()->getLanguageFactory()->getLanguage( 'en' );
 			$passwordKey = $langEn->lc( trim( $password ) );
 
 			// People often use the name of the current site, which won't be

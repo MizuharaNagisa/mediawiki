@@ -21,7 +21,7 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup Deployment
+ * @ingroup Installer
  */
 
 use MediaWiki\Interwiki\NullInterwikiLookup;
@@ -29,9 +29,15 @@ use MediaWiki\MediaWikiServices;
 use MediaWiki\Shell\Shell;
 
 /**
- * This documentation group collects source code files with deployment functionality.
+ * The Installer helps admins create or upgrade their wiki.
  *
- * @defgroup Deployment Deployment
+ * The installer classes are exposed through these human interfaces:
+ *
+ * - The `maintenance/install.php` script, backed by CliInstaller.
+ * - The `maintenance/update.php` script, backed by DatabaseUpdater.
+ * - The `mw-config/index.php` web entry point, backed by WebInstaller.
+ *
+ * @defgroup Installer Installer
  */
 
 /**
@@ -40,7 +46,7 @@ use MediaWiki\Shell\Shell;
  * This class provides the base for installation and update functionality
  * for both MediaWiki core and extensions.
  *
- * @ingroup Deployment
+ * @ingroup Installer
  * @since 1.17
  */
 abstract class Installer {
@@ -105,8 +111,6 @@ abstract class Installer {
 	protected static $dbTypes = [
 		'mysql',
 		'postgres',
-		'oracle',
-		'mssql',
 		'sqlite',
 	];
 
@@ -123,7 +127,6 @@ abstract class Installer {
 	 */
 	protected $envChecks = [
 		'envCheckDB',
-		'envCheckBrokenXML',
 		'envCheckPCRE',
 		'envCheckMemory',
 		'envCheckCache',
@@ -229,7 +232,8 @@ abstract class Installer {
 	/**
 	 * The actual list of installation steps. This will be initialized by getInstallSteps()
 	 *
-	 * @var array
+	 * @var array[]
+	 * @phan-var array<int,array{name:string,callback:array{0:object,1:string}}>
 	 */
 	private $installSteps = [];
 
@@ -246,7 +250,6 @@ abstract class Installer {
 	 * @var array
 	 */
 	protected $objectCaches = [
-		'apc' => 'apc_fetch',
 		'apcu' => 'apcu_fetch',
 		'wincache' => 'wincache_ucache_get'
 	];
@@ -336,14 +339,16 @@ abstract class Installer {
 	 * The messages will be in wikitext format, which will be converted to an
 	 * output format such as HTML or text before being sent to the user.
 	 * @param string $msg
+	 * @param mixed ...$params
 	 */
-	abstract public function showMessage( $msg /*, ... */ );
+	abstract public function showMessage( $msg, ...$params );
 
 	/**
 	 * Same as showMessage(), but for displaying errors
 	 * @param string $msg
+	 * @param mixed ...$params
 	 */
-	abstract public function showError( $msg /*, ... */ );
+	abstract public function showError( $msg, ...$params );
 
 	/**
 	 * Show a message to the installing user by using a Status object
@@ -412,14 +417,17 @@ abstract class Installer {
 		// This will be overridden in the web installer with the user-specified language
 		RequestContext::getMain()->setLanguage( 'en' );
 
-		// Disable the i18n cache
-		// TODO: manage LocalisationCache singleton in MediaWikiServices
-		Language::getLocalisationCache()->disableBackend();
-
 		// Disable all global services, since we don't have any configuration yet!
 		MediaWikiServices::disableStorageBackend();
 
 		$mwServices = MediaWikiServices::getInstance();
+
+		// Disable i18n cache
+		$mwServices->getLocalisationCache()->disableBackend();
+
+		// Clear language cache so the old i18n cache doesn't sneak back in
+		Language::$mLangObjCache = [];
+
 		// Disable object cache (otherwise CACHE_ANYTHING will try CACHE_DB and
 		// SqlBagOStuff will then throw since we just disabled wfGetDB)
 		$wgObjectCaches = $mwServices->getMainConfig()->get( 'ObjectCaches' );
@@ -456,7 +464,7 @@ abstract class Installer {
 		$this->parserOptions = new ParserOptions( $wgUser ); // language will be wrong :(
 		$this->parserOptions->setTidy( true );
 		// Don't try to access DB before user language is initialised
-		$this->setParserLanguage( Language::factory( 'en' ) );
+		$this->setParserLanguage( $mwServices->getLanguageFactory()->getLanguage( 'en' ) );
 	}
 
 	/**
@@ -482,17 +490,13 @@ abstract class Installer {
 	 * @return Status
 	 */
 	public function doEnvironmentChecks() {
-		// Php version has already been checked by entry scripts
+		// PHP version has already been checked by entry scripts
 		// Show message here for information purposes
-		if ( wfIsHHVM() ) {
-			$this->showMessage( 'config-env-hhvm', HHVM_VERSION );
-		} else {
-			$this->showMessage( 'config-env-php', PHP_VERSION );
-		}
+		$this->showMessage( 'config-env-php', PHP_VERSION );
 
 		$good = true;
 		// Must go here because an old version of PCRE can prevent other checks from completing
-		list( $pcreVersion ) = explode( ' ', PCRE_VERSION, 2 );
+		$pcreVersion = explode( ' ', PCRE_VERSION, 2 )[0];
 		if ( version_compare( $pcreVersion, self::MINIMUM_PCRE_VERSION, '<' ) ) {
 			$this->showError( 'config-pcre-old', self::MINIMUM_PCRE_VERSION, $pcreVersion );
 			$good = false;
@@ -686,14 +690,15 @@ abstract class Installer {
 	 * @return string
 	 */
 	public function parse( $text, $lineStart = false ) {
-		global $wgParser;
+		$parser = MediaWikiServices::getInstance()->getParser();
 
 		try {
-			$out = $wgParser->parse( $text, $this->parserTitle, $this->parserOptions, $lineStart );
+			$out = $parser->parse( $text, $this->parserTitle, $this->parserOptions, $lineStart );
 			$html = $out->getText( [
 				'enableSectionEditLinks' => false,
 				'unwrap' => true,
 			] );
+			$html = Parser::stripOuterParagraph( $html );
 		} catch ( Wikimedia\Services\ServiceDisabledException $e ) {
 			$html = '<!--DB access attempted during parse-->  ' . htmlspecialchars( $text );
 		}
@@ -730,6 +735,7 @@ abstract class Installer {
 		if ( !$status->isOK() ) {
 			return $status;
 		}
+		// @phan-suppress-next-line PhanUndeclaredMethod
 		$status->value->insert(
 			'site_stats',
 			[
@@ -753,11 +759,12 @@ abstract class Installer {
 	 */
 	protected function envCheckDB() {
 		global $wgLang;
+		/** @var string|null $dbType The user-specified database type */
+		$dbType = $this->getVar( 'wgDBtype' );
 
 		$allNames = [];
 
-		// Messages: config-type-mysql, config-type-postgres, config-type-oracle,
-		// config-type-sqlite
+		// Messages: config-type-mysql, config-type-postgres, config-type-sqlite
 		foreach ( self::getDBTypes() as $name ) {
 			$allNames[] = wfMessage( "config-type-$name" )->text();
 		}
@@ -765,40 +772,27 @@ abstract class Installer {
 		$databases = $this->getCompiledDBs();
 
 		$databases = array_flip( $databases );
+		$ok = true;
 		foreach ( array_keys( $databases ) as $db ) {
 			$installer = $this->getDBInstaller( $db );
 			$status = $installer->checkPrerequisites();
 			if ( !$status->isGood() ) {
+				if ( !$this instanceof WebInstaller && $db === $dbType ) {
+					// Strictly check the key database type instead of just outputting message
+					// Note: No perform this check run from the web installer, since this method always called by
+					// the welcome page under web installation, so $dbType will always be 'mysql'
+					$ok = false;
+				}
 				$this->showStatusMessage( $status );
-			}
-			if ( !$status->isOK() ) {
 				unset( $databases[$db] );
 			}
 		}
 		$databases = array_flip( $databases );
 		if ( !$databases ) {
 			$this->showError( 'config-no-db', $wgLang->commaList( $allNames ), count( $allNames ) );
-
-			// @todo FIXME: This only works for the web installer!
 			return false;
 		}
-
-		return true;
-	}
-
-	/**
-	 * Some versions of libxml+PHP break < and > encoding horribly
-	 * @return bool
-	 */
-	protected function envCheckBrokenXML() {
-		$test = new PhpXmlBugTester();
-		if ( !$test->ok ) {
-			$this->showError( 'config-brokenlibxml' );
-
-			return false;
-		}
-
-		return true;
+		return $ok;
 	}
 
 	/**
@@ -866,8 +860,7 @@ abstract class Installer {
 		}
 
 		if ( !$caches ) {
-			$key = 'config-no-cache-apcu';
-			$this->showMessage( $key );
+			$this->showMessage( 'config-no-cache-apcu' );
 		}
 
 		$this->setVar( '_Caches', $caches );
@@ -1085,14 +1078,16 @@ abstract class Installer {
 
 	/**
 	 * Checks if suhosin.get.max_value_length is set, and if so generate
-	 * a warning because it decreases ResourceLoader performance.
+	 * a warning because it is incompatible with ResourceLoader.
 	 * @return bool
 	 */
 	protected function envCheckSuhosinMaxValueLength() {
-		$maxValueLength = ini_get( 'suhosin.get.max_value_length' );
-		if ( $maxValueLength > 0 && $maxValueLength < 1024 ) {
-			// Only warn if the value is below the sane 1024
-			$this->showMessage( 'config-suhosin-max-value-length', $maxValueLength );
+		$currentValue = ini_get( 'suhosin.get.max_value_length' );
+		$minRequired = 2000;
+		$recommended = 5000;
+		if ( $currentValue > 0 && $currentValue < $minRequired ) {
+			$this->showError( 'config-suhosin-max-value-length', $currentValue, $minRequired, $recommended );
+			return false;
 		}
 
 		return true;
@@ -1184,8 +1179,8 @@ abstract class Installer {
 	public function dirIsExecutable( $dir, $url ) {
 		$scriptTypes = [
 			'php' => [
-				"<?php echo 'ex' . 'ec';",
-				"#!/var/env php\n<?php echo 'ex' . 'ec';",
+				"<?php echo 'exec';",
+				"#!/var/env php\n<?php echo 'exec';",
 			],
 		];
 
@@ -1202,9 +1197,11 @@ abstract class Installer {
 				}
 
 				try {
-					$text = Http::get( $url . $file, [ 'timeout' => 3 ], __METHOD__ );
+					$text = MediaWikiServices::getInstance()->getHttpRequestFactory()->
+						get( $url . $file, [ 'timeout' => 3 ], __METHOD__ );
 				} catch ( Exception $e ) {
-					// Http::get throws with allow_url_fopen = false and no curl extension.
+					// HttpRequestFactory::get can throw with allow_url_fopen = false and no curl
+					// extension.
 					$text = null;
 				}
 				unlink( $dir . $file );
@@ -1265,7 +1262,8 @@ abstract class Installer {
 	 *
 	 * @param string $directory Directory to search in, relative to $IP, must be either "extensions"
 	 *     or "skins"
-	 * @return array [ $extName => [ 'screenshots' => [ '...' ] ]
+	 * @return Status An object containing an error list. If there were no errors, an associative
+	 *     array of information about the extension can be found in $status->value.
 	 */
 	public function findExtensions( $directory = 'extensions' ) {
 		switch ( $directory ) {
@@ -1284,33 +1282,43 @@ abstract class Installer {
 	 *
 	 * @param string $type Either "extension" or "skin"
 	 * @param string $directory Directory to search in, relative to $IP
-	 * @return array [ $extName => [ 'screenshots' => [ '...' ] ]
+	 * @return Status An object containing an error list. If there were no errors, an associative
+	 *     array of information about the extension can be found in $status->value.
 	 */
 	protected function findExtensionsByType( $type = 'extension', $directory = 'extensions' ) {
 		if ( $this->getVar( 'IP' ) === null ) {
-			return [];
+			return Status::newGood( [] );
 		}
 
 		$extDir = $this->getVar( 'IP' ) . '/' . $directory;
 		if ( !is_readable( $extDir ) || !is_dir( $extDir ) ) {
-			return [];
+			return Status::newGood( [] );
 		}
 
 		$dh = opendir( $extDir );
 		$exts = [];
+		$status = new Status;
 		while ( ( $file = readdir( $dh ) ) !== false ) {
-			if ( !is_dir( "$extDir/$file" ) ) {
+			// skip non-dirs and hidden directories
+			if ( !is_dir( "$extDir/$file" ) || $file[0] === '.' ) {
 				continue;
 			}
-			$status = $this->getExtensionInfo( $type, $directory, $file );
-			if ( $status->isOK() ) {
-				$exts[$file] = $status->value;
+			$extStatus = $this->getExtensionInfo( $type, $directory, $file );
+			if ( $extStatus->isOK() ) {
+				$exts[$file] = $extStatus->value;
+			} elseif ( $extStatus->hasMessage( 'config-extension-not-found' ) ) {
+				// (T225512) The directory is not actually an extension. Downgrade to warning.
+				$status->warning( 'config-extension-not-found', $file );
+			} else {
+				$status->merge( $extStatus );
 			}
 		}
 		closedir( $dh );
 		uksort( $exts, 'strnatcasecmp' );
 
-		return $exts;
+		$status->value = $exts;
+
+		return $status;
 	}
 
 	/**
@@ -1411,11 +1419,16 @@ abstract class Installer {
 			} elseif ( $e->missingExtensions || $e->missingSkins ) {
 				// There's an extension missing in the dependency tree,
 				// so add those to the dependency list and try again
-				return $this->readExtension(
+				$status = $this->readExtension(
 					$fullJsonFile,
 					array_merge( $extDeps, $e->missingExtensions ),
 					array_merge( $skinDeps, $e->missingSkins )
 				);
+				if ( !$status->isOK() && !$status->hasMessage( 'config-extension-dependency' ) ) {
+					$status = Status::newFatal( 'config-extension-dependency',
+						basename( dirname( $fullJsonFile ) ), $status->getMessage() );
+				}
+				return $status;
 			}
 			// Some other kind of dependency error?
 			return Status::newFatal( 'config-extension-dependency',
@@ -1464,6 +1477,7 @@ abstract class Installer {
 	/**
 	 * Installs the auto-detected extensions.
 	 *
+	 * @suppress SecurityCheck-OTHER It thinks $exts/$IP is user controlled but they are not.
 	 * @return Status
 	 */
 	protected function includeExtensions() {
@@ -1501,7 +1515,7 @@ abstract class Installer {
 		$data = $registry->readFromQueue( $queue );
 		$wgAutoloadClasses += $data['autoload'];
 
-		/** @suppress PhanUndeclaredVariable $wgHooks is set by DefaultSettings */
+		// @phan-suppress-next-line PhanUndeclaredVariable $wgHooks is set by DefaultSettings
 		$hooksWeWant = $wgHooks['LoadExtensionSchemaUpdates'] ?? [];
 
 		if ( isset( $data['globals']['wgHooks']['LoadExtensionSchemaUpdates'] ) ) {
@@ -1527,7 +1541,8 @@ abstract class Installer {
 	 * be shown on install.
 	 *
 	 * @param DatabaseInstaller $installer DatabaseInstaller so we can make callbacks
-	 * @return array
+	 * @return array[]
+	 * @phan-return array<int,array{name:string,callback:array{0:object,1:string}}>
 	 */
 	protected function getInstallSteps( DatabaseInstaller $installer ) {
 		$coreInstallSteps = [
@@ -1581,7 +1596,7 @@ abstract class Installer {
 	 * @param callable $startCB A callback array for the beginning of each step
 	 * @param callable $endCB A callback array for the end of each step
 	 *
-	 * @return array Array of Status objects
+	 * @return Status[] Array of Status objects
 	 */
 	public function performInstallation( $startCB, $endCB ) {
 		$installResults = [];
@@ -1601,15 +1616,13 @@ abstract class Installer {
 
 			// If we've hit some sort of fatal, we need to bail.
 			// Callback already had a chance to do output above.
-			if ( !$status->isOk() ) {
+			if ( !$status->isOK() ) {
 				break;
 			}
 		}
-		if ( $status->isOk() ) {
+		if ( $status->isOK() ) {
 			$this->showMessage(
-				'config-install-success',
-				$this->getVar( 'wgServer' ),
-				$this->getVar( 'wgScriptPath' )
+				'config-install-db-success'
 			);
 			$this->setVar( '_InstallDone', true );
 		}
@@ -1632,8 +1645,7 @@ abstract class Installer {
 	}
 
 	/**
-	 * Generate a secret value for variables using our CryptRand generator.
-	 * Produce a warning if the random source was insecure.
+	 * Generate a secret value for variables using a secure generator.
 	 *
 	 * @param array $keys
 	 * @return Status
@@ -1746,7 +1758,7 @@ abstract class Installer {
 				'',
 				EDIT_NEW,
 				false,
-				User::newFromName( 'MediaWiki default' )
+				User::newSystemUser( 'MediaWiki default' )
 			);
 		} catch ( Exception $e ) {
 			// using raw, because $wgShowExceptionDetails can not be set yet
@@ -1762,7 +1774,9 @@ abstract class Installer {
 	public static function overrideConfig() {
 		// Use PHP's built-in session handling, since MediaWiki's
 		// SessionHandler can't work before we have an object cache set up.
-		define( 'MW_NO_SESSION_HANDLER', 1 );
+		if ( !defined( 'MW_NO_SESSION_HANDLER' ) ) {
+			define( 'MW_NO_SESSION_HANDLER', 1 );
+		}
 
 		// Don't access the database
 		$GLOBALS['wgUseDatabaseMessages'] = false;
@@ -1796,12 +1810,16 @@ abstract class Installer {
 
 		// Don't try to use any object cache for SessionManager either.
 		$GLOBALS['wgSessionCacheType'] = CACHE_NONE;
+
+		// Set a dummy $wgServer to bypass the check in Setup.php, the
+		// web installer will automatically detect it and not use this value.
+		$GLOBALS['wgServer'] = 'https://🌻.invalid';
 	}
 
 	/**
 	 * Add an installation step following the given step.
 	 *
-	 * @param callable $callback A valid installation callback array, in this form:
+	 * @param array $callback A valid installation callback array, in this form:
 	 *    [ 'name' => 'some-unique-name', 'callback' => [ $obj, 'function' ] ];
 	 * @param string $findStep The step to find. Omit to put the step at the beginning
 	 */

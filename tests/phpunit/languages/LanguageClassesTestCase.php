@@ -1,4 +1,7 @@
 <?php
+
+use MediaWiki\MediaWikiServices;
+
 /**
  * Helping class to run tests using a clean language instance.
  *
@@ -45,7 +48,7 @@ abstract class LanguageClassesTestCase extends MediaWikiTestCase {
 	/**
 	 * Create a new language object before each test.
 	 */
-	protected function setUp() {
+	protected function setUp() : void {
 		parent::setUp();
 		$found = preg_match( '/Language(.+)Test/', static::class, $m );
 		if ( $found ) {
@@ -60,14 +63,15 @@ abstract class LanguageClassesTestCase extends MediaWikiTestCase {
 			);
 		}
 		// @todo validate $m[1] which should be a valid language code
-		$this->languageObject = Language::factory( $m[1] );
+		$this->languageObject = MediaWikiServices::getInstance()->getLanguageFactory()
+			->getLanguage( $m[1] );
 	}
 
 	/**
 	 * Delete the internal language object so each test start
 	 * out with a fresh language instance.
 	 */
-	protected function tearDown() {
+	protected function tearDown() : void {
 		unset( $this->languageObject );
 		parent::tearDown();
 	}

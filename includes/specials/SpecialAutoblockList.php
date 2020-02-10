@@ -21,6 +21,8 @@
  * @ingroup SpecialPage
  */
 
+use MediaWiki\MediaWikiServices;
+
 /**
  * A special page that lists autoblocks
  *
@@ -34,9 +36,7 @@ class SpecialAutoblockList extends SpecialPage {
 	}
 
 	/**
-	 * Main execution point
-	 *
-	 * @param string $par Title fragment
+	 * @param string|null $par Title fragment
 	 */
 	public function execute( $par ) {
 		$this->setHeaders();
@@ -83,7 +83,10 @@ class SpecialAutoblockList extends SpecialPage {
 			'ipb_parent_block_id IS NOT NULL'
 		];
 		# Is the user allowed to see hidden blocks?
-		if ( !$this->getUser()->isAllowed( 'hideuser' ) ) {
+		if ( !MediaWikiServices::getInstance()
+			->getPermissionManager()
+			->userHasRight( $this->getUser(), 'hideuser' )
+		) {
 			$conds['ipb_deleted'] = 0;
 		}
 
@@ -140,6 +143,7 @@ class SpecialAutoblockList extends SpecialPage {
 				) . "\n"
 			);
 			$list = '';
+			// @phan-suppress-next-line PhanEmptyForeach False positive
 			foreach ( $otherAutoblockLink as $link ) {
 				$list .= Html::rawElement( 'li', [], $link ) . "\n";
 			}

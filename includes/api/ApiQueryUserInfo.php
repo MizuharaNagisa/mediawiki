@@ -29,9 +29,13 @@ use MediaWiki\MediaWikiServices;
  */
 class ApiQueryUserInfo extends ApiQueryBase {
 
+	use ApiBlockInfoTrait;
+
 	const WL_UNREAD_LIMIT = 1000;
 
+	/** @var array */
 	private $params = [];
+	/** @var array */
 	private $prop = [];
 
 	public function __construct( ApiQuery $query, $moduleName ) {
@@ -42,39 +46,12 @@ class ApiQueryUserInfo extends ApiQueryBase {
 		$this->params = $this->extractRequestParams();
 		$result = $this->getResult();
 
-		if ( !is_null( $this->params['prop'] ) ) {
+		if ( $this->params['prop'] !== null ) {
 			$this->prop = array_flip( $this->params['prop'] );
 		}
 
 		$r = $this->getCurrentUserInfo();
 		$result->addValue( 'query', $this->getModuleName(), $r );
-	}
-
-	/**
-	 * Get basic info about a given block
-	 * @param Block $block
-	 * @return array Array containing several keys:
-	 *  - blockid - ID of the block
-	 *  - blockedby - username of the blocker
-	 *  - blockedbyid - user ID of the blocker
-	 *  - blockreason - reason provided for the block
-	 *  - blockedtimestamp - timestamp for when the block was placed/modified
-	 *  - blockexpiry - expiry time of the block
-	 *  - systemblocktype - system block type, if any
-	 */
-	public static function getBlockInfo( Block $block ) {
-		$vals = [];
-		$vals['blockid'] = $block->getId();
-		$vals['blockedby'] = $block->getByName();
-		$vals['blockedbyid'] = $block->getBy();
-		$vals['blockreason'] = $block->mReason;
-		$vals['blockedtimestamp'] = wfTimestamp( TS_ISO_8601, $block->mTimestamp );
-		$vals['blockexpiry'] = ApiResult::formatExpiry( $block->getExpiry(), 'infinite' );
-		$vals['blockpartial'] = !$block->isSitewide();
-		if ( $block->getSystemBlockType() !== null ) {
-			$vals['systemblocktype'] = $block->getSystemBlockType();
-		}
-		return $vals;
 	}
 
 	/**
@@ -119,15 +96,18 @@ class ApiQueryUserInfo extends ApiQueryBase {
 	protected function getCurrentUserInfo() {
 		$user = $this->getUser();
 		$vals = [];
-		$vals['id'] = intval( $user->getId() );
+		$vals['id'] = (int)$user->getId();
 		$vals['name'] = $user->getName();
 
 		if ( $user->isAnon() ) {
 			$vals['anon'] = true;
 		}
 
-		if ( isset( $this->prop['blockinfo'] ) && $user->isBlocked() ) {
-			$vals = array_merge( $vals, self::getBlockInfo( $user->getBlock() ) );
+		if ( isset( $this->prop['blockinfo'] ) ) {
+			$block = $user->getBlock();
+			if ( $block ) {
+				$vals = array_merge( $vals, $this->getBlockDetails( $block ) );
+			}
 		}
 
 		if ( isset( $this->prop['hasmsg'] ) ) {
@@ -160,8 +140,7 @@ class ApiQueryUserInfo extends ApiQueryBase {
 		}
 
 		if ( isset( $this->prop['rights'] ) ) {
-			// User::getRights() may return duplicate values, strip them
-			$vals['rights'] = array_values( array_unique( $user->getRights() ) );
+			$vals['rights'] = $this->getPermissionManager()->getUserPermissions( $user );
 			ApiResult::setArrayType( $vals['rights'], 'array' ); // even if empty
 			ApiResult::setIndexedTagName( $vals['rights'], 'r' ); // even if empty
 		}
@@ -181,7 +160,7 @@ class ApiQueryUserInfo extends ApiQueryBase {
 
 		if ( isset( $this->prop['preferencestoken'] ) &&
 			!$this->lacksSameOriginSecurity() &&
-			$user->isAllowed( 'editmyoptions' )
+			$this->getPermissionManager()->userHasRight( $user, 'editmyoptions' )
 		) {
 			$vals['preferencestoken'] = $user->getEditToken( '', $this->getMain()->getRequest() );
 		}
@@ -189,7 +168,7 @@ class ApiQueryUserInfo extends ApiQueryBase {
 		if ( isset( $this->prop['editcount'] ) ) {
 			// use intval to prevent null if a non-logged-in user calls
 			// api.php?format=jsonfm&action=query&meta=userinfo&uiprop=editcount
-			$vals['editcount'] = intval( $user->getEditCount() );
+			$vals['editcount'] = (int)$user->getEditCount();
 		}
 
 		if ( isset( $this->prop['ratelimits'] ) ) {
@@ -202,13 +181,12 @@ class ApiQueryUserInfo extends ApiQueryBase {
 			$vals['realname'] = $user->getRealName();
 		}
 
-		if ( $user->isAllowed( 'viewmyprivateinfo' ) ) {
-			if ( isset( $this->prop['email'] ) ) {
-				$vals['email'] = $user->getEmail();
-				$auth = $user->getEmailAuthenticationTimestamp();
-				if ( !is_null( $auth ) ) {
-					$vals['emailauthenticated'] = wfTimestamp( TS_ISO_8601, $auth );
-				}
+		if ( $this->getPermissionManager()->userHasRight( $user, 'viewmyprivateinfo' ) &&
+				isset( $this->prop['email'] ) ) {
+			$vals['email'] = $user->getEmail();
+			$auth = $user->getEmailAuthenticationTimestamp();
+			if ( $auth !== null ) {
+				$vals['emailauthenticated'] = wfTimestamp( TS_ISO_8601, $auth );
 			}
 		}
 
@@ -251,6 +229,13 @@ class ApiQueryUserInfo extends ApiQueryBase {
 			);
 		}
 
+		if ( isset( $this->prop['latestcontrib'] ) ) {
+			$ts = $this->getLatestContributionTime();
+			if ( $ts !== null ) {
+				$vals['latestcontrib'] = $ts;
+			}
+		}
+
 		return $vals;
 	}
 
@@ -283,14 +268,33 @@ class ApiQueryUserInfo extends ApiQueryBase {
 		// Now get the actual limits
 		foreach ( $this->getConfig()->get( 'RateLimits' ) as $action => $limits ) {
 			foreach ( $categories as $cat ) {
-				if ( isset( $limits[$cat] ) && !is_null( $limits[$cat] ) ) {
-					$retval[$action][$cat]['hits'] = intval( $limits[$cat][0] );
-					$retval[$action][$cat]['seconds'] = intval( $limits[$cat][1] );
+				if ( isset( $limits[$cat] ) && $limits[$cat] !== null ) {
+					$retval[$action][$cat]['hits'] = (int)$limits[$cat][0];
+					$retval[$action][$cat]['seconds'] = (int)$limits[$cat][1];
 				}
 			}
 		}
 
 		return $retval;
+	}
+
+	/**
+	 * @return string|null ISO 8601 timestamp of current user's last contribution or null if none
+	 */
+	protected function getLatestContributionTime() {
+		$user = $this->getUser();
+		$dbr = $this->getDB();
+
+		if ( $user->getActorId() === null ) {
+			return null;
+		}
+		$res = $dbr->selectField( 'revision_actor_temp',
+			'MAX(revactor_timestamp)',
+			[ 'revactor_actor' => $user->getActorId() ],
+			__METHOD__
+		);
+
+		return $res ? wfTimestamp( TS_ISO_8601, $res ) : null;
 	}
 
 	public function getAllowedParams() {
@@ -315,6 +319,7 @@ class ApiQueryUserInfo extends ApiQueryBase {
 					'unreadcount',
 					'centralids',
 					'preferencestoken',
+					'latestcontrib',
 				],
 				ApiBase::PARAM_HELP_MSG_PER_VALUE => [
 					'unreadcount' => [

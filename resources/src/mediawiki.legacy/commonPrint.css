@@ -6,6 +6,8 @@
  * Copyright Alexander Limi
  */
 
+/* stylelint-disable selector-class-pattern */
+
 /**
  * Hide all the elements irrelevant for printing
  * Skins however can and should override.
@@ -58,10 +60,6 @@ a,
 a.external,
 a.new,
 a.stub {
-	/* IE 6 & 7 don't understand `inherit` */
-	color: #000 !important; /* stylelint-disable-line declaration-no-important */
-	text-decoration: none !important; /* stylelint-disable-line declaration-no-important */
-	/* Modern browser will apply this, IE 6 & 7 ignore the unknown */
 	color: inherit !important; /* stylelint-disable-line declaration-block-no-duplicate-properties, declaration-no-important */
 	text-decoration: inherit !important; /* stylelint-disable-line declaration-block-no-duplicate-properties, declaration-no-important */
 }
@@ -122,9 +120,12 @@ pre,
 	background: #fff;
 	color: #000;
 	border: 1pt dashed #000;
-	padding: 1em 0;
+	padding: 1em;
 	font-size: 8pt;
 	white-space: pre-wrap;
+	/* Create a new block formatting context */
+	overflow-x: hidden;
+	/* Break really long words when they overflow to the next line */
 	word-wrap: break-word;
 }
 
@@ -265,7 +266,7 @@ div.thumbinner {
 	color: #666;
 	text-align: center;
 	/* new block formatting context,
-	 * to clear background from floating content  */
+	 * to clear background from floating content */
 	overflow: hidden;
 	min-width: 100px;
 }

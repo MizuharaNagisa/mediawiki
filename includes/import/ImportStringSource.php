@@ -32,7 +32,16 @@
  * @ingroup SpecialPage
  */
 class ImportStringSource implements ImportSource {
-	function __construct( $string ) {
+	/** @var string */
+	private $mString;
+
+	/** @var bool */
+	private $mRead;
+
+	/**
+	 * @param string $string
+	 */
+	public function __construct( $string ) {
 		$this->mString = $string;
 		$this->mRead = false;
 	}

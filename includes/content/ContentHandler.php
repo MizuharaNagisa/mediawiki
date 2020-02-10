@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Base class for content handling.
  *
@@ -25,11 +26,12 @@
  * @author Daniel Kinzler
  */
 
-use Wikimedia\Assert\Assert;
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\SlotRenderingProvider;
 use MediaWiki\Search\ParserOutputSearchDataExtractor;
+use Wikimedia\Assert\Assert;
 
 /**
  * A content handler knows how do deal with a specific type of content on a wiki
@@ -59,7 +61,7 @@ abstract class ContentHandler {
 	 * If $content is null, this method returns the empty string.
 	 *
 	 * If $content is an instance of TextContent, this method returns the flat
-	 * text as returned by $content->getNativeData().
+	 * text as returned by $content->getText().
 	 *
 	 * If $content is not a TextContent object, the behavior of this method
 	 * depends on the global $wgContentHandlerTextFallback:
@@ -83,7 +85,7 @@ abstract class ContentHandler {
 	public static function getContentText( Content $content = null ) {
 		global $wgContentHandlerTextFallback;
 
-		if ( is_null( $content ) ) {
+		if ( $content === null ) {
 			return '';
 		}
 
@@ -128,21 +130,23 @@ abstract class ContentHandler {
 	 *
 	 * @throws MWException If model ID or format is not supported or if the text can not be
 	 * unserialized using the format.
-	 * @return Content A Content object representing the text.
+	 * @throws MWContentSerializationException
+	 * @return Content A Content object representing the text.	 *
 	 */
 	public static function makeContent( $text, Title $title = null,
 		$modelId = null, $format = null ) {
-		if ( is_null( $modelId ) ) {
-			if ( is_null( $title ) ) {
+		if ( $modelId === null ) {
+			if ( $title === null ) {
 				throw new MWException( "Must provide a Title object or a content model ID." );
 			}
 
 			$modelId = $title->getContentModel();
 		}
 
-		$handler = self::getForModelID( $modelId );
-
-		return $handler->unserializeContent( $text, $format );
+		return MediaWikiServices::getInstance()
+			->getContentHandlerFactory()
+			->getContentHandler( $modelId )
+			->unserializeContent( $text, $format );
 	}
 
 	/**
@@ -191,37 +195,41 @@ abstract class ContentHandler {
 	 * Returns the appropriate ContentHandler singleton for the given title.
 	 *
 	 * @since 1.21
+	 * @deprecated since 1.35, instead use
+	 *  ContentHandlerFactory::getContentHandler( $title->getContentModel() ).
 	 *
 	 * @param Title $title
 	 *
 	 * @return ContentHandler
+	 * @throws MWException
+	 * @throws MWUnknownContentModelException
 	 */
 	public static function getForTitle( Title $title ) {
-		$modelId = $title->getContentModel();
-
-		return self::getForModelID( $modelId );
+		return MediaWikiServices::getInstance()
+			->getContentHandlerFactory()
+			->getContentHandler( $title->getContentModel() );
 	}
 
 	/**
 	 * Returns the appropriate ContentHandler singleton for the given Content
 	 * object.
 	 *
+	 * @deprecated since 1.35, instead use
+	 *  ContentHandlerFactory::getContentHandler( $content->getModel() ).
+	 *
 	 * @since 1.21
 	 *
 	 * @param Content $content
 	 *
 	 * @return ContentHandler
+	 * @throws MWException
+	 * @throws MWUnknownContentModelException
 	 */
 	public static function getForContent( Content $content ) {
-		$modelId = $content->getModel();
-
-		return self::getForModelID( $modelId );
+		return MediaWikiServices::getInstance()
+			->getContentHandlerFactory()
+			->getContentHandler( $content->getModel() );
 	}
-
-	/**
-	 * @var array A Cache of ContentHandler instances by model id
-	 */
-	protected static $handlers;
 
 	/**
 	 * Returns the ContentHandler singleton for the given model ID. Use the
@@ -242,6 +250,9 @@ abstract class ContentHandler {
 	 *
 	 * @since 1.21
 	 *
+	 * @deprecated since 1.35, use ContentHandlerFactory::getContentHandler
+	 * @see  ContentHandlerFactory::getContentHandler()
+	 *
 	 * @param string $modelId The ID of the content model for which to get a
 	 *    handler. Use CONTENT_MODEL_XXX constants.
 	 *
@@ -250,52 +261,20 @@ abstract class ContentHandler {
 	 * @return ContentHandler The ContentHandler singleton for handling the model given by the ID.
 	 */
 	public static function getForModelID( $modelId ) {
-		global $wgContentHandlers;
-
-		if ( isset( self::$handlers[$modelId] ) ) {
-			return self::$handlers[$modelId];
-		}
-
-		if ( empty( $wgContentHandlers[$modelId] ) ) {
-			$handler = null;
-
-			Hooks::run( 'ContentHandlerForModelID', [ $modelId, &$handler ] );
-
-			if ( $handler === null ) {
-				throw new MWUnknownContentModelException( $modelId );
-			}
-
-			if ( !( $handler instanceof ContentHandler ) ) {
-				throw new MWException( "ContentHandlerForModelID must supply a ContentHandler instance" );
-			}
-		} else {
-			$classOrCallback = $wgContentHandlers[$modelId];
-
-			if ( is_callable( $classOrCallback ) ) {
-				$handler = call_user_func( $classOrCallback, $modelId );
-			} else {
-				$handler = new $classOrCallback( $modelId );
-			}
-
-			if ( !( $handler instanceof ContentHandler ) ) {
-				throw new MWException( "$classOrCallback from \$wgContentHandlers is not " .
-					"compatible with ContentHandler" );
-			}
-		}
-
-		wfDebugLog( 'ContentHandler', 'Created handler for ' . $modelId
-			. ': ' . get_class( $handler ) );
-
-		self::$handlers[$modelId] = $handler;
-
-		return self::$handlers[$modelId];
+		return MediaWikiServices::getInstance()
+			->getContentHandlerFactory()
+			->getContentHandler( $modelId );
 	}
 
 	/**
+	 * @deprecated since 1.35 Please, use ContentHandlerFactory. Cleanup is not needed
+	 * @see ContentHandlerFactory
+	 *
 	 * Clean up handlers cache.
 	 */
 	public static function cleanupHandlersCache() {
-		self::$handlers = [];
+		// No-op: no longer needed, since the instance cache is in the
+		// ContentHandlerFactory service, and services get reset between tests
 	}
 
 	/**
@@ -324,27 +303,28 @@ abstract class ContentHandler {
 		return $msg->exists() ? $msg->plain() : $name;
 	}
 
+	/**
+	 * @deprecated since 1.35, use ContentHandlerFactory::getContentModels
+	 * @see ContentHandlerFactory::getContentModels
+	 *
+	 * @return string[]
+	 * @throws MWException
+	 * @throws MWUnknownContentModelException
+	 */
 	public static function getContentModels() {
-		global $wgContentHandlers;
-
-		$models = array_keys( $wgContentHandlers );
-		Hooks::run( 'GetContentModels', [ &$models ] );
-		return $models;
+		return MediaWikiServices::getInstance()->getContentHandlerFactory()->getContentModels();
 	}
 
+	/**
+	 * @return string[]
+	 * @throws MWException
+	 * @throws MWUnknownContentModelException
+	 *
+	 * @deprecated since 1.35, use ContentHandlerFactory::getAllContentFormats
+	 * @see ContentHandlerFactory::getAllContentFormats
+	 */
 	public static function getAllContentFormats() {
-		global $wgContentHandlers;
-
-		$formats = [];
-
-		foreach ( $wgContentHandlers as $model => $class ) {
-			$handler = self::getForModelID( $model );
-			$formats = array_merge( $formats, $handler->getSupportedFormats() );
-		}
-
-		$formats = array_unique( $formats );
-
-		return $formats;
+		return MediaWikiServices::getInstance()->getContentHandlerFactory()->getAllContentFormats();
 	}
 
 	// ------------------------------------------------------------------------
@@ -408,6 +388,7 @@ abstract class ContentHandler {
 	 * @param string|null $format The format used for serialization
 	 *
 	 * @return Content The Content object created by deserializing $blob
+	 * @throws MWContentSerializationException
 	 */
 	abstract public function unserializeContent( $blob, $format = null );
 
@@ -611,10 +592,11 @@ abstract class ContentHandler {
 	 * Get an appropriate SlotDiffRenderer for this content model.
 	 * @since 1.32
 	 * @param IContextSource $context
+	 * @param array $options of the slot diff renderer (optional)
 	 * @return SlotDiffRenderer
 	 */
-	final public function getSlotDiffRenderer( IContextSource $context ) {
-		$slotDiffRenderer = $this->getSlotDiffRendererInternal( $context );
+	final public function getSlotDiffRenderer( IContextSource $context, array $options = [] ) {
+		$slotDiffRenderer = $this->getSlotDiffRendererWithOptions( $context, $options );
 		if ( get_class( $slotDiffRenderer ) === TextSlotDiffRenderer::class ) {
 			//  To keep B/C, when SlotDiffRenderer is not overridden for a given content type
 			// but DifferenceEngine is, use that instead.
@@ -635,25 +617,47 @@ abstract class ContentHandler {
 
 	/**
 	 * Return the SlotDiffRenderer appropriate for this content handler.
+	 * @deprecated use getSlotDiffRendererWithOptions instead
 	 * @param IContextSource $context
-	 * @return SlotDiffRenderer
+	 * @return SlotDiffRenderer|null
 	 */
 	protected function getSlotDiffRendererInternal( IContextSource $context ) {
+		return null;
+	}
+
+	/**
+	 * Return the SlotDiffRenderer appropriate for this content handler.
+	 * @param IContextSource $context
+	 * @param array $options
+	 * @return SlotDiffRenderer
+	 */
+	protected function getSlotDiffRendererWithOptions( IContextSource $context, $options = [] ) {
+		$internalRenderer = $this->getSlotDiffRendererInternal( $context );
+		// `getSlotDiffRendererInternal` has been overriden by a class using the deprecated method.
+		// Options will not work so exit early!
+		if ( $internalRenderer !== null ) {
+			return $internalRenderer;
+		}
+
 		$contentLanguage = MediaWikiServices::getInstance()->getContentLanguage();
 		$statsdDataFactory = MediaWikiServices::getInstance()->getStatsdDataFactory();
 		$slotDiffRenderer = new TextSlotDiffRenderer();
 		$slotDiffRenderer->setStatsdDataFactory( $statsdDataFactory );
 		// XXX using the page language would be better, but it's unclear how that should be injected
 		$slotDiffRenderer->setLanguage( $contentLanguage );
-		$slotDiffRenderer->setWikiDiff2MovedParagraphDetectionCutoff(
-			$context->getConfig()->get( 'WikiDiff2MovedParagraphDetectionCutoff' )
-		);
 
+		$inline = ( $options['diff-type'] ?? '' ) === 'inline';
+		$engine = 'wikidiff2';
 		$engine = DifferenceEngine::getEngine();
-		if ( $engine === false ) {
+
+		if ( $engine === 'php' ) {
 			$slotDiffRenderer->setEngine( TextSlotDiffRenderer::ENGINE_PHP );
 		} elseif ( $engine === 'wikidiff2' ) {
-			$slotDiffRenderer->setEngine( TextSlotDiffRenderer::ENGINE_WIKIDIFF2 );
+			if ( $inline ) {
+				$slotDiffRenderer->setEngine( TextSlotDiffRenderer::ENGINE_WIKIDIFF2_INLINE );
+			} else {
+				$slotDiffRenderer->setEngine( TextSlotDiffRenderer::ENGINE_WIKIDIFF2 );
+			}
 		} else {
 			$slotDiffRenderer->setEngine( TextSlotDiffRenderer::ENGINE_EXTERNAL, $engine );
 		}
@@ -667,7 +671,7 @@ abstract class ContentHandler {
 	 * This default implementation just returns the content language (except for pages
 	 * in the MediaWiki namespace)
 	 *
-	 * Note that the pages language is not cacheable, since it may in some
+	 * Note that the page's language is not cacheable, since it may in some
 	 * cases depend on user settings.
 	 *
 	 * Also note that the page language may or may not depend on the actual content of the page,
@@ -684,11 +688,16 @@ abstract class ContentHandler {
 		global $wgLang;
 		$pageLang = MediaWikiServices::getInstance()->getContentLanguage();
 
-		if ( $title->getNamespace() == NS_MEDIAWIKI ) {
+		if ( $title->inNamespace( NS_MEDIAWIKI ) ) {
 			// Parse mediawiki messages with correct target language
 			list( /* $unused */, $lang ) = MessageCache::singleton()->figureMessage( $title->getText() );
-			$pageLang = Language::factory( $lang );
+			$pageLang = MediaWikiServices::getInstance()->getLanguageFactory()
+				->getLanguage( $lang );
 		}
+
+		// Simplify hook handlers by only passing objects of one type, in case nothing
+		// else has unstubbed the StubUserLang object by now.
+		StubObject::unstub( $wgLang );
 
 		Hooks::run( 'PageContentLanguage', [ $title, &$pageLang, $wgLang ] );
 
@@ -721,9 +730,10 @@ abstract class ContentHandler {
 		if ( $title->getNamespace() !== NS_MEDIAWIKI ) {
 			// If the user chooses a variant, the content is actually
 			// in a language whose code is the variant code.
-			$variant = $pageLang->getPreferredVariant();
+			$variant = $this->getLanguageConverter( $pageLang )->getPreferredVariant();
 			if ( $pageLang->getCode() !== $variant ) {
-				$pageLang = Language::factory( $variant );
+				$pageLang = MediaWikiServices::getInstance()->getLanguageFactory()
+					->getLanguage( $variant );
 			}
 		}
 
@@ -783,6 +793,16 @@ abstract class ContentHandler {
 	 */
 	public function merge3( Content $oldContent, Content $myContent, Content $yourContent ) {
 		return false;
+	}
+
+	/**
+	 * Shorthand for getting a Language Converter for specific language
+	 * @param Language $language Language of converter
+	 * @return ILanguageConverter
+	 */
+	private function getLanguageConverter( $language ) : ILanguageConverter {
+		return MediaWikiServices::getInstance()->getLanguageConverterFactory()
+			->getLanguageConverter( $language );
 	}
 
 	/**
@@ -992,7 +1012,7 @@ abstract class ContentHandler {
 		// Get the last revision
 		$rev = Revision::newFromTitle( $title );
 
-		if ( is_null( $rev ) ) {
+		if ( $rev === null ) {
 			return false;
 		}
 
@@ -1023,7 +1043,7 @@ abstract class ContentHandler {
 			[ 'rev_user_text' => $revQuery['fields']['rev_user_text'] ],
 			[
 				'rev_page' => $title->getArticleID(),
-				$dbr->bitAnd( 'rev_deleted', Revision::DELETED_USER ) . ' = 0'
+				$dbr->bitAnd( 'rev_deleted', RevisionRecord::DELETED_USER ) . ' = 0'
 			],
 			__METHOD__,
 			[ 'LIMIT' => 20 ],
@@ -1074,7 +1094,8 @@ abstract class ContentHandler {
 		}
 
 		// Max content length = max comment length - length of the comment (excl. $1)
-		$text = $content ? $content->getTextForSummary( 255 - ( strlen( $reason ) - 2 ) ) : '';
+		$maxLength = CommentStore::COMMENT_CHARACTER_LIMIT - ( strlen( $reason ) - 2 );
+		$text = $content ? $content->getTextForSummary( $maxLength ) : '';
 
 		// Now replace the '$1' placeholder
 		$reason = str_replace( '$1', $text, $reason );
@@ -1096,7 +1117,7 @@ abstract class ContentHandler {
 	 * @param Revision|Content $undoafter Must be from an earlier revision than $undo
 	 * @param bool $undoIsLatest Set true if $undo is from the current revision (since 1.32)
 	 *
-	 * @return mixed Content on success, false on failure
+	 * @return Content|false Content on success, false on failure
 	 */
 	public function getUndoContent( $current, $undo, $undoafter, $undoIsLatest = false ) {
 		Assert::parameterType( Revision::class . '|' . Content::class, $current, '$current' );
@@ -1154,27 +1175,6 @@ abstract class ContentHandler {
 		$undone_content = $this->merge3( $undo_content, $undoafter_content, $cur_content );
 
 		return $undone_content;
-	}
-
-	/**
-	 * Get parser options suitable for rendering and caching the article
-	 *
-	 * @deprecated since 1.32, use WikiPage::makeParserOptions() or
-	 *  ParserOptions::newCanonical() instead.
-	 * @param IContextSource|User|string $context One of the following:
-	 *        - IContextSource: Use the User and the Language of the provided
-	 *                                            context
-	 *        - User: Use the provided User object and $wgLang for the language,
-	 *                                            so use an IContextSource object if possible.
-	 *        - 'canonical': Canonical options (anonymous user with default
-	 *                                            preferences and content language).
-	 *
-	 * @throws MWException
-	 * @return ParserOptions
-	 */
-	public function makeParserOptions( $context ) {
-		wfDeprecated( __METHOD__, '1.32' );
-		return ParserOptions::newCanonical( $context );
 	}
 
 	/**
@@ -1254,6 +1254,7 @@ abstract class ContentHandler {
 	 * @since 1.28
 	 */
 	public function getFieldsForSearchIndex( SearchEngine $engine ) {
+		$fields = [];
 		$fields['category'] = $engine->makeSearchFieldMapping(
 			'category',
 			SearchIndexField::INDEX_TYPE_TEXT

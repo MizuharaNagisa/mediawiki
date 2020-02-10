@@ -2,6 +2,7 @@
 
 namespace MediaWiki\Auth;
 
+use MediaWiki\Block\DatabaseBlock;
 use Wikimedia\TestingAccessWrapper;
 
 /**
@@ -68,7 +69,7 @@ class CheckBlocksSecondaryAuthenticationProviderTest extends \MediaWikiTestCase 
 			\TestUser::setPasswordForUser( $user, 'UTBlockeePassword' );
 			$user->saveSettings();
 		}
-		$oldBlock = \Block::newFromTarget( 'UTBlockee' );
+		$oldBlock = DatabaseBlock::newFromTarget( 'UTBlockee' );
 		if ( $oldBlock ) {
 			// An old block will prevent our new one from saving.
 			$oldBlock->delete();
@@ -81,7 +82,7 @@ class CheckBlocksSecondaryAuthenticationProviderTest extends \MediaWikiTestCase 
 			'expiry' => time() + 100500,
 			'createAccount' => true,
 		];
-		$block = new \Block( $blockOptions );
+		$block = new DatabaseBlock( $blockOptions );
 		$block->insert();
 		return $user;
 	}
@@ -138,23 +139,24 @@ class CheckBlocksSecondaryAuthenticationProviderTest extends \MediaWikiTestCase 
 		$status = $provider->testUserForCreation( $blockedUser, AuthManager::AUTOCREATE_SOURCE_SESSION );
 		$this->assertInstanceOf( \StatusValue::class, $status );
 		$this->assertFalse( $status->isOK() );
-		$this->assertTrue( $status->hasMessage( 'cantcreateaccount-text' ) );
+		$this->assertTrue( $status->hasMessage( 'blockedtext' ) );
 
 		$status = $provider->testUserForCreation( $blockedUser, false );
 		$this->assertInstanceOf( \StatusValue::class, $status );
 		$this->assertFalse( $status->isOK() );
-		$this->assertTrue( $status->hasMessage( 'cantcreateaccount-text' ) );
+		$this->assertTrue( $status->hasMessage( 'blockedtext' ) );
 	}
 
-	public function testRangeBlock() {
+	public function testPartialBlock() {
 		$blockOptions = [
 			'address' => '127.0.0.0/24',
 			'reason' => __METHOD__,
 			'by' => $this->getTestSysop()->getUser()->getId(),
 			'expiry' => time() + 100500,
 			'createAccount' => true,
+			'sitewide' => false,
 		];
-		$block = new \Block( $blockOptions );
+		$block = new DatabaseBlock( $blockOptions );
 		$block->insert();
 		$scopeVariable = new \Wikimedia\ScopedCallback( [ $block, 'delete' ] );
 
@@ -165,6 +167,7 @@ class CheckBlocksSecondaryAuthenticationProviderTest extends \MediaWikiTestCase 
 			$user->saveSettings();
 		}
 		$this->setMwGlobals( [ 'wgUser' => $user ] );
+		\RequestContext::getMain()->setUser( $user );
 		$newuser = \User::newFromName( 'RandomUser' );
 
 		$provider = new CheckBlocksSecondaryAuthenticationProvider(
@@ -180,11 +183,11 @@ class CheckBlocksSecondaryAuthenticationProviderTest extends \MediaWikiTestCase 
 		$status = $provider->testUserForCreation( $newuser, AuthManager::AUTOCREATE_SOURCE_SESSION );
 		$this->assertInstanceOf( \StatusValue::class, $status );
 		$this->assertFalse( $status->isOK() );
-		$this->assertTrue( $status->hasMessage( 'cantcreateaccount-range-text' ) );
+		$this->assertTrue( $status->hasMessage( 'blockedtext-partial' ) );
 
 		$status = $provider->testUserForCreation( $newuser, false );
 		$this->assertInstanceOf( \StatusValue::class, $status );
 		$this->assertFalse( $status->isOK() );
-		$this->assertTrue( $status->hasMessage( 'cantcreateaccount-range-text' ) );
+		$this->assertTrue( $status->hasMessage( 'blockedtext-partial' ) );
 	}
 }

@@ -21,6 +21,8 @@
  * @ingroup Media
  */
 
+use MediaWiki\Shell\Shell;
+
 /**
  * Generic handler for bitmap images
  *
@@ -91,7 +93,7 @@ class BitmapHandler extends TransformationalImageHandler {
 	 * @param array &$params
 	 * @return bool
 	 */
-	function normaliseParams( $image, &$params ) {
+	public function normaliseParams( $image, &$params ) {
 		global $wgMaxInterlacingAreas;
 		if ( !parent::normaliseParams( $image, $params ) ) {
 			return false;
@@ -108,7 +110,7 @@ class BitmapHandler extends TransformationalImageHandler {
 	 * Get ImageMagick subsampling factors for the target JPEG pixel format.
 	 *
 	 * @param string $pixelFormat one of 'yuv444', 'yuv422', 'yuv420'
-	 * @return array of string keys
+	 * @return string[] List of sampling factors
 	 */
 	protected function imageMagickSubsampling( $pixelFormat ) {
 		switch ( $pixelFormat ) {
@@ -129,7 +131,7 @@ class BitmapHandler extends TransformationalImageHandler {
 	 * @param File $image File associated with this thumbnail
 	 * @param array $params Array with scaler params
 	 *
-	 * @return MediaTransformError|bool Error object if error occurred, false (=no error) otherwise
+	 * @return MediaTransformError|false Error object if error occurred, false (=no error) otherwise
 	 */
 	protected function transformImageMagick( $image, $params ) {
 		# use ImageMagick
@@ -228,7 +230,7 @@ class BitmapHandler extends TransformationalImageHandler {
 		$rotation = isset( $params['disableRotation'] ) ? 0 : $this->getRotation( $image );
 		list( $width, $height ) = $this->extractPreRotationDimensions( $params, $rotation );
 
-		$cmd = wfEscapeShellArg( ...array_merge(
+		$cmd = Shell::escape( ...array_merge(
 			[ $wgImageMagickConvertCommand ],
 			$quality,
 			// Specify white background color, will be used for transparent images
@@ -273,7 +275,7 @@ class BitmapHandler extends TransformationalImageHandler {
 	 * @param File $image File associated with this thumbnail
 	 * @param array $params Array with scaler params
 	 *
-	 * @return MediaTransformError Error|bool object if error occurred, false (=no error) otherwise
+	 * @return MediaTransformError|false Error object if error occurred, false (=no error) otherwise
 	 */
 	protected function transformImageMagickExt( $image, $params ) {
 		global $wgSharpenReductionThreshold, $wgSharpenParameter, $wgMaxAnimatedGifArea,
@@ -338,10 +340,8 @@ class BitmapHandler extends TransformationalImageHandler {
 			}
 			$im->setImageDepth( 8 );
 
-			if ( $rotation ) {
-				if ( !$im->rotateImage( new ImagickPixel( 'white' ), 360 - $rotation ) ) {
-					return $this->getMediaTransformError( $params, "Error rotating $rotation degrees" );
-				}
+			if ( $rotation && !$im->rotateImage( new ImagickPixel( 'white' ), 360 - $rotation ) ) {
+				return $this->getMediaTransformError( $params, "Error rotating $rotation degrees" );
 			}
 
 			if ( $this->isAnimatedImage( $image ) ) {
@@ -368,19 +368,19 @@ class BitmapHandler extends TransformationalImageHandler {
 	 * @param File $image File associated with this thumbnail
 	 * @param array $params Array with scaler params
 	 *
-	 * @return MediaTransformError Error|bool object if error occurred, false (=no error) otherwise
+	 * @return MediaTransformError|false Error object if error occurred, false (=no error) otherwise
 	 */
 	protected function transformCustom( $image, $params ) {
 		# Use a custom convert command
 		global $wgCustomConvertCommand;
 
 		# Variables: %s %d %w %h
-		$src = wfEscapeShellArg( $params['srcPath'] );
-		$dst = wfEscapeShellArg( $params['dstPath'] );
+		$src = Shell::escape( $params['srcPath'] );
+		$dst = Shell::escape( $params['dstPath'] );
 		$cmd = $wgCustomConvertCommand;
 		$cmd = str_replace( '%s', $src, str_replace( '%d', $dst, $cmd ) ); # Filenames
-		$cmd = str_replace( '%h', wfEscapeShellArg( $params['physicalHeight'] ),
-			str_replace( '%w', wfEscapeShellArg( $params['physicalWidth'] ), $cmd ) ); # Size
+		$cmd = str_replace( '%h', Shell::escape( $params['physicalHeight'] ),
+			str_replace( '%w', Shell::escape( $params['physicalWidth'] ), $cmd ) ); # Size
 		wfDebug( __METHOD__ . ": Running custom convert command $cmd\n" );
 		$retval = 0;
 		$err = wfShellExecWithStderr( $cmd, $retval );
@@ -571,10 +571,10 @@ class BitmapHandler extends TransformationalImageHandler {
 		$scaler = $this->getScalerType( null, false );
 		switch ( $scaler ) {
 			case 'im':
-				$cmd = wfEscapeShellArg( $wgImageMagickConvertCommand ) . " " .
-					wfEscapeShellArg( $this->escapeMagickInput( $params['srcPath'], $scene ) ) .
-					" -rotate " . wfEscapeShellArg( "-$rotation" ) . " " .
-					wfEscapeShellArg( $this->escapeMagickOutput( $params['dstPath'] ) );
+				$cmd = Shell::escape( $wgImageMagickConvertCommand ) . " " .
+					Shell::escape( $this->escapeMagickInput( $params['srcPath'], $scene ) ) .
+					" -rotate " . Shell::escape( "-$rotation" ) . " " .
+					Shell::escape( $this->escapeMagickOutput( $params['dstPath'] ) );
 				wfDebug( __METHOD__ . ": running ImageMagick: $cmd\n" );
 				$retval = 0;
 				$err = wfShellExecWithStderr( $cmd, $retval );

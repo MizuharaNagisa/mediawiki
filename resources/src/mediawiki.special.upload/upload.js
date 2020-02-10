@@ -6,8 +6,6 @@
  * @singleton
  */
 
-/* global Uint8Array */
-
 ( function () {
 	var uploadWarning, uploadTemplatePreview,
 		ajaxUploadDestCheck = mw.config.get( 'wgAjaxUploadDestCheck' ),
@@ -19,33 +17,6 @@
 		typing: false,
 		delay: 500, // ms
 		timeoutID: false,
-
-		keypress: function () {
-			if ( !ajaxUploadDestCheck ) {
-				return;
-			}
-
-			// Find file to upload
-			if ( !$( '#wpDestFile' ).length || !$( '#wpDestFile-warning' ).length ) {
-				return;
-			}
-
-			this.nameToCheck = $( '#wpDestFile' ).val();
-
-			// Clear timer
-			if ( this.timeoutID ) {
-				clearTimeout( this.timeoutID );
-			}
-			// Check response cache
-			if ( Object.prototype.hasOwnProperty.call( this.responseCache, this.nameToCheck ) ) {
-				this.setWarning( this.responseCache[ this.nameToCheck ] );
-				return;
-			}
-
-			this.timeoutID = setTimeout( function () {
-				uploadWarning.timeout();
-			}, this.delay );
-		},
 
 		checkNow: function ( fname ) {
 			if ( !ajaxUploadDestCheck ) {
@@ -199,8 +170,7 @@
 					return;
 				}
 				// Remove any previously flagged errors
-				$( '#mw-upload-permitted' ).attr( 'class', '' );
-				$( '#mw-upload-prohibited' ).attr( 'class', '' );
+				$( '#mw-upload-permitted, #mw-upload-prohibited' ).removeClass();
 
 				path = $( this ).val();
 				// Find trailing part
@@ -306,6 +276,11 @@
 				s /= 1024;
 				sizeMsgs = sizeMsgs.slice( 1 );
 			}
+			// The following messages are used here:
+			// * size-bytes
+			// * size-kilobytes
+			// * size-megabytes
+			// * size-gigabytes
 			return mw.msg( sizeMsgs[ 0 ], Math.round( s ) );
 		}
 
@@ -490,7 +465,7 @@
 				};
 				img.src = dataURL;
 			}, mw.config.get( 'wgFileCanRotate' ) ? function ( data ) {
-				var jpegmeta = mw.loader.require( 'mediawiki.libs.jpegmeta' );
+				var jpegmeta = require( 'mediawiki.libs.jpegmeta' );
 				try {
 					meta = jpegmeta( data, file.fileName );
 					// eslint-disable-next-line no-underscore-dangle, camelcase

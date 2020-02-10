@@ -18,6 +18,9 @@
  *
  */
 
+use PHPUnit\Framework\CodeCoverageException;
+use PHPUnit\Util\Test;
+
 /**
  * Trait that checks that covers tags are valid, since PHPUnit
  * won't do it unless you run it with coverage, which is super
@@ -30,21 +33,24 @@ trait MediaWikiCoversValidator {
 	/**
 	 * Test that all methods in this class that begin
 	 * with "test" have valid covers tags.
+	 *
+	 * @dataProvider providePHPUnitTestMethodNames
 	 */
-	public function testValidCovers() {
-		$methods = get_class_methods( $this );
-		$class = get_class( $this );
-		$bad = '';
-		foreach ( $methods as $method ) {
-			if ( strpos( $method, 'test' ) === 0 ) {
-				try {
-					PHPUnit_Util_Test::getLinesToBeCovered( $class, $method );
-				} catch ( PHPUnit_Framework_CodeCoverageException $e ) {
-					$bad .= "$class::$method: {$e->getMessage()}\n";
-				}
-			}
+	public function testValidCovers( $class, $method ) {
+		try {
+			Test::getLinesToBeCovered( $class, $method );
+		} catch ( CodeCoverageException $ex ) {
+			$this->fail( "$class::$method: " . $ex->getMessage() );
 		}
 
-		$this->assertEquals( '', $bad );
+		$this->addToAssertionCount( 1 );
+	}
+
+	public function providePHPUnitTestMethodNames() {
+		foreach ( get_class_methods( $this ) as $method ) {
+			if ( strncmp( $method, 'test', 4 ) === 0 ) {
+				yield [ static::class, $method ];
+			}
+		}
 	}
 }

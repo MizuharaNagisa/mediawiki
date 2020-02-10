@@ -1,6 +1,7 @@
 <?php
 
 use MediaWiki\MediaWikiServices;
+use Wikimedia\Rdbms\IMaintainableDatabase;
 use Wikimedia\ScopedCallback;
 use Wikimedia\TestingAccessWrapper;
 
@@ -73,6 +74,50 @@ class CommentStoreTest extends MediaWikiLangTestCase {
 	}
 
 	/**
+	 * @dataProvider provideConstructor
+	 * @param int $stage
+	 * @param string|null $exceptionMsg
+	 */
+	public function testConstructor( $stage, $exceptionMsg ) {
+		try {
+			$m = new CommentStore(
+				MediaWikiServices::getInstance()->getLanguageFactory()->getLanguage( 'qqx' ),
+				$stage
+			);
+			if ( $exceptionMsg !== null ) {
+				$this->fail( 'Expected exception not thrown' );
+			}
+			$this->assertInstanceOf( CommentStore::class, $m );
+		} catch ( InvalidArgumentException $ex ) {
+			$this->assertSame( $exceptionMsg, $ex->getMessage() );
+		}
+	}
+
+	public static function provideConstructor() {
+		return [
+			[ 0, '$stage must include a write mode' ],
+			[ SCHEMA_COMPAT_READ_OLD, '$stage must include a write mode' ],
+			[ SCHEMA_COMPAT_READ_NEW, '$stage must include a write mode' ],
+			[ SCHEMA_COMPAT_READ_BOTH, '$stage must include a write mode' ],
+
+			[ SCHEMA_COMPAT_WRITE_OLD, '$stage must include a read mode' ],
+			[ SCHEMA_COMPAT_WRITE_OLD | SCHEMA_COMPAT_READ_OLD, null ],
+			[ SCHEMA_COMPAT_WRITE_OLD | SCHEMA_COMPAT_READ_NEW, null ],
+			[ SCHEMA_COMPAT_WRITE_OLD | SCHEMA_COMPAT_READ_BOTH, null ],
+
+			[ SCHEMA_COMPAT_WRITE_NEW, '$stage must include a read mode' ],
+			[ SCHEMA_COMPAT_WRITE_NEW | SCHEMA_COMPAT_READ_OLD, null ],
+			[ SCHEMA_COMPAT_WRITE_NEW | SCHEMA_COMPAT_READ_NEW, null ],
+			[ SCHEMA_COMPAT_WRITE_NEW | SCHEMA_COMPAT_READ_BOTH, null ],
+
+			[ SCHEMA_COMPAT_WRITE_BOTH, '$stage must include a read mode' ],
+			[ SCHEMA_COMPAT_WRITE_BOTH | SCHEMA_COMPAT_READ_OLD, null ],
+			[ SCHEMA_COMPAT_WRITE_BOTH | SCHEMA_COMPAT_READ_NEW, null ],
+			[ SCHEMA_COMPAT_WRITE_BOTH | SCHEMA_COMPAT_READ_BOTH, null ],
+		];
+	}
+
+	/**
 	 * @dataProvider provideGetFields
 	 * @param int $stage
 	 * @param string $key
@@ -114,6 +159,14 @@ class CommentStoreTest extends MediaWikiLangTestCase {
 				MIGRATION_NEW, 'ipb_reason',
 				[ 'ipb_reason_id' => 'ipb_reason_id' ],
 			],
+			'Simple table, write-both/read-old' => [
+				SCHEMA_COMPAT_WRITE_BOTH | SCHEMA_COMPAT_READ_OLD, 'ipb_reason',
+				[ 'ipb_reason_text' => 'ipb_reason', 'ipb_reason_data' => 'NULL', 'ipb_reason_cid' => 'NULL' ],
+			],
+			'Simple table, write-both/read-new' => [
+				SCHEMA_COMPAT_WRITE_BOTH | SCHEMA_COMPAT_READ_NEW, 'ipb_reason',
+				[ 'ipb_reason_id' => 'ipb_reason_id' ],
+			],
 
 			'Revision, old' => [
 				MIGRATION_OLD, 'rev_comment',
@@ -133,6 +186,18 @@ class CommentStoreTest extends MediaWikiLangTestCase {
 			],
 			'Revision, new' => [
 				MIGRATION_NEW, 'rev_comment',
+				[ 'rev_comment_pk' => 'rev_id' ],
+			],
+			'Revision, write-both/read-old' => [
+				SCHEMA_COMPAT_WRITE_BOTH | SCHEMA_COMPAT_READ_OLD, 'rev_comment',
+				[
+					'rev_comment_text' => 'rev_comment',
+					'rev_comment_data' => 'NULL',
+					'rev_comment_cid' => 'NULL',
+				],
+			],
+			'Revision, write-both/read-new' => [
+				SCHEMA_COMPAT_WRITE_BOTH | SCHEMA_COMPAT_READ_NEW, 'rev_comment',
 				[ 'rev_comment_pk' => 'rev_id' ],
 			],
 
@@ -160,6 +225,20 @@ class CommentStoreTest extends MediaWikiLangTestCase {
 			],
 			'Image, new' => [
 				MIGRATION_NEW, 'img_description',
+				[
+					'img_description_id' => 'img_description_id'
+				],
+			],
+			'Image, write-both/read-old' => [
+				SCHEMA_COMPAT_WRITE_BOTH | SCHEMA_COMPAT_READ_OLD, 'img_description',
+				[
+					'img_description_text' => 'img_description',
+					'img_description_data' => 'NULL',
+					'img_description_cid' => 'NULL',
+				],
+			],
+			'Image, write-both/read-new' => [
+				SCHEMA_COMPAT_WRITE_BOTH | SCHEMA_COMPAT_READ_NEW, 'img_description',
 				[
 					'img_description_id' => 'img_description_id'
 				],
@@ -243,6 +322,30 @@ class CommentStoreTest extends MediaWikiLangTestCase {
 					],
 				],
 			],
+			'Simple table, write-both/read-old' => [
+				SCHEMA_COMPAT_WRITE_BOTH | SCHEMA_COMPAT_READ_OLD, 'ipb_reason', [
+					'tables' => [],
+					'fields' => [
+						'ipb_reason_text' => 'ipb_reason',
+						'ipb_reason_data' => 'NULL',
+						'ipb_reason_cid' => 'NULL',
+					],
+					'joins' => [],
+				],
+			],
+			'Simple table, write-both/read-new' => [
+				SCHEMA_COMPAT_WRITE_BOTH | SCHEMA_COMPAT_READ_NEW, 'ipb_reason', [
+					'tables' => [ 'comment_ipb_reason' => 'comment' ],
+					'fields' => [
+						'ipb_reason_text' => 'comment_ipb_reason.comment_text',
+						'ipb_reason_data' => 'comment_ipb_reason.comment_data',
+						'ipb_reason_cid' => 'comment_ipb_reason.comment_id',
+					],
+					'joins' => [
+						'comment_ipb_reason' => [ 'JOIN', 'comment_ipb_reason.comment_id = ipb_reason_id' ],
+					],
+				],
+			],
 
 			'Revision, old' => [
 				MIGRATION_OLD, 'rev_comment', [
@@ -293,6 +396,35 @@ class CommentStoreTest extends MediaWikiLangTestCase {
 			],
 			'Revision, new' => [
 				MIGRATION_NEW, 'rev_comment', [
+					'tables' => [
+						'temp_rev_comment' => 'revision_comment_temp',
+						'comment_rev_comment' => 'comment',
+					],
+					'fields' => [
+						'rev_comment_text' => 'comment_rev_comment.comment_text',
+						'rev_comment_data' => 'comment_rev_comment.comment_data',
+						'rev_comment_cid' => 'comment_rev_comment.comment_id',
+					],
+					'joins' => [
+						'temp_rev_comment' => [ 'JOIN', 'temp_rev_comment.revcomment_rev = rev_id' ],
+						'comment_rev_comment' => [ 'JOIN',
+							'comment_rev_comment.comment_id = temp_rev_comment.revcomment_comment_id' ],
+					],
+				],
+			],
+			'Revision, write-both/read-old' => [
+				SCHEMA_COMPAT_WRITE_BOTH | SCHEMA_COMPAT_READ_OLD, 'rev_comment', [
+					'tables' => [],
+					'fields' => [
+						'rev_comment_text' => 'rev_comment',
+						'rev_comment_data' => 'NULL',
+						'rev_comment_cid' => 'NULL',
+					],
+					'joins' => [],
+				],
+			],
+			'Revision, write-both/read-new' => [
+				SCHEMA_COMPAT_WRITE_BOTH | SCHEMA_COMPAT_READ_NEW, 'rev_comment', [
 					'tables' => [
 						'temp_rev_comment' => 'revision_comment_temp',
 						'comment_rev_comment' => 'comment',
@@ -372,6 +504,34 @@ class CommentStoreTest extends MediaWikiLangTestCase {
 					],
 				],
 			],
+			'Image, write-both/read-old' => [
+				SCHEMA_COMPAT_WRITE_BOTH | SCHEMA_COMPAT_READ_OLD, 'img_description', [
+					'tables' => [],
+					'fields' => [
+						'img_description_text' => 'img_description',
+						'img_description_data' => 'NULL',
+						'img_description_cid' => 'NULL',
+					],
+					'joins' => [],
+				],
+			],
+			'Image, write-both/read-new' => [
+				SCHEMA_COMPAT_WRITE_BOTH | SCHEMA_COMPAT_READ_NEW, 'img_description', [
+					'tables' => [
+						'comment_img_description' => 'comment',
+					],
+					'fields' => [
+						'img_description_text' => 'comment_img_description.comment_text',
+						'img_description_data' => 'comment_img_description.comment_data',
+						'img_description_cid' => 'comment_img_description.comment_id',
+					],
+					'joins' => [
+						'comment_img_description' => [ 'JOIN',
+							'comment_img_description.comment_id = img_description_id',
+						],
+					],
+				],
+			],
 		];
 	}
 
@@ -383,6 +543,8 @@ class CommentStoreTest extends MediaWikiLangTestCase {
 			"message keys $from" );
 		$this->assertEquals( $expect['message']->text(), $actual->message->text(),
 			"message rendering $from" );
+		$this->assertEquals( $expect['text'], $actual->message->text(),
+			"message rendering and text $from" );
 		$this->assertEquals( $expect['data'], $actual->data, "data $from" );
 	}
 
@@ -400,7 +562,7 @@ class CommentStoreTest extends MediaWikiLangTestCase {
 
 		$expectOld = [
 			'text' => $expect['text'],
-			'message' => new RawMessage( '$1', [ $expect['text'] ] ),
+			'message' => new RawMessage( '$1', [ Message::plaintextParam( $expect['text'] ) ] ),
 			'data' => null,
 		];
 
@@ -410,6 +572,15 @@ class CommentStoreTest extends MediaWikiLangTestCase {
 				MIGRATION_NEW ],
 			MIGRATION_WRITE_NEW => [ MIGRATION_WRITE_BOTH, MIGRATION_WRITE_NEW, MIGRATION_NEW ],
 			MIGRATION_NEW => [ MIGRATION_WRITE_BOTH, MIGRATION_WRITE_NEW, MIGRATION_NEW ],
+
+			SCHEMA_COMPAT_WRITE_BOTH | SCHEMA_COMPAT_READ_OLD => [
+				MIGRATION_OLD, SCHEMA_COMPAT_WRITE_BOTH | SCHEMA_COMPAT_READ_OLD,
+				SCHEMA_COMPAT_WRITE_BOTH | SCHEMA_COMPAT_READ_NEW, MIGRATION_NEW
+			],
+			SCHEMA_COMPAT_WRITE_BOTH | SCHEMA_COMPAT_READ_NEW => [
+				MIGRATION_OLD, SCHEMA_COMPAT_WRITE_BOTH | SCHEMA_COMPAT_READ_OLD,
+				SCHEMA_COMPAT_WRITE_BOTH | SCHEMA_COMPAT_READ_NEW, MIGRATION_NEW
+			],
 		];
 
 		foreach ( $stages as $writeStage => $possibleReadStages ) {
@@ -424,12 +595,12 @@ class CommentStoreTest extends MediaWikiLangTestCase {
 				$fields = $wstore->insert( $this->db, $key, $comment, $data );
 			}
 
-			if ( $writeStage <= MIGRATION_WRITE_BOTH ) {
+			if ( $writeStage & SCHEMA_COMPAT_WRITE_OLD ) {
 				$this->assertSame( $expect['text'], $fields[$key], "old field, stage=$writeStage" );
 			} else {
 				$this->assertArrayNotHasKey( $key, $fields, "old field, stage=$writeStage" );
 			}
-			if ( $writeStage >= MIGRATION_WRITE_BOTH && !$usesTemp ) {
+			if ( ( $writeStage & SCHEMA_COMPAT_WRITE_NEW ) && !$usesTemp ) {
 				$this->assertArrayHasKey( "{$key}_id", $fields, "new field, stage=$writeStage" );
 			} else {
 				$this->assertArrayNotHasKey( "{$key}_id", $fields, "new field, stage=$writeStage" );
@@ -460,13 +631,17 @@ class CommentStoreTest extends MediaWikiLangTestCase {
 					$queryInfo['joins']
 				);
 
+				$expectForCombination = (
+					( $writeStage & SCHEMA_COMPAT_WRITE_BOTH ) === SCHEMA_COMPAT_WRITE_OLD ||
+					( $readStage & SCHEMA_COMPAT_READ_BOTH ) === SCHEMA_COMPAT_READ_OLD
+				) ? $expectOld : $expect;
 				$this->assertComment(
-					$writeStage === MIGRATION_OLD || $readStage === MIGRATION_OLD ? $expectOld : $expect,
+					$expectForCombination,
 					$rstore->getCommentLegacy( $this->db, $key, $fieldRow ),
 					"w=$writeStage, r=$readStage, from getFields()"
 				);
 				$this->assertComment(
-					$writeStage === MIGRATION_OLD || $readStage === MIGRATION_OLD ? $expectOld : $expect,
+					$expectForCombination,
 					$rstore->getComment( $key, $joinRow ),
 					"w=$writeStage, r=$readStage, from getJoin()"
 				);
@@ -490,7 +665,7 @@ class CommentStoreTest extends MediaWikiLangTestCase {
 
 		$expectOld = [
 			'text' => $expect['text'],
-			'message' => new RawMessage( '$1', [ $expect['text'] ] ),
+			'message' => new RawMessage( '$1', [ Message::plaintextParam( $expect['text'] ) ] ),
 			'data' => null,
 		];
 
@@ -500,6 +675,15 @@ class CommentStoreTest extends MediaWikiLangTestCase {
 				MIGRATION_NEW ],
 			MIGRATION_WRITE_NEW => [ MIGRATION_WRITE_BOTH, MIGRATION_WRITE_NEW, MIGRATION_NEW ],
 			MIGRATION_NEW => [ MIGRATION_WRITE_BOTH, MIGRATION_WRITE_NEW, MIGRATION_NEW ],
+
+			SCHEMA_COMPAT_WRITE_BOTH | SCHEMA_COMPAT_READ_OLD => [
+				MIGRATION_OLD, SCHEMA_COMPAT_WRITE_BOTH | SCHEMA_COMPAT_READ_OLD,
+				SCHEMA_COMPAT_WRITE_BOTH | SCHEMA_COMPAT_READ_NEW, MIGRATION_NEW
+			],
+			SCHEMA_COMPAT_WRITE_BOTH | SCHEMA_COMPAT_READ_NEW => [
+				MIGRATION_OLD, SCHEMA_COMPAT_WRITE_BOTH | SCHEMA_COMPAT_READ_OLD,
+				SCHEMA_COMPAT_WRITE_BOTH | SCHEMA_COMPAT_READ_NEW, MIGRATION_NEW
+			],
 		];
 
 		foreach ( $stages as $writeStage => $possibleReadStages ) {
@@ -514,12 +698,12 @@ class CommentStoreTest extends MediaWikiLangTestCase {
 				$fields = $wstore->insert( $this->db, $comment, $data );
 			}
 
-			if ( $writeStage <= MIGRATION_WRITE_BOTH ) {
+			if ( $writeStage & SCHEMA_COMPAT_WRITE_OLD ) {
 				$this->assertSame( $expect['text'], $fields[$key], "old field, stage=$writeStage" );
 			} else {
 				$this->assertArrayNotHasKey( $key, $fields, "old field, stage=$writeStage" );
 			}
-			if ( $writeStage >= MIGRATION_WRITE_BOTH && !$usesTemp ) {
+			if ( ( $writeStage & SCHEMA_COMPAT_WRITE_NEW ) && !$usesTemp ) {
 				$this->assertArrayHasKey( "{$key}_id", $fields, "new field, stage=$writeStage" );
 			} else {
 				$this->assertArrayNotHasKey( "{$key}_id", $fields, "new field, stage=$writeStage" );
@@ -550,13 +734,17 @@ class CommentStoreTest extends MediaWikiLangTestCase {
 					$queryInfo['joins']
 				);
 
+				$expectForCombination = (
+					( $writeStage & SCHEMA_COMPAT_WRITE_BOTH ) === SCHEMA_COMPAT_WRITE_OLD ||
+					( $readStage & SCHEMA_COMPAT_READ_BOTH ) === SCHEMA_COMPAT_READ_OLD
+				) ? $expectOld : $expect;
 				$this->assertComment(
-					$writeStage === MIGRATION_OLD || $readStage === MIGRATION_OLD ? $expectOld : $expect,
+					$expectForCombination,
 					$rstore->getCommentLegacy( $this->db, $fieldRow ),
 					"w=$writeStage, r=$readStage, from getFields()"
 				);
 				$this->assertComment(
-					$writeStage === MIGRATION_OLD || $readStage === MIGRATION_OLD ? $expectOld : $expect,
+					$expectForCombination,
 					$rstore->getComment( $joinRow ),
 					"w=$writeStage, r=$readStage, from getJoin()"
 				);
@@ -568,7 +756,7 @@ class CommentStoreTest extends MediaWikiLangTestCase {
 		$db = wfGetDB( DB_REPLICA ); // for timestamps
 
 		$msgComment = new Message( 'parentheses', [ 'message comment' ] );
-		$textCommentMsg = new RawMessage( '$1', [ 'text comment' ] );
+		$textCommentMsg = new RawMessage( '$1', [ Message::plaintextParam( '{{text}} comment' ) ] );
 		$nestedMsgComment = new Message( [ 'parentheses', 'rawmessage' ], [ new Message( 'mainpage' ) ] );
 		$comStoreComment = new CommentStoreComment(
 			null, 'comment store comment', null, [ 'foo' => 'bar' ]
@@ -576,15 +764,15 @@ class CommentStoreTest extends MediaWikiLangTestCase {
 
 		return [
 			'Simple table, text comment' => [
-				'commentstore1', 'cs1_comment', 'cs1_id', 'text comment', null, [
-					'text' => 'text comment',
+				'commentstore1', 'cs1_comment', 'cs1_id', '{{text}} comment', null, [
+					'text' => '{{text}} comment',
 					'message' => $textCommentMsg,
 					'data' => null,
 				]
 			],
 			'Simple table, text comment with data' => [
-				'commentstore1', 'cs1_comment', 'cs1_id', 'text comment', [ 'message' => 42 ], [
-					'text' => 'text comment',
+				'commentstore1', 'cs1_comment', 'cs1_id', '{{text}} comment', [ 'message' => 42 ], [
+					'text' => '{{text}} comment',
 					'message' => $textCommentMsg,
 					'data' => [ 'message' => 42 ],
 				]
@@ -619,15 +807,15 @@ class CommentStoreTest extends MediaWikiLangTestCase {
 			],
 
 			'Revision, text comment' => [
-				'commentstore2', 'cs2_comment', 'cs2_id', 'text comment', null, [
-					'text' => 'text comment',
+				'commentstore2', 'cs2_comment', 'cs2_id', '{{text}} comment', null, [
+					'text' => '{{text}} comment',
 					'message' => $textCommentMsg,
 					'data' => null,
 				]
 			],
 			'Revision, text comment with data' => [
-				'commentstore2', 'cs2_comment', 'cs2_id', 'text comment', [ 'message' => 42 ], [
-					'text' => 'text comment',
+				'commentstore2', 'cs2_comment', 'cs2_id', '{{text}} comment', [ 'message' => 42 ], [
+					'text' => '{{text}} comment',
 					'message' => $textCommentMsg,
 					'data' => [ 'message' => 42 ],
 				]
@@ -722,28 +910,31 @@ class CommentStoreTest extends MediaWikiLangTestCase {
 			'MIGRATION_WRITE_BOTH' => [ MIGRATION_WRITE_BOTH ],
 			'MIGRATION_WRITE_NEW' => [ MIGRATION_WRITE_NEW ],
 			'MIGRATION_NEW' => [ MIGRATION_NEW ],
+
+			'SCHEMA_COMPAT write-both/read-old' => [ SCHEMA_COMPAT_WRITE_BOTH | SCHEMA_COMPAT_READ_OLD ],
+			'SCHEMA_COMPAT write-both/read-new' => [ SCHEMA_COMPAT_WRITE_BOTH | SCHEMA_COMPAT_READ_NEW ],
 		];
 	}
 
 	/**
 	 * @dataProvider provideStages
 	 * @param int $stage
-	 * @expectedException InvalidArgumentException
-	 * @expectedExceptionMessage Must use insertWithTempTable() for rev_comment
 	 */
 	public function testInsertWrong( $stage ) {
 		$store = $this->makeStore( $stage );
+		$this->expectException( InvalidArgumentException::class );
+		$this->expectExceptionMessage( "Must use insertWithTempTable() for rev_comment" );
 		$store->insert( $this->db, 'rev_comment', 'foo' );
 	}
 
 	/**
 	 * @dataProvider provideStages
 	 * @param int $stage
-	 * @expectedException InvalidArgumentException
-	 * @expectedExceptionMessage Must use insert() for ipb_reason
 	 */
 	public function testInsertWithTempTableWrong( $stage ) {
 		$store = $this->makeStore( $stage );
+		$this->expectException( InvalidArgumentException::class );
+		$this->expectExceptionMessage( "Must use insert() for ipb_reason" );
 		$store->insertWithTempTable( $this->db, 'ipb_reason', 'foo' );
 	}
 
@@ -761,7 +952,7 @@ class CommentStoreTest extends MediaWikiLangTestCase {
 
 		$this->hideDeprecated( 'CommentStore::insertWithTempTable for ipb_reason' );
 		list( $fields, $callback ) = $store->insertWithTempTable( $this->db, 'ipb_reason', 'foo' );
-		$this->assertTrue( is_callable( $callback ) );
+		$this->assertIsCallable( $callback );
 	}
 
 	public function testInsertTruncation() {
@@ -778,12 +969,10 @@ class CommentStoreTest extends MediaWikiLangTestCase {
 		$this->assertSame( $truncated2, $stored );
 	}
 
-	/**
-	 * @expectedException OverflowException
-	 * @expectedExceptionMessage Comment data is too long (65611 bytes, maximum is 65535)
-	 */
 	public function testInsertTooMuchData() {
 		$store = $this->makeStore( MIGRATION_WRITE_BOTH );
+		$this->expectException( OverflowException::class );
+		$this->expectExceptionMessage( "Comment data is too long (65611 bytes, maximum is 65535)" );
 		$store->insert( $this->db, 'ipb_reason', 'foo', [
 			'long' => str_repeat( '💣', 16400 )
 		] );

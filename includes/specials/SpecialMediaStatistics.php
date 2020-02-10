@@ -22,13 +22,13 @@
  * @author Brian Wolff
  */
 
-use Wikimedia\Rdbms\IResultWrapper;
 use Wikimedia\Rdbms\IDatabase;
+use Wikimedia\Rdbms\IResultWrapper;
 
 /**
  * @ingroup SpecialPage
  */
-class MediaStatisticsPage extends QueryPage {
+class SpecialMediaStatistics extends QueryPage {
 	protected $totalCount = 0, $totalBytes = 0;
 
 	/**
@@ -76,9 +76,9 @@ class MediaStatisticsPage extends QueryPage {
 			$dbr->addQuotes( '/' ),
 			'img_minor_mime',
 			$dbr->addQuotes( ';' ),
-			'COUNT(*)',
+			$dbr->buildStringCast( 'COUNT(*)' ),
 			$dbr->addQuotes( ';' ),
-			'SUM( img_size )'
+			$dbr->buildStringCast( 'SUM( img_size )' )
 		] );
 		return [
 			'tables' => [ 'image' ],

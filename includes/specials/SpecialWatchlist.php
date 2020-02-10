@@ -22,8 +22,8 @@
  */
 
 use MediaWiki\MediaWikiServices;
-use Wikimedia\Rdbms\IResultWrapper;
 use Wikimedia\Rdbms\IDatabase;
+use Wikimedia\Rdbms\IResultWrapper;
 
 /**
  * A special page that lists last changes made to the wiki,
@@ -37,12 +37,16 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 	protected static $limitPreferenceName = 'wllimit';
 	protected static $collapsedPreferenceName = 'rcfilters-wl-collapsed';
 
+	/** @var float|int */
 	private $maxDays;
+	/** WatchedItemStore */
+	private $watchStore;
 
 	public function __construct( $page = 'Watchlist', $restriction = 'viewmywatchlist' ) {
 		parent::__construct( $page, $restriction );
 
 		$this->maxDays = $this->getConfig()->get( 'RCMaxAge' ) / ( 3600 * 24 );
+		$this->watchStore = MediaWikiServices::getInstance()->getWatchedItemStore();
 	}
 
 	public function doesWrites() {
@@ -63,6 +67,7 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 		$this->addHelpLink( 'Help:Watching pages' );
 		$output->addModuleStyles( [ 'mediawiki.special' ] );
 		$output->addModules( [
+			'mediawiki.special.recentchanges',
 			'mediawiki.special.watchlist',
 		] );
 
@@ -102,15 +107,17 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 
 		if ( $this->isStructuredFilterUiEnabled() ) {
 			$output->addModuleStyles( [ 'mediawiki.rcfilters.highlightCircles.seenunseen.styles' ] );
-
-			$output->addJsConfigVars(
-				'wgStructuredChangeFiltersEditWatchlistUrl',
-				SpecialPage::getTitleFor( 'EditWatchlist' )->getLocalURL()
-			);
 		}
 	}
 
-	public static function checkStructuredFilterUiEnabled( Config $config, User $user ) {
+	/**
+	 * @inheritDoc
+	 */
+	public static function checkStructuredFilterUiEnabled( $user ) {
+		if ( $user instanceof Config ) {
+			wfDeprecated( __METHOD__ . ' with Config argument', '1.34' );
+			$user = func_get_arg( 1 );
+		}
 		return !$user->getOption( 'wlenhancedfilters-disable' );
 	}
 
@@ -141,6 +148,7 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 
 	/**
 	 * @inheritDoc
+	 * @suppress PhanUndeclaredMethod
 	 */
 	protected function registerFilters() {
 		parent::registerFilters();
@@ -191,10 +199,8 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 					'label' => 'rcfilters-filter-watchlistactivity-unseen-label',
 					'description' => 'rcfilters-filter-watchlistactivity-unseen-description',
 					'cssClassSuffix' => 'watchedunseen',
-					'isRowApplicableCallable' => function ( $ctx, $rc ) {
-						$changeTs = $rc->getAttribute( 'rc_timestamp' );
-						$lastVisitTs = $rc->getAttribute( 'wl_notificationtimestamp' );
-						return $lastVisitTs !== null && $changeTs >= $lastVisitTs;
+					'isRowApplicableCallable' => function ( $ctx, RecentChange $rc ) {
+						return !$this->isChangeEffectivelySeen( $rc );
 					},
 				],
 				[
@@ -202,16 +208,23 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 					'label' => 'rcfilters-filter-watchlistactivity-seen-label',
 					'description' => 'rcfilters-filter-watchlistactivity-seen-description',
 					'cssClassSuffix' => 'watchedseen',
-					'isRowApplicableCallable' => function ( $ctx, $rc ) {
-						$changeTs = $rc->getAttribute( 'rc_timestamp' );
-						$lastVisitTs = $rc->getAttribute( 'wl_notificationtimestamp' );
-						return $lastVisitTs === null || $changeTs < $lastVisitTs;
+					'isRowApplicableCallable' => function ( $ctx, RecentChange $rc ) {
+						return $this->isChangeEffectivelySeen( $rc );
 					}
 				],
 			],
 			'default' => ChangesListStringOptionsFilterGroup::NONE,
-			'queryCallable' => function ( $specialPageClassName, $context, $dbr,
-					&$tables, &$fields, &$conds, &$query_options, &$join_conds, $selectedValues ) {
+			'queryCallable' => function (
+				$specialPageClassName,
+				$context,
+				IDatabase $dbr,
+				&$tables,
+				&$fields,
+				&$conds,
+				&$query_options,
+				&$join_conds,
+				$selectedValues
+			) {
 				if ( $selectedValues === [ 'seen' ] ) {
 					$conds[] = $dbr->makeList( [
 						'wl_notificationtimestamp IS NULL',
@@ -348,7 +361,7 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 		$join_conds = array_merge(
 			[
 				'watchlist' => [
-					'INNER JOIN',
+					'JOIN',
 					[
 						'wl_user' => $user->getId(),
 						'wl_namespace=rc_namespace',
@@ -368,9 +381,10 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 
 		// Log entries with DELETED_ACTION must not show up unless the user has
 		// the necessary rights.
-		if ( !$user->isAllowed( 'deletedhistory' ) ) {
+		$permissionManager = MediaWikiServices::getInstance()->getPermissionManager();
+		if ( !$permissionManager->userHasRight( $user, 'deletedhistory' ) ) {
 			$bitmask = LogPage::DELETED_ACTION;
-		} elseif ( !$user->isAllowedAny( 'suppressrevision', 'viewsuppressed' ) ) {
+		} elseif ( !$permissionManager->userHasAnyRight( $user, 'suppressrevision', 'viewsuppressed' ) ) {
 			$bitmask = LogPage::DELETED_ACTION | LogPage::DELETED_RESTRICTED;
 		} else {
 			$bitmask = 0;
@@ -463,7 +477,7 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 		$services = MediaWikiServices::getInstance();
 
 		# Show a message about replica DB lag, if applicable
-		$lag = $services->getDBLoadBalancer()->safeGetLag( $dbr );
+		$lag = $dbr->getSessionLagStatus()['lag'];
 		if ( $lag > 0 ) {
 			$output->showLagWarning( $lag );
 		}
@@ -530,9 +544,9 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 			$rc->counter = $counter++;
 
 			if ( $this->getConfig()->get( 'ShowUpdatedMarker' ) ) {
-				$updated = $obj->wl_notificationtimestamp;
+				$unseen = !$this->isChangeEffectivelySeen( $rc );
 			} else {
-				$updated = false;
+				$unseen = false;
 			}
 
 			if ( isset( $watchedItemStore ) ) {
@@ -542,7 +556,10 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 				$rc->numberofWatchingusers = 0;
 			}
 
-			$changeLine = $list->recentChangesLine( $rc, $updated, $counter );
+			// XXX: this treats pages with no unseen changes as "not on the watchlist" since
+			// everything is on the watchlist and it is an easy way to make pages with unseen
+			// changes appear bold. @TODO: clean this up.
+			$changeLine = $list->recentChangesLine( $rc, $unseen, $counter );
 			if ( $changeLine !== false ) {
 				$s .= $changeLine;
 			}
@@ -594,11 +611,12 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 
 		$lang = $this->getLanguage();
 		$timestamp = wfTimestampNow();
+		$now = $lang->userTimeAndDate( $timestamp, $user );
 		$wlInfo = Html::rawElement(
 			'span',
 			[
 				'class' => 'wlinfo',
-				'data-params' => json_encode( [ 'from' => $timestamp ] ),
+				'data-params' => json_encode( [ 'from' => $timestamp, 'fromFormatted' => $now ] ),
 			],
 			$this->msg( 'wlnote' )->numParams( $numRows, round( $opts['days'] * 24 ) )->params(
 				$lang->userDate( $timestamp, $user ), $lang->userTime( $timestamp, $user )
@@ -622,7 +640,7 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 				$filter->getShowHide(),
 				$filterName,
 				$opts[ $filterName ],
-				$filter->isFeatureAvailableOnStructuredUi( $this )
+				$filter->isFeatureAvailableOnStructuredUi()
 			);
 		}
 
@@ -660,14 +678,15 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 				'class' => 'namespaceselector',
 			]
 		) . "\n";
-		$namespaceForm .= '<span class="mw-input-with-label">' . Xml::checkLabel(
+		$hidden = $opts['namespace'] === '' ? ' mw-input-hidden' : '';
+		$namespaceForm .= '<span class="mw-input-with-label' . $hidden . '">' . Xml::checkLabel(
 			$this->msg( 'invert' )->text(),
 			'invert',
 			'nsinvert',
 			$opts['invert'],
 			[ 'title' => $this->msg( 'tooltip-invert' )->text() ]
 		) . "</span>\n";
-		$namespaceForm .= '<span class="mw-input-with-label">' . Xml::checkLabel(
+		$namespaceForm .= '<span class="mw-input-with-label' . $hidden . '">' . Xml::checkLabel(
 			$this->msg( 'namespace_association' )->text(),
 			'associated',
 			'nsassociated',
@@ -694,15 +713,16 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 		if ( $this->isStructuredFilterUiEnabled() ) {
 			$rcfilterContainer = Html::element(
 				'div',
-				[ 'class' => 'rcfilters-container' ]
+				// TODO: Remove deprecated rcfilters-container class
+				[ 'class' => 'rcfilters-container mw-rcfilters-container' ]
 			);
 
 			$loadingContainer = Html::rawElement(
 				'div',
-				[ 'class' => 'rcfilters-spinner' ],
+				[ 'class' => 'mw-rcfilters-spinner' ],
 				Html::element(
 					'div',
-					[ 'class' => 'rcfilters-spinner-bounce' ]
+					[ 'class' => 'mw-rcfilters-spinner-bounce' ]
 				)
 			);
 
@@ -710,7 +730,8 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 			$this->getOutput()->addHTML(
 				Html::rawElement(
 					'div',
-					[ 'class' => 'rcfilters-head' ],
+					// TODO: Remove deprecated rcfilters-head class
+					[ 'class' => 'rcfilters-head mw-rcfilters-head' ],
 					$rcfilterContainer . $form
 				)
 			);
@@ -842,5 +863,27 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 		$store = MediaWikiServices::getInstance()->getWatchedItemStore();
 		$count = $store->countWatchedItems( $this->getUser() );
 		return floor( $count / 2 );
+	}
+
+	/**
+	 * @param RecentChange $rc
+	 * @return bool User viewed the revision or a newer one
+	 */
+	protected function isChangeEffectivelySeen( RecentChange $rc ) {
+		$firstUnseen = $this->getLatestNotificationTimestamp( $rc );
+
+		return ( $firstUnseen === null || $firstUnseen > $rc->getAttribute( 'rc_timestamp' ) );
+	}
+
+	/**
+	 * @param RecentChange $rc
+	 * @return string|null TS_MW timestamp of first unseen revision or null if there isn't one
+	 */
+	private function getLatestNotificationTimestamp( RecentChange $rc ) {
+		return $this->watchStore->getLatestNotificationTimestamp(
+			$rc->getAttribute( 'wl_notificationtimestamp' ),
+			$this->getUser(),
+			$rc->getTitle()
+		);
 	}
 }

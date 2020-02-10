@@ -18,9 +18,7 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @package MediaWiki
  * @author Lupo
- * @since 1.20
  */
 
 // This file doesn't run as part of MediaWiki
@@ -77,8 +75,8 @@ mw.loader.implement( 'testUrlOrder.b', function () {} );
 
 $response = '';
 
-// Does not support the full behaviour of ResourceLoaderContext::expandModuleNames(),
-// Only supports dotless module names joined by comma,
+// Does not support the full behaviour of the real load.php.
+// This only supports dotless module names joined by comma,
 // with the exception of the hardcoded cases for testUrl*.
 if ( isset( $_GET['modules'] ) ) {
 	if ( $_GET['modules'] === 'testUrlInc,testUrlIncDump|testUrlInc.a,b' ) {

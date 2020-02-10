@@ -121,7 +121,7 @@ class AutoLoader {
 	 * Get a mapping of namespace => file path
 	 * The namespaces should follow the PSR-4 standard for autoloading
 	 *
-	 * @see <http://www.php-fig.org/psr/psr-4/>
+	 * @see <https://www.php-fig.org/psr/psr-4/>
 	 * @private Only public for usage in AutoloadGenerator
 	 * @codeCoverageIgnore
 	 * @since 1.31
@@ -134,13 +134,19 @@ class AutoLoader {
 			'MediaWiki\\Edit\\' => __DIR__ . '/edit/',
 			'MediaWiki\\EditPage\\' => __DIR__ . '/editpage/',
 			'MediaWiki\\Linker\\' => __DIR__ . '/linker/',
+			'MediaWiki\\Message\\' => __DIR__ . '/Message',
+			'MediaWiki\\ParamValidator\\' => __DIR__ . '/ParamValidator/',
+			'MediaWiki\\Permissions\\' => __DIR__ . '/Permissions/',
 			'MediaWiki\\Preferences\\' => __DIR__ . '/preferences/',
+			'MediaWiki\\Rest\\' => __DIR__ . '/Rest/',
 			'MediaWiki\\Revision\\' => __DIR__ . '/Revision/',
 			'MediaWiki\\Session\\' => __DIR__ . '/session/',
 			'MediaWiki\\Shell\\' => __DIR__ . '/shell/',
 			'MediaWiki\\Sparql\\' => __DIR__ . '/sparql/',
 			'MediaWiki\\Storage\\' => __DIR__ . '/Storage/',
 			'MediaWiki\\Tidy\\' => __DIR__ . '/tidy/',
+			'Wikimedia\\Message\\' => __DIR__ . '/libs/Message/',
+			'Wikimedia\\ParamValidator\\' => __DIR__ . '/libs/ParamValidator/',
 			'Wikimedia\\Services\\' => __DIR__ . '/libs/services/',
 		];
 	}

@@ -32,7 +32,7 @@
  * @ingroup Parser
  */
 class MagicWordFactory {
-	/**#@-*/
+	/** #@- */
 
 	/** @var bool */
 	private $mVariableIDsInitialised = false;
@@ -196,7 +196,7 @@ class MagicWordFactory {
 	/** @var Language */
 	private $contLang;
 
-	/**#@-*/
+	/** #@- */
 
 	/**
 	 * @param Language $contLang Content language
@@ -267,7 +267,7 @@ class MagicWordFactory {
 	 * @return MagicWordArray
 	 */
 	public function getDoubleUnderscoreArray() {
-		if ( is_null( $this->mDoubleUnderscoreArray ) ) {
+		if ( $this->mDoubleUnderscoreArray === null ) {
 			Hooks::run( 'GetDoubleUnderscoreIDs', [ &$this->mDoubleUnderscoreIDs ] );
 			$this->mDoubleUnderscoreArray = $this->newArray( $this->mDoubleUnderscoreIDs );
 		}

@@ -54,7 +54,7 @@ abstract class WikiPageDbTestBase extends MediaWikiLangTestCase {
 	 */
 	abstract protected function getMcrTablesToReset();
 
-	protected function setUp() {
+	protected function setUp() : void {
 		parent::setUp();
 
 		$this->tablesUsed += $this->getMcrTablesToReset();
@@ -65,13 +65,11 @@ abstract class WikiPageDbTestBase extends MediaWikiLangTestCase {
 			$this->getMcrMigrationStage()
 		);
 		$this->pagesToDelete = [];
-
-		$this->overrideMwServices();
 	}
 
-	protected function tearDown() {
+	protected function tearDown() : void {
 		foreach ( $this->pagesToDelete as $p ) {
-			/* @var $p WikiPage */
+			/* @var WikiPage $p */
 
 			try {
 				if ( $p->exists() ) {
@@ -108,6 +106,7 @@ abstract class WikiPageDbTestBase extends MediaWikiLangTestCase {
 	 * @param string|Title|WikiPage $page
 	 * @param string|Content|Content[] $content
 	 * @param int|null $model
+	 * @param User|null $user
 	 *
 	 * @return WikiPage
 	 */
@@ -172,8 +171,8 @@ abstract class WikiPageDbTestBase extends MediaWikiLangTestCase {
 			$edit->popts,
 			"pops"
 		);
-		$this->assertContains( '</a>', $edit->output->getText(), "output" );
-		$this->assertContains(
+		$this->assertStringContainsString( '</a>', $edit->output->getText(), "output" );
+		$this->assertStringContainsString(
 			'consetetur sadipscing elitr',
 			$edit->output->getText(),
 			"output"
@@ -195,11 +194,11 @@ abstract class WikiPageDbTestBase extends MediaWikiLangTestCase {
 		$rev = $page->getRevision();
 		$edit2 = $page->prepareContentForEdit( $content2, null, $user, null, false );
 		$this->assertPreparedEditNotEquals( $edit, $edit2 );
-		$this->assertContains( 'At vero eos', $edit2->pstContent->serialize(), "content" );
+		$this->assertStringContainsString( 'At vero eos', $edit2->pstContent->serialize(), "content" );
 
 		// Check pre-safe transform
-		$this->assertContains( '[[gubergren]]', $edit2->pstContent->serialize() );
-		$this->assertNotContains( '~~~~', $edit2->pstContent->serialize() );
+		$this->assertStringContainsString( '[[gubergren]]', $edit2->pstContent->serialize() );
+		$this->assertStringNotContainsString( '~~~~', $edit2->pstContent->serialize() );
 
 		$edit3 = $page->prepareContentForEdit( $content2, null, $sysop, null, false );
 		$this->assertPreparedEditNotEquals( $edit2, $edit3 );
@@ -360,8 +359,8 @@ abstract class WikiPageDbTestBase extends MediaWikiLangTestCase {
 
 		$retrieved = $page->getContent();
 		$newText = $retrieved->serialize();
-		$this->assertContains( '[[gubergren]]', $newText, 'New text must replace old text.' );
-		$this->assertNotContains( '~~~~', $newText, 'PST must substitute signature.' );
+		$this->assertStringContainsString( '[[gubergren]]', $newText, 'New text must replace old text.' );
+		$this->assertStringNotContainsString( '~~~~', $newText, 'PST must substitute signature.' );
 
 		# ------------------------
 		$dbr = wfGetDB( DB_REPLICA );
@@ -441,7 +440,7 @@ abstract class WikiPageDbTestBase extends MediaWikiLangTestCase {
 		$n = $res->numRows();
 		$res->free();
 
-		$this->assertEquals( 0, $n, 'pagelinks should contain no more links from the page' );
+		$this->assertSame( 0, $n, 'pagelinks should contain no more links from the page' );
 	}
 
 	/**
@@ -483,7 +482,7 @@ abstract class WikiPageDbTestBase extends MediaWikiLangTestCase {
 				'delete',
 				'delete',
 				'testing user 0 deletion',
-				'0',
+				null,
 				'127.0.0.1',
 				(string)$page->getTitle()->getNamespace(),
 				$page->getTitle()->getDBkey(),
@@ -639,7 +638,7 @@ abstract class WikiPageDbTestBase extends MediaWikiLangTestCase {
 		$n = $res->numRows();
 		$res->free();
 
-		$this->assertEquals( 0, $n, 'pagelinks should contain no more links from the page' );
+		$this->assertSame( 0, $n, 'pagelinks should contain no more links from the page' );
 	}
 
 	/**
@@ -737,7 +736,7 @@ abstract class WikiPageDbTestBase extends MediaWikiLangTestCase {
 		$rev = $page->getRevision();
 
 		$this->assertEquals( $page->getLatest(), $rev->getId() );
-		$this->assertEquals( "some text", $rev->getContent()->getNativeData() );
+		$this->assertEquals( "some text", $rev->getContent()->getText() );
 	}
 
 	/**
@@ -753,7 +752,7 @@ abstract class WikiPageDbTestBase extends MediaWikiLangTestCase {
 		$this->createPage( $page, "some text", CONTENT_MODEL_WIKITEXT );
 
 		$content = $page->getContent();
-		$this->assertEquals( "some text", $content->getNativeData() );
+		$this->assertEquals( "some text", $content->getText() );
 	}
 
 	/**
@@ -851,7 +850,7 @@ abstract class WikiPageDbTestBase extends MediaWikiLangTestCase {
 
 		# now, test the actual redirect
 		$t = $page->getRedirectTarget();
-		$this->assertEquals( $target, is_null( $t ) ? null : $t->getFullText() );
+		$this->assertEquals( $target, $t ? $t->getFullText() : null );
 	}
 
 	/**
@@ -860,7 +859,7 @@ abstract class WikiPageDbTestBase extends MediaWikiLangTestCase {
 	 */
 	public function testIsRedirect( $title, $model, $text, $target ) {
 		$page = $this->createPage( $title, $text, $model );
-		$this->assertEquals( !is_null( $target ), $page->isRedirect() );
+		$this->assertEquals( $target !== null, $page->isRedirect() );
 	}
 
 	public function provideIsCountable() {
@@ -1007,8 +1006,6 @@ abstract class WikiPageDbTestBase extends MediaWikiLangTestCase {
 		$text = preg_replace( '!\s*(</p>|</div>)!sm', '\1', $text ); # don't let tidy confuse us
 
 		$this->assertEquals( $expectedHtml, $text );
-
-		return $po;
 	}
 
 	/**
@@ -1109,9 +1106,10 @@ more stuff
 		$page = $this->createPage( $title, $text, $model );
 
 		$content = ContentHandler::makeContent( $with, $page->getTitle(), $page->getContentModel() );
+		/** @var TextContent $c */
 		$c = $page->replaceSectionContent( $section, $content, $sectionTitle );
 
-		$this->assertEquals( $expected, is_null( $c ) ? null : trim( $c->getNativeData() ) );
+		$this->assertEquals( $expected, $c ? trim( $c->getText() ) : null );
 	}
 
 	/**
@@ -1125,9 +1123,10 @@ more stuff
 		$baseRevId = $page->getLatest();
 
 		$content = ContentHandler::makeContent( $with, $page->getTitle(), $page->getContentModel() );
+		/** @var TextContent $c */
 		$c = $page->replaceSectionAtRev( $section, $content, $sectionTitle, $baseRevId );
 
-		$this->assertEquals( $expected, is_null( $c ) ? null : trim( $c->getNativeData() ) );
+		$this->assertEquals( $expected, $c ? trim( $c->getText() ) : null );
 	}
 
 	/**
@@ -1176,9 +1175,6 @@ more stuff
 	 * @covers WikiPage::commitRollback
 	 */
 	public function testDoRollback() {
-		// FIXME: fails under postgres
-		$this->markTestSkippedIfDbType( 'postgres' );
-
 		$admin = $this->getTestSysop()->getUser();
 		$user1 = $this->getTestUser()->getUser();
 		// Use the confirmed group for user2 to make sure the user is different
@@ -1242,7 +1238,7 @@ more stuff
 		$page = new WikiPage( $page->getTitle() );
 		$this->assertEquals( $rev2->getSha1(), $page->getRevision()->getSha1(),
 			"rollback did not revert to the correct revision" );
-		$this->assertEquals( "one\n\ntwo", $page->getContent()->getNativeData() );
+		$this->assertEquals( "one\n\ntwo", $page->getContent()->getText() );
 
 		$rc = MediaWikiServices::getInstance()->getRevisionStore()->getRecentChange(
 			$page->getRevision()->getRevisionRecord()
@@ -1332,7 +1328,7 @@ more stuff
 		$page = new WikiPage( $page->getTitle() );
 		$this->assertEquals( $rev1->getSha1(), $page->getRevision()->getSha1(),
 			"rollback did not revert to the correct revision" );
-		$this->assertEquals( "one", $page->getContent()->getNativeData() );
+		$this->assertEquals( "one", $page->getContent()->getText() );
 	}
 
 	/**
@@ -1372,6 +1368,7 @@ more stuff
 
 		// Now, try the rollback
 		$admin->addGroup( 'sysop' ); // Make the test user a sysop
+		MediaWikiServices::getInstance()->getPermissionManager()->invalidateUsersRightsCache();
 		$token = $admin->getEditToken( 'rollback' );
 		$errors = $page->doRollback(
 			$secondUser->getName(),
@@ -1431,7 +1428,13 @@ more stuff
 							. " nonumy eirmod tempor invidunt ut labore et dolore magna "
 							. "aliquyam erat, sed diam voluptua. At vero eos et accusam "
 							. "et justo duo dolores et ea rebum. Stet clita kasd gubergren, "
-							. "no sea  takimata sanctus est Lorem ipsum dolor sit amet.'",
+							. "no sea  takimata sanctus est Lorem ipsum dolor sit amet. "
+							. " this here is some more filler content added to try and "
+							. "reach the maximum automatic summary length so that this is"
+							. " truncated ipot sodit colrad ut ad olve amit basul dat"
+							. "Dorbet romt crobit trop bri. DannyS712 put me here lor pe"
+							. " ode quob zot bozro see also T22281 for background pol sup"
+							. "Lorem ipsum dolor sit amet'",
 						null
 					],
 				],
@@ -1481,7 +1484,7 @@ more stuff
 
 		$reason = $page->getAutoDeleteReason( $hasHistory );
 
-		if ( is_bool( $expectedResult ) || is_null( $expectedResult ) ) {
+		if ( is_bool( $expectedResult ) || $expectedResult === null ) {
 			$this->assertEquals( $expectedResult, $reason );
 		} else {
 			$this->assertTrue( (bool)preg_match( $expectedResult, $reason ),
@@ -1570,29 +1573,29 @@ more stuff
 		$page->updateCategoryCounts( [ 'A' ], [], 0 );
 
 		$this->assertEquals( 1, Category::newFromName( 'A' )->getPageCount() );
-		$this->assertEquals( 0, Category::newFromName( 'B' )->getPageCount() );
-		$this->assertEquals( 0, Category::newFromName( 'C' )->getPageCount() );
+		$this->assertSame( 0, Category::newFromName( 'B' )->getPageCount() );
+		$this->assertSame( 0, Category::newFromName( 'C' )->getPageCount() );
 
 		// Add a new category
 		$page->updateCategoryCounts( [ 'B' ], [], 0 );
 
 		$this->assertEquals( 1, Category::newFromName( 'A' )->getPageCount() );
 		$this->assertEquals( 1, Category::newFromName( 'B' )->getPageCount() );
-		$this->assertEquals( 0, Category::newFromName( 'C' )->getPageCount() );
+		$this->assertSame( 0, Category::newFromName( 'C' )->getPageCount() );
 
 		// Add and remove a category
 		$page->updateCategoryCounts( [ 'C' ], [ 'A' ], 0 );
 
-		$this->assertEquals( 0, Category::newFromName( 'A' )->getPageCount() );
+		$this->assertSame( 0, Category::newFromName( 'A' )->getPageCount() );
 		$this->assertEquals( 1, Category::newFromName( 'B' )->getPageCount() );
 		$this->assertEquals( 1, Category::newFromName( 'C' )->getPageCount() );
 	}
 
 	public function provideUpdateRedirectOn() {
 		yield [ '#REDIRECT [[Foo]]', true, null, true, true, 0 ];
-		yield [ '#REDIRECT [[Foo]]', true, 'Foo', true, false, 1 ];
+		yield [ '#REDIRECT [[Foo]]', true, 'Foo', true, true, 1 ];
 		yield [ 'SomeText', false, null, false, true, 0 ];
-		yield [ 'SomeText', false, 'Foo', false, false, 1 ];
+		yield [ 'SomeText', false, 'Foo', false, true, 1 ];
 	}
 
 	/**
@@ -1817,8 +1820,8 @@ more stuff
 		$fetchedPage = WikiPage::newFromID( $createdPage->getId() );
 		$this->assertSame( $createdPage->getId(), $fetchedPage->getId() );
 		$this->assertEquals(
-			$createdPage->getContent()->getNativeData(),
-			$fetchedPage->getContent()->getNativeData()
+			$createdPage->getContent()->getText(),
+			$fetchedPage->getContent()->getText()
 		);
 	}
 
@@ -1862,7 +1865,7 @@ more stuff
 	 * @param array $expiry
 	 * @param bool $cascade
 	 * @param string $reason
-	 * @param bool|null $user true if the test sysop should be used, or null
+	 * @param true|null $user true if the test sysop should be used, or null
 	 * @param string $expectedComment
 	 */
 	public function testInsertProtectNullRevision(
@@ -1878,7 +1881,7 @@ more stuff
 
 		$page = $this->createPage( __METHOD__, 'Goat' );
 
-		$user = $user === null ? $user : $this->getTestSysop()->getUser();
+		$user = $user ? $this->getTestSysop()->getUser() : null;
 
 		$result = $page->insertProtectNullRevision(
 			$revCommentMsg,
@@ -2030,7 +2033,7 @@ more stuff
 		$result = $page->insertOn( $this->db );
 		$endTimeStamp = wfTimestampNow();
 
-		$this->assertInternalType( 'int', $result );
+		$this->assertIsInt( $result );
 		$this->assertTrue( $result > 0 );
 
 		$condition = [ 'page_id' => $result ];
@@ -2180,7 +2183,7 @@ more stuff
 		$allRestrictions = $page->getTitle()->getAllRestrictions();
 
 		$this->assertTrue( $status->isGood() );
-		$this->assertInternalType( 'int', $logId );
+		$this->assertIsInt( $logId );
 		$this->assertSame( $expectedRestrictions, $allRestrictions );
 		foreach ( $expectedRestrictionExpiries as $key => $value ) {
 			$this->assertSame( $value, $page->getTitle()->getRestrictionExpiry( $key ) );
@@ -2258,7 +2261,7 @@ more stuff
 
 		// The first entry should have a logId as it did something
 		$this->assertTrue( $status->isGood() );
-		$this->assertInternalType( 'int', $status->getValue() );
+		$this->assertIsInt( $status->getValue() );
 
 		$status = $page->doUpdateRestrictions(
 			$limit,
@@ -2292,7 +2295,7 @@ more stuff
 			[]
 		);
 		$this->assertTrue( $status->isGood() );
-		$this->assertInternalType( 'int', $status->getValue() );
+		$this->assertIsInt( $status->getValue() );
 		$this->assertSelect(
 			'logging',
 			[ 'log_type', 'log_action' ],
@@ -2310,7 +2313,7 @@ more stuff
 			[]
 		);
 		$this->assertTrue( $status->isGood() );
-		$this->assertInternalType( 'int', $status->getValue() );
+		$this->assertIsInt( $status->getValue() );
 		$this->assertSelect(
 			'logging',
 			[ 'log_type', 'log_action' ],
@@ -2328,7 +2331,7 @@ more stuff
 			[]
 		);
 		$this->assertTrue( $status->isGood() );
-		$this->assertInternalType( 'int', $status->getValue() );
+		$this->assertIsInt( $status->getValue() );
 		$this->assertSelect(
 			'logging',
 			[ 'log_type', 'log_action' ],

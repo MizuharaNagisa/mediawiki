@@ -26,6 +26,9 @@
  * @author Daniel Kinzler
  */
 
+use MediaWiki\Content\IContentHandlerFactory;
+use MediaWiki\MediaWikiServices;
+
 /**
  * Base implementation for content objects.
  *
@@ -38,7 +41,7 @@ abstract class AbstractContent implements Content {
 	 *
 	 * @since 1.21
 	 *
-	 * @var string $model_id
+	 * @var string
 	 */
 	protected $model_id;
 
@@ -86,7 +89,14 @@ abstract class AbstractContent implements Content {
 	 * @return ContentHandler
 	 */
 	public function getContentHandler() {
-		return ContentHandler::getForContent( $this );
+		return $this->getContentHandlerFactory()->getContentHandler( $this->getModel() );
+	}
+
+	/**
+	 * @return IContentHandlerFactory
+	 */
+	protected function getContentHandlerFactory(): IContentHandlerFactory {
+		return MediaWikiServices::getInstance()->getContentHandlerFactory();
 	}
 
 	/**
@@ -200,7 +210,7 @@ abstract class AbstractContent implements Content {
 	 * @see Content::equals
 	 */
 	public function equals( Content $that = null ) {
-		if ( is_null( $that ) ) {
+		if ( $that === null ) {
 			return false;
 		}
 
@@ -291,7 +301,7 @@ abstract class AbstractContent implements Content {
 	public function getRedirectChain() {
 		global $wgMaxRedirects;
 		$title = $this->getRedirectTarget();
-		if ( is_null( $title ) ) {
+		if ( $title === null ) {
 			return null;
 		}
 		// recursive check to follow double redirects
@@ -529,7 +539,7 @@ abstract class AbstractContent implements Content {
 	 * @since 1.24
 	 *
 	 * @param Title $title Context title for parsing
-	 * @param int|null $revId Revision ID (for {{REVISIONID}})
+	 * @param int|null $revId Revision ID being rendered
 	 * @param ParserOptions|null $options
 	 * @param bool $generateHtml Whether or not to generate HTML
 	 *
@@ -575,7 +585,8 @@ abstract class AbstractContent implements Content {
 	 * @since 1.24
 	 *
 	 * @param Title $title Context title for parsing
-	 * @param int|null $revId Revision ID (for {{REVISIONID}})
+	 * @param int|null $revId ID of the revision being rendered.
+	 *  See Parser::parse() for the ramifications.
 	 * @param ParserOptions $options
 	 * @param bool $generateHtml Whether or not to generate HTML
 	 * @param ParserOutput &$output The output object to fill (reference).

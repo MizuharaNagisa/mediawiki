@@ -2,6 +2,8 @@
  * Diff rendering
  */
 
+/* stylelint-disable selector-class-pattern */
+
 .diff {
 	border: 0;
 	border-spacing: 4px;
@@ -55,21 +57,38 @@ td.diff-marker {
 	line-height: 1.2;
 }
 
+.mw-diff-inline-deleted del,
+.mw-diff-inline-added ins,
+.mw-diff-inline-changed ins,
+.mw-diff-inline-changed del {
+	display: inline-block;
+	text-decoration: none;
+}
+
 .diff-addedline,
 .diff-deletedline,
 .diff-context {
 	font-size: 88%;
 	line-height: 1.6;
 	vertical-align: top;
-	white-space: -moz-pre-wrap;
 	white-space: pre-wrap;
 	border-style: solid;
 	border-width: 1px 1px 1px 4px;
 	border-radius: 0.33em;
 }
 
+.mw-diff-inline-added ins,
+.mw-diff-inline-changed ins {
+	background: #a3d3ff;
+}
+
 .diff-addedline {
 	border-color: #a3d3ff;
+}
+
+.mw-diff-inline-deleted del,
+.mw-diff-inline-changed del {
+	background: #ffe49c;
 }
 
 .diff-deletedline {
@@ -165,4 +184,11 @@ td.diff-marker {
 .mw-diff-movedpara-right:after,
 .rtl .mw-diff-movedpara-left:after {
 	content: '↩';
+}
+
+#mw-inlinediff-header #mw-diff-otitle1,
+#mw-inlinediff-header #mw-diff-otitle2,
+#mw-inlinediff-header #mw-diff-otitle3,
+#mw-inlinediff-header #mw-diff-otitle5 {
+	display: none;
 }

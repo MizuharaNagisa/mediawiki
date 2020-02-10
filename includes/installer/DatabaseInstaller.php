@@ -18,24 +18,26 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup Deployment
+ * @ingroup Installer
  */
-use Wikimedia\Rdbms\LBFactorySingle;
+
+use MediaWiki\MediaWikiServices;
 use Wikimedia\Rdbms\Database;
+use Wikimedia\Rdbms\DBConnectionError;
+use Wikimedia\Rdbms\DBExpectedError;
 use Wikimedia\Rdbms\IDatabase;
+use Wikimedia\Rdbms\LBFactorySingle;
 
 /**
  * Base class for DBMS-specific installation helper classes.
  *
- * @ingroup Deployment
+ * @ingroup Installer
  * @since 1.17
  */
 abstract class DatabaseInstaller {
 
 	/**
 	 * The Installer object.
-	 *
-	 * @todo Naming this parent is confusing, 'installer' would be clearer.
 	 *
 	 * @var WebInstaller
 	 */
@@ -49,7 +51,7 @@ abstract class DatabaseInstaller {
 	/**
 	 * @var string Set by subclasses
 	 */
-	protected static $notMiniumumVerisonMessage;
+	protected static $notMinimumVersionMessage;
 
 	/**
 	 * The database connection.
@@ -82,7 +84,7 @@ abstract class DatabaseInstaller {
 	public static function meetsMinimumRequirement( $serverVersion ) {
 		if ( version_compare( $serverVersion, static::$minimumVersion ) < 0 ) {
 			return Status::newFatal(
-				static::$notMiniumumVerisonMessage, static::$minimumVersion, $serverVersion
+				static::$notMinimumVersionMessage, static::$minimumVersion, $serverVersion
 			);
 		}
 
@@ -133,7 +135,7 @@ abstract class DatabaseInstaller {
 	 * $this->parent can be assumed to be a WebInstaller.
 	 * If the DB type has no settings beyond those already configured with
 	 * getConnectForm(), this should return false.
-	 * @return bool
+	 * @return string|bool
 	 */
 	public function getSettingsForm() {
 		return false;
@@ -175,6 +177,7 @@ abstract class DatabaseInstaller {
 	 * This will return a cached connection if one is available.
 	 *
 	 * @return Status
+	 * @suppress PhanUndeclaredMethod
 	 */
 	public function getConnection() {
 		if ( $this->db ) {
@@ -339,6 +342,7 @@ abstract class DatabaseInstaller {
 	public function setupSchemaVars() {
 		$status = $this->getConnection();
 		if ( $status->isOK() ) {
+			// @phan-suppress-next-line PhanUndeclaredMethod
 			$status->value->setSchemaVars( $this->getSchemaVars() );
 		} else {
 			$msg = __METHOD__ . ': unexpected error while establishing'
@@ -359,8 +363,8 @@ abstract class DatabaseInstaller {
 			throw new MWException( __METHOD__ . ': unexpected DB connection error' );
 		}
 
-		\MediaWiki\MediaWikiServices::resetGlobalInstance();
-		$services = \MediaWiki\MediaWikiServices::getInstance();
+		MediaWikiServices::resetGlobalInstance();
+		$services = MediaWikiServices::getInstance();
 
 		$connection = $status->value;
 		$services->redefineService( 'DBLoadBalancerFactory', function () use ( $connection ) {
@@ -371,6 +375,7 @@ abstract class DatabaseInstaller {
 	/**
 	 * Perform database upgrades
 	 *
+	 * @suppress SecurityCheck-XSS Escaping provided by $this->outputHandler
 	 * @return bool
 	 */
 	public function doUpgrade() {
@@ -444,8 +449,7 @@ abstract class DatabaseInstaller {
 	 * @return string
 	 */
 	public function getReadableName() {
-		// Messages: config-type-mysql, config-type-postgres, config-type-sqlite,
-		// config-type-oracle
+		// Messages: config-type-mysql, config-type-postgres, config-type-sqlite
 		return wfMessage( 'config-type-' . $this->getName() )->text();
 	}
 
@@ -620,7 +624,12 @@ abstract class DatabaseInstaller {
 			return false;
 		}
 
-		if ( !$this->db->selectDB( $this->getVar( 'wgDBname' ) ) ) {
+		try {
+			$this->db->selectDB( $this->getVar( 'wgDBname' ) );
+		} catch ( DBConnectionError $e ) {
+			// Don't catch DBConnectionError
+			throw $e;
+		} catch ( DBExpectedError $e ) {
 			return false;
 		}
 
@@ -681,7 +690,7 @@ abstract class DatabaseInstaller {
 			$this->getPasswordBox( 'wgDBpassword', 'config-db-password' ) .
 			$this->parent->getHelpBox( 'config-db-web-help' );
 		if ( $noCreateMsg ) {
-			$s .= $this->parent->getWarningBox( wfMessage( $noCreateMsg )->plain() );
+			$s .= Html::warningBox( wfMessage( $noCreateMsg )->plain(), 'config-warning-box' );
 		} else {
 			$s .= $this->getCheckBox( '_CreateDBAccount', 'config-db-web-create' );
 		}

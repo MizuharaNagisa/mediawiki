@@ -64,13 +64,14 @@ class UserPasswordPolicy {
 	}
 
 	/**
-	 * Check if a passwords meets the effective password policy for a User.
-	 * @param User $user who's policy we are checking
+	 * Check if a password meets the effective password policy for a User.
+	 * @param User $user whose policy we are checking
 	 * @param string $password the password to check
 	 * @return Status error to indicate the password didn't meet the policy, or fatal to
 	 *   indicate the user shouldn't be allowed to login. The status value will be an array,
 	 *   potentially with the following keys:
 	 *   - forceChange: do not allow the user to login without changing the password if invalid.
+	 *   - suggestChangeOnLogin: prompt for a password change on login if the password is invalid.
 	 */
 	public function checkUserPassword( User $user, $password ) {
 		$effectivePolicy = $this->getPoliciesForUser( $user );
@@ -83,16 +84,17 @@ class UserPasswordPolicy {
 	}
 
 	/**
-	 * Check if a passwords meets the effective password policy for a User, using a set
+	 * Check if a password meets the effective password policy for a User, using a set
 	 * of groups they may or may not belong to. This function does not use the DB, so can
 	 * be used in the installer.
-	 * @param User $user who's policy we are checking
+	 * @param User $user whose policy we are checking
 	 * @param string $password the password to check
 	 * @param array $groups list of groups to which we assume the user belongs
 	 * @return Status error to indicate the password didn't meet the policy, or fatal to
 	 *   indicate the user shouldn't be allowed to login. The status value will be an array,
 	 *   potentially with the following keys:
 	 *   - forceChange: do not allow the user to login without changing the password if invalid.
+	 *   - suggestChangeOnLogin: prompt for a password change on login if the password is invalid.
 	 */
 	public function checkUserPasswordForGroups( User $user, $password, array $groups ) {
 		$effectivePolicy = self::getPoliciesForGroups(
@@ -118,6 +120,7 @@ class UserPasswordPolicy {
 	private function checkPolicies( User $user, $password, $policies, $policyCheckFunctions ) {
 		$status = Status::newGood( [] );
 		$forceChange = false;
+		$suggestChangeOnLogin = false;
 		foreach ( $policies as $policy => $settings ) {
 			if ( !isset( $policyCheckFunctions[$policy] ) ) {
 				throw new DomainException( "Invalid password policy config. No check defined for '$policy'." );
@@ -137,14 +140,27 @@ class UserPasswordPolicy {
 				$user,
 				$password
 			);
-			if ( !$policyStatus->isGood() && !empty( $settings['forceChange'] ) ) {
-				$forceChange = true;
+
+			if ( !$policyStatus->isGood() ) {
+				if ( !empty( $settings['forceChange'] ) ) {
+					$forceChange = true;
+				}
+
+				if ( !empty( $settings['suggestChangeOnLogin'] ) ) {
+					$suggestChangeOnLogin = true;
+				}
 			}
 			$status->merge( $policyStatus );
 		}
-		if ( $status->isOK() && $forceChange ) {
-			$status->value['forceChange'] = true;
+
+		if ( $status->isOK() ) {
+			if ( $forceChange ) {
+				$status->value['forceChange'] = true;
+			} elseif ( $suggestChangeOnLogin ) {
+				$status->value['suggestChangeOnLogin'] = true;
+			}
 		}
+
 		return $status;
 	}
 
@@ -182,7 +198,7 @@ class UserPasswordPolicy {
 			if ( in_array( $group, $userGroups ) ) {
 				$effectivePolicy = self::maxOfPolicies(
 					$effectivePolicy,
-					$policies[$group]
+					$policy
 				);
 			}
 		}

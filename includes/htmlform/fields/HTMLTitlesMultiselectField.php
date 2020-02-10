@@ -46,17 +46,15 @@ class HTMLTitlesMultiselectField extends HTMLTitleTextField {
 			return true;
 		}
 
-		if ( is_null( $value ) ) {
+		if ( $value === null ) {
 			return false;
 		}
 
 		// $value is a string, because HTMLForm fields store their values as strings
 		$titlesArray = explode( "\n", $value );
 
-		if ( isset( $this->mParams['max'] ) ) {
-			if ( count( $titlesArray ) > $this->mParams['max'] ) {
-				return $this->msg( 'htmlform-int-toohigh', $this->mParams['max'] );
-			}
+		if ( isset( $this->mParams['max'] ) && ( count( $titlesArray ) > $this->mParams['max'] ) ) {
+			return $this->msg( 'htmlform-multiselect-toomany', $this->mParams['max'] );
 		}
 
 		foreach ( $titlesArray as $title ) {
@@ -102,12 +100,15 @@ class HTMLTitlesMultiselectField extends HTMLTitleTextField {
 		if ( isset( $this->mParams['showMissing'] ) ) {
 			$params['showMissing'] = $this->mParams['showMissing'];
 		}
+		if ( isset( $this->mParams['excludeDynamicNamespaces'] ) ) {
+			$params['excludeDynamicNamespaces'] = $this->mParams['excludeDynamicNamespaces'];
+		}
 
 		if ( isset( $this->mParams['input'] ) ) {
 			$params['input'] = $this->mParams['input'];
 		}
 
-		if ( !is_null( $value ) ) {
+		if ( $value !== null ) {
 			// $value is a string, but the widget expects an array
 			$params['default'] = $value === '' ? [] : explode( "\n", $value );
 		}

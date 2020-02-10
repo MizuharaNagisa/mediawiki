@@ -1,11 +1,10 @@
 <?php
 
-use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\Rdbms\Database;
+use Wikimedia\Rdbms\IDatabase;
 
 /**
  * @group Database
- * @coversNothing
  */
 class DatabaseIntegrationTest extends MediaWikiTestCase {
 	/**
@@ -15,12 +14,12 @@ class DatabaseIntegrationTest extends MediaWikiTestCase {
 
 	private $functionTest = false;
 
-	protected function setUp() {
+	protected function setUp() : void {
 		parent::setUp();
 		$this->db = wfGetDB( DB_MASTER );
 	}
 
-	protected function tearDown() {
+	protected function tearDown() : void {
 		parent::tearDown();
 		if ( $this->functionTest ) {
 			$this->dropFunctions();
@@ -52,6 +51,6 @@ class DatabaseIntegrationTest extends MediaWikiTestCase {
 	public function testUnknownTableCorruptsResults() {
 		$res = $this->db->select( 'page', '*', [ 'page_id' => 1 ] );
 		$this->assertFalse( $this->db->tableExists( 'foobarbaz' ) );
-		$this->assertInternalType( 'int', $res->numRows() );
+		$this->assertIsInt( $res->numRows() );
 	}
 }

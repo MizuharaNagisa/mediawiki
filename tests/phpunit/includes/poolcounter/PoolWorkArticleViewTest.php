@@ -1,4 +1,5 @@
 <?php
+
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Revision\MutableRevisionRecord;
 use MediaWiki\Revision\RevisionRecord;
@@ -26,11 +27,11 @@ class PoolWorkArticleViewTest extends MediaWikiTestCase {
 
 		$work = new PoolWorkArticleView( $page, $options, $rev1->getId(), false );
 		$work->execute();
-		$this->assertContains( 'First', $work->getParserOutput()->getText() );
+		$this->assertStringContainsString( 'First', $work->getParserOutput()->getText() );
 
 		$work = new PoolWorkArticleView( $page, $options, $rev2->getId(), false );
 		$work->execute();
-		$this->assertContains( 'Second', $work->getParserOutput()->getText() );
+		$this->assertStringContainsString( 'Second', $work->getParserOutput()->getText() );
 	}
 
 	public function testDoWorkParserCache() {
@@ -46,7 +47,7 @@ class PoolWorkArticleViewTest extends MediaWikiTestCase {
 
 		$this->assertNotNull( $out );
 		$this->assertNotFalse( $out );
-		$this->assertContains( 'First', $out->getText() );
+		$this->assertStringContainsString( 'First', $out->getText() );
 	}
 
 	public function testDoWorkWithExplicitRevision() {
@@ -64,8 +65,8 @@ class PoolWorkArticleViewTest extends MediaWikiTestCase {
 		$work->execute();
 
 		$text = $work->getParserOutput()->getText();
-		$this->assertContains( 'YES!', $text );
-		$this->assertNotContains( 'NOPE', $text );
+		$this->assertStringContainsString( 'YES!', $text );
+		$this->assertStringNotContainsString( 'NOPE', $text );
 	}
 
 	public function testDoWorkWithContent() {
@@ -78,7 +79,7 @@ class PoolWorkArticleViewTest extends MediaWikiTestCase {
 		$work->execute();
 
 		$text = $work->getParserOutput()->getText();
-		$this->assertContains( 'YES!', $text );
+		$this->assertStringContainsString( 'YES!', $text );
 	}
 
 	public function testDoWorkWithString() {
@@ -89,7 +90,7 @@ class PoolWorkArticleViewTest extends MediaWikiTestCase {
 		$work->execute();
 
 		$text = $work->getParserOutput()->getText();
-		$this->assertContains( 'YES!', $text );
+		$this->assertStringContainsString( 'YES!', $text );
 	}
 
 	public function provideMagicWords() {
@@ -136,7 +137,7 @@ class PoolWorkArticleViewTest extends MediaWikiTestCase {
 		$expected = strval( $callback( $rev ) );
 		$output = $work->getParserOutput();
 
-		$this->assertContains( $expected, $output->getText() );
+		$this->assertStringContainsString( $expected, $output->getText() );
 	}
 
 	public function testDoWorkMissingPage() {

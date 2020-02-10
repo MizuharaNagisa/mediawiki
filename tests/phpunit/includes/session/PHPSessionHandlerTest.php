@@ -2,8 +2,10 @@
 
 namespace MediaWiki\Session;
 
-use Psr\Log\LogLevel;
+use BadMethodCallException;
 use MediaWikiTestCase;
+use Psr\Log\LogLevel;
+use UnexpectedValueException;
 use Wikimedia\TestingAccessWrapper;
 
 /**
@@ -71,7 +73,10 @@ class PHPSessionHandlerTest extends MediaWikiTestCase {
 		ini_set( 'session.use_trans_sid', 1 );
 
 		$store = new TestBagOStuff();
-		$logger = new \TestLogger();
+		// Tolerate debug message, anything else is unexpected
+		$logger = new \TestLogger( false, function ( $m ) {
+			return preg_match( '/^SessionManager using store/', $m ) ? null : $m;
+		} );
 		$manager = new SessionManager( [
 			'store' => $store,
 			'logger' => $logger,
@@ -147,6 +152,7 @@ class PHPSessionHandlerTest extends MediaWikiTestCase {
 		$expect = [ 'AuthenticationSessionTest' => $rand ];
 		session_write_close();
 		$this->assertSame( [
+			[ LogLevel::DEBUG, 'SessionManager using store MediaWiki\Session\TestBagOStuff' ],
 			[ LogLevel::WARNING, 'Something wrote to $_SESSION!' ],
 		], $logger->getBuffer() );
 
@@ -305,8 +311,6 @@ class PHPSessionHandlerTest extends MediaWikiTestCase {
 
 	/**
 	 * @dataProvider provideDisabled
-	 * @expectedException BadMethodCallException
-	 * @expectedExceptionMessage Attempt to use PHP session management
 	 */
 	public function testDisabled( $method, $args ) {
 		$rProp = new \ReflectionProperty( PHPSessionHandler::class, 'instance' );
@@ -320,6 +324,8 @@ class PHPSessionHandlerTest extends MediaWikiTestCase {
 		$rProp->setValue( $handler );
 		$reset = new \Wikimedia\ScopedCallback( [ $rProp, 'setValue' ], [ $oldValue ] );
 
+		$this->expectException( BadMethodCallException::class );
+		$this->expectExceptionMessage( "Attempt to use PHP session management" );
 		call_user_func_array( [ $handler, $method ], $args );
 	}
 
@@ -334,8 +340,6 @@ class PHPSessionHandlerTest extends MediaWikiTestCase {
 
 	/**
 	 * @dataProvider provideWrongInstance
-	 * @expectedException UnexpectedValueException
-	 * @expectedExceptionMessageRegExp /: Wrong instance called!$/
 	 */
 	public function testWrongInstance( $method, $args ) {
 		$handler = $this->getMockBuilder( PHPSessionHandler::class )
@@ -344,6 +348,8 @@ class PHPSessionHandlerTest extends MediaWikiTestCase {
 			->getMock();
 		TestingAccessWrapper::newFromObject( $handler )->setEnableFlags( 'enable' );
 
+		$this->expectException( UnexpectedValueException::class );
+		$this->expectExceptionMessageRegExp( "/: Wrong instance called!$/" );
 		call_user_func_array( [ $handler, $method ], $args );
 	}
 

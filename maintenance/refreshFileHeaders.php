@@ -31,7 +31,7 @@ require_once __DIR__ . '/Maintenance.php';
  * @ingroup Maintenance
  */
 class RefreshFileHeaders extends Maintenance {
-	function __construct() {
+	public function __construct() {
 		parent::__construct();
 		$this->addDescription( 'Script to update file HTTP headers' );
 		$this->addOption( 'verbose', 'Output information about each file.', false, false, 'v' );
@@ -143,6 +143,10 @@ class RefreshFileHeaders extends Maintenance {
 		$this->output( "Done. Updated headers for $count file(s).\n" );
 	}
 
+	/**
+	 * @param LocalRepo $repo
+	 * @param array $backendOperations
+	 */
 	protected function updateFileHeaders( $repo, $backendOperations ) {
 		$status = $repo->getBackend()->doQuickOperations( $backendOperations );
 

@@ -66,9 +66,10 @@ interface IMaintainableDatabase extends IDatabase {
 	 * $sql = "SELECT wl_namespace, wl_title FROM $watchlist, $user
 	 *         WHERE wl_user=user_id AND wl_user=$nameWithQuotes";
 	 *
+	 * @param string ...$tables
 	 * @return array
 	 */
-	public function tableNames();
+	public function tableNames( ...$tables );
 
 	/**
 	 * Fetch a number of table names into an zero-indexed numerical array
@@ -79,9 +80,10 @@ interface IMaintainableDatabase extends IDatabase {
 	 * $sql = "SELECT wl_namespace,wl_title FROM $watchlist,$user
 	 *         WHERE wl_user=user_id AND wl_user=$nameWithQuotes";
 	 *
+	 * @param string ...$tables
 	 * @return array
 	 */
-	public function tableNamesN();
+	public function tableNamesN( ...$tables );
 
 	/**
 	 * Returns the size of a text field, or -1 for "unlimited"
@@ -150,7 +152,7 @@ interface IMaintainableDatabase extends IDatabase {
 	 * Delete a table
 	 * @param string $tableName
 	 * @param string $fName
-	 * @return bool|ResultWrapper
+	 * @return bool|IResultWrapper
 	 */
 	public function dropTable( $tableName, $fName = __METHOD__ );
 
@@ -174,11 +176,12 @@ interface IMaintainableDatabase extends IDatabase {
 	 * iteration, or false on error, for example if the retry limit was
 	 * reached.
 	 *
+	 * @param mixed ...$args
 	 * @return mixed
 	 * @throws DBUnexpectedError
 	 * @throws Exception
 	 */
-	public function deadlockLoop();
+	public function deadlockLoop( ...$args );
 
 	/**
 	 * Lists all the VIEWs in the database
@@ -303,7 +306,7 @@ interface IMaintainableDatabase extends IDatabase {
 	 * @param string $table Table name
 	 * @param string $field Field name
 	 *
-	 * @return Field
+	 * @return false|Field
 	 */
 	public function fieldInfo( $table, $field );
 }

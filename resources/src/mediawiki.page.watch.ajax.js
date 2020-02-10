@@ -15,9 +15,8 @@
  * @singleton
  */
 ( function () {
-	var watch,
-		// The name of the page to watch or unwatch
-		title = mw.config.get( 'wgRelevantPageName' );
+	// The name of the page to watch or unwatch
+	var title = mw.config.get( 'wgRelevantPageName' );
 
 	/**
 	 * Update the link text, link href attribute and (if applicable)
@@ -40,7 +39,6 @@
 			throw new Error( 'Invalid action' );
 		}
 
-		// message keys 'watch', 'watching', 'unwatch' or 'unwatching'.
 		msgKey = state === 'loading' ? action + 'ing' : action;
 		otherAction = action === 'watch' ? 'unwatch' : 'watch';
 		$li = $link.closest( 'li' );
@@ -54,6 +52,11 @@
 		}
 
 		$link
+			// The following messages can be used here:
+			// * watch
+			// * watching
+			// * unwatch
+			// * unwatching
 			.text( mw.msg( msgKey ) )
 			.attr( 'title', mw.msg( 'tooltip-ca-' + action ) )
 			.updateTooltipAccessKeys()
@@ -91,7 +94,7 @@
 		actionPaths = mw.config.get( 'wgActionPaths' );
 		for ( key in actionPaths ) {
 			parts = actionPaths[ key ].split( '$1' );
-			parts = parts.map( mw.RegExp.escape );
+			parts = parts.map( mw.util.escapeRegExp );
 			m = new RegExp( parts.join( '(.+)' ) ).exec( url );
 			if ( m && m[ 1 ] ) {
 				return key;
@@ -101,13 +104,10 @@
 		return 'view';
 	}
 
-	// Expose public methods
-	watch = {
-		updateWatchLink: updateWatchLink
-	};
-	module.exports = watch;
-
-	$( function () {
+	/**
+	 * @private
+	 */
+	function init() {
 		var $links = $( '.mw-watchlink a[data-mw="interface"], a.mw-watchlink[data-mw="interface"]' );
 		if ( !$links.length ) {
 			// Fallback to the class-based exclusion method for backwards-compatibility
@@ -115,7 +115,36 @@
 			// Restrict to core interfaces, ignore user-generated content
 			$links = $links.filter( ':not( #bodyContent *, #content * )' );
 		}
+		if ( $links.length ) {
+			// eslint-disable-next-line no-use-before-define
+			watchstar( $links, title, function ( $link, isWatched ) {
+				// Update the "Watch this page" checkbox on action=edit when the
+				// page is watched or unwatched via the tab (T14395).
+				$( '#wpWatchthis' ).prop( 'checked', isWatched === true );
+			} );
+		}
+	}
 
+	/**
+	 * Bind a given watchstar element to make it interactive.
+	 *
+	 * NOTE: This is meant to allow binding of watchstars for arbitrary page titles,
+	 * especially if different from the currently viewed page. As such, this function
+	 * will *not* synchronise its state with any "Watch this page" checkbox such as
+	 * found on the "Edit page" and "Publish changes" forms. The caller should either make
+	 * "current page" watchstars picked up by #init (and not use #watchstar) sync it manually
+	 * from the callback #watchstar provides.
+	 *
+	 * @param {jQuery} $links One or more anchor elements that must have an href
+	 *  with a url containing a `action=watch` or `action=unwatch` query parameter,
+	 *  from which the current state will be learned (e.g. link to unwatch is currently watched)
+	 * @param {string} title Title of page that this watchstar will affect
+	 * @param {Function} callback Callback to run after the action has been processed and API
+	 *  request completed. The callback receives two parameters:
+	 * @param {jQuery} callback.$link The element being manipulated
+	 * @param {boolean} callback.isWatched Whether the article is now watched
+	 */
+	function watchstar( $links, title, callback ) {
 		$links.on( 'click', function ( e ) {
 			var mwTitle, action, api, $link;
 
@@ -131,6 +160,7 @@
 
 			$link = $( this );
 
+			// eslint-disable-next-line no-jquery/no-class-state
 			if ( $link.hasClass( 'loading' ) ) {
 				return;
 			}
@@ -152,39 +182,43 @@
 						message = action === 'watch' ? 'addedwatchtext' : 'removedwatchtext';
 					}
 
+					// The following messages can be used here:
+					// * addedwatchtext-talk
+					// * addedwatchtest
+					// * removedwatchtext-talk
+					// * removedwatchtext
 					mw.notify( mw.message( message, mwTitle.getPrefixedText() ).parseDom(), {
 						tag: 'watch-self'
 					} );
 
 					// Set link to opposite
 					updateWatchLink( $link, otherAction );
-
-					// Update the "Watch this page" checkbox on action=edit when the
-					// page is watched or unwatched via the tab (T14395).
-					$( '#wpWatchthis' ).prop( 'checked', watchResponse.watched === true );
+					callback( $link, watchResponse.watched === true );
 				} )
-				.fail( function () {
-					var msg, link;
+				.fail( function ( code, data ) {
+					var $msg;
 
 					// Reset link to non-loading mode
 					updateWatchLink( $link, action );
 
 					// Format error message
-					link = mw.html.element(
-						'a', {
-							href: mw.util.getUrl( title ),
-							title: mwTitle.getPrefixedText()
-						}, mwTitle.getPrefixedText()
-					);
-					msg = mw.message( 'watcherrortext', link );
+					$msg = api.getErrorMessage( data );
 
 					// Report to user about the error
-					mw.notify( msg, {
+					mw.notify( $msg, {
 						tag: 'watch-self',
 						type: 'error'
 					} );
 				} );
 		} );
-	} );
+	}
+
+	$( init );
+
+	// Expose public methods.
+	module.exports = {
+		watchstar: watchstar,
+		updateWatchLink: updateWatchLink
+	};
 
 }() );

@@ -14,17 +14,6 @@
 			$label.text( labelText.replace( '$1', value ) );
 		}
 
-		// Set up the help system
-		$( '.config-help-field-data' ).hide()
-			.closest( '.config-help-field-container' ).find( '.config-help-field-hint' )
-			.show()
-			.on( 'click', function () {
-				// FIXME: Use CSS transition
-				// eslint-disable-next-line jquery/no-slide
-				$( this ).closest( '.config-help-field-container' ).find( '.config-help-field-data' )
-					.slideToggle( 'fast' );
-			} );
-
 		// Show/hide code for DB-specific options
 		// FIXME: Do we want slow, fast, or even non-animated (instantaneous) showing/hiding here?
 		$( '.dbRadio' ).each( function () {
@@ -34,11 +23,12 @@
 		$( '.dbRadio' ).on( 'click', function () {
 			var $checked = $( '.dbRadio:checked' ),
 				$wrapper = $( document.getElementById( $checked.attr( 'rel' ) ) );
+			// eslint-disable-next-line no-jquery/no-sizzle
 			if ( $wrapper.is( ':hidden' ) ) {
 				// FIXME: Use CSS transition
-				// eslint-disable-next-line jquery/no-animate-toggle
+				// eslint-disable-next-line no-jquery/no-animate-toggle
 				$( '.dbWrapper' ).hide( 'slow' );
-				// eslint-disable-next-line jquery/no-animate-toggle
+				// eslint-disable-next-line no-jquery/no-animate-toggle
 				$wrapper.show( 'slow' );
 			}
 		} );
@@ -53,10 +43,10 @@
 			var $wrapper = $( '#config-cc-wrapper' );
 			if ( $( '#config__LicenseCode_cc-choose' ).is( ':checked' ) ) {
 				// FIXME: Use CSS transition
-				// eslint-disable-next-line jquery/no-animate-toggle
+				// eslint-disable-next-line no-jquery/no-animate-toggle
 				$wrapper.show( 'slow' );
 			} else {
-				// eslint-disable-next-line jquery/no-animate-toggle
+				// eslint-disable-next-line no-jquery/no-animate-toggle
 				$wrapper.hide( 'slow' );
 			}
 		} );
@@ -66,10 +56,10 @@
 			var $wrapper = $( '#' + $( this ).attr( 'rel' ) );
 			if ( $( this ).is( ':checked' ) ) {
 				// FIXME: Use CSS transition
-				// eslint-disable-next-line jquery/no-animate-toggle
+				// eslint-disable-next-line no-jquery/no-animate-toggle
 				$wrapper.show( 'slow' );
 			} else {
-				// eslint-disable-next-line jquery/no-animate-toggle
+				// eslint-disable-next-line no-jquery/no-animate-toggle
 				$wrapper.hide( 'slow' );
 			}
 		} );
@@ -77,10 +67,10 @@
 			var $wrapper = $( '#' + $( this ).attr( 'rel' ) );
 			if ( $( this ).is( ':checked' ) ) {
 				// FIXME: Use CSS transition
-				// eslint-disable-next-line jquery/no-animate-toggle
+				// eslint-disable-next-line no-jquery/no-animate-toggle
 				$wrapper.hide( 'slow' );
 			} else {
-				// eslint-disable-next-line jquery/no-animate-toggle
+				// eslint-disable-next-line no-jquery/no-animate-toggle
 				$wrapper.show( 'slow' );
 			}
 		} );
@@ -97,10 +87,10 @@
 			// FIXME: Ugh, this is ugly
 			if ( $( this ).val() === 'other' ) {
 				// FIXME: Use CSS transition
-				// eslint-disable-next-line jquery/no-slide
+				// eslint-disable-next-line no-jquery/no-slide
 				$textbox.prop( 'readonly', false ).closest( '.config-block' ).slideDown( 'fast' );
 			} else {
-				// eslint-disable-next-line jquery/no-slide
+				// eslint-disable-next-line no-jquery/no-slide
 				$textbox.prop( 'readonly', true ).closest( '.config-block' ).slideUp( 'fast' );
 			}
 		} );
@@ -116,10 +106,10 @@
 			var $memc = $( '#config-memcachewrapper' );
 			if ( $( 'input[name$="config__MainCacheType"]:checked' ).val() === 'memcached' ) {
 				// FIXME: Use CSS transition
-				// eslint-disable-next-line jquery/no-animate-toggle
+				// eslint-disable-next-line no-jquery/no-animate-toggle
 				$memc.show( 'slow' );
 			} else {
-				// eslint-disable-next-line jquery/no-animate-toggle
+				// eslint-disable-next-line no-jquery/no-animate-toggle
 				$memc.hide( 'slow' );
 			}
 		} );

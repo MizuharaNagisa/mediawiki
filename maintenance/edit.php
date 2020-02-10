@@ -71,7 +71,7 @@ class EditCLI extends Maintenance {
 			$wgUser->addToDatabase();
 		}
 
-		$title = Title::newFromText( $this->getArg() );
+		$title = Title::newFromText( $this->getArg( 0 ) );
 		if ( !$title ) {
 			$this->fatalError( "Invalid title" );
 		}
@@ -122,7 +122,7 @@ class EditCLI extends Maintenance {
 			$exit = 1;
 		}
 		if ( !$status->isGood() ) {
-			$this->output( $status->getWikiText( false, false, 'en' ) . "\n" );
+			$this->output( $status->getMessage( false, false, 'en' )->text() . "\n" );
 		}
 		exit( $exit );
 	}

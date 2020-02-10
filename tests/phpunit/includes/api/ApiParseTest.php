@@ -194,8 +194,8 @@ class ApiParseTest extends ApiTestCase {
 	}
 
 	public function testRevDelNoPermission() {
-		$this->setExpectedException( ApiUsageException::class,
-			"You don't have permission to view deleted revision text." );
+		$this->expectException( ApiUsageException::class );
+		$this->expectExceptionMessage( "You don't have permission to view deleted revision text." );
 
 		$this->doApiRequest( [
 			'action' => 'parse',
@@ -258,8 +258,8 @@ class ApiParseTest extends ApiTestCase {
 	}
 
 	public function testInvalidSection() {
-		$this->setExpectedException( ApiUsageException::class,
-			'The "section" parameter must be a valid section ID or "new".' );
+		$this->expectException( ApiUsageException::class );
+		$this->expectExceptionMessage( 'The "section" parameter must be a valid section ID or "new".' );
 
 		$this->doApiRequest( [
 			'action' => 'parse',
@@ -273,8 +273,10 @@ class ApiParseTest extends ApiTestCase {
 		$status = $this->editPage( $name,
 			"Intro\n\n== Section 1 ==\n\nContent 1\n\n== Section 2 ==\n\nContent 2" );
 
-		$this->setExpectedException( ApiUsageException::class,
-			"Missing content for page ID {$status->value['revision']->getPage()}." );
+		$this->expectException( ApiUsageException::class );
+		$this->expectExceptionMessage(
+			"Missing content for page ID {$status->value['revision']->getPage()}."
+		);
 
 		$this->db->delete( 'revision', [ 'rev_id' => $status->value['revision']->getId() ] );
 
@@ -292,9 +294,11 @@ class ApiParseTest extends ApiTestCase {
 	}
 
 	public function testNewSectionWithPage() {
-		$this->setExpectedException( ApiUsageException::class,
+		$this->expectException( ApiUsageException::class );
+		$this->expectExceptionMessage(
 			'"section=new" cannot be combined with the "oldid", "pageid" or "page" ' .
-			'parameters. Please use "title" and "text".' );
+				'parameters. Please use "title" and "text".'
+		);
 
 		$this->doApiRequest( [
 			'action' => 'parse',
@@ -304,8 +308,8 @@ class ApiParseTest extends ApiTestCase {
 	}
 
 	public function testNonexistentOldId() {
-		$this->setExpectedException( ApiUsageException::class,
-			'There is no revision with ID 2147483647.' );
+		$this->expectException( ApiUsageException::class );
+		$this->expectExceptionMessage( 'There is no revision with ID 2147483647.' );
 
 		$this->doApiRequest( [
 			'action' => 'parse',
@@ -360,8 +364,37 @@ class ApiParseTest extends ApiTestCase {
 		$this->assertParsedTo( "<p>Some <i>text</i>\n</p>", $res );
 	}
 
+	public function testNonRedirectOk() {
+		$name = ucfirst( __FUNCTION__ );
+
+		$this->editPage( $name, "Some ''text''" );
+
+		$res = $this->doApiRequest( [
+			'action' => 'parse',
+			'page' => $name,
+			'redirects' => true,
+		] );
+
+		$this->assertParsedTo( "<p>Some <i>text</i>\n</p>", $res );
+	}
+
+	public function testNonRedirectByIdOk() {
+		$name = ucfirst( __FUNCTION__ );
+
+		$id = $this->editPage( $name, "Some ''text''" )->value['revision']->getPage();
+
+		$res = $this->doApiRequest( [
+			'action' => 'parse',
+			'pageid' => $id,
+			'redirects' => true,
+		] );
+
+		$this->assertParsedTo( "<p>Some <i>text</i>\n</p>", $res );
+	}
+
 	public function testInvalidTitle() {
-		$this->setExpectedException( ApiUsageException::class, 'Bad title "|".' );
+		$this->expectException( ApiUsageException::class );
+		$this->expectExceptionMessage( 'Bad title "|".' );
 
 		$this->doApiRequest( [
 			'action' => 'parse',
@@ -370,8 +403,8 @@ class ApiParseTest extends ApiTestCase {
 	}
 
 	public function testTitleWithNonexistentRevId() {
-		$this->setExpectedException( ApiUsageException::class,
-			'There is no revision with ID 2147483647.' );
+		$this->expectException( ApiUsageException::class );
+		$this->expectExceptionMessage( 'There is no revision with ID 2147483647.' );
 
 		$this->doApiRequest( [
 			'action' => 'parse',
@@ -437,8 +470,8 @@ class ApiParseTest extends ApiTestCase {
 	}
 
 	public function testSerializationError() {
-		$this->setExpectedException( APIUsageException::class,
-			'Content serialization failed: Could not unserialize content' );
+		$this->expectException( APIUsageException::class );
+		$this->expectExceptionMessage( 'Content serialization failed: Could not unserialize content' );
 
 		$this->mergeMwGlobalArrayValue( 'wgContentHandlers',
 			[ 'testing-serialize-error' => 'DummySerializeErrorContentHandler' ] );
@@ -581,8 +614,6 @@ class ApiParseTest extends ApiTestCase {
 	 * @param array $arr Extra params to add to API request
 	 */
 	private function doTestLangLinks( array $arr = [] ) {
-		$this->setupInterwiki();
-
 		$res = $this->doApiRequest( array_merge( [
 			'action' => 'parse',
 			'title' => 'Omelette',
@@ -600,10 +631,12 @@ class ApiParseTest extends ApiTestCase {
 	}
 
 	public function testLangLinks() {
+		$this->setupInterwiki();
 		$this->doTestLangLinks();
 	}
 
 	public function testLangLinksWithSkin() {
+		$this->setupInterwiki();
 		$this->setupSkin();
 		$this->doTestLangLinks( [ 'useskin' => 'testing' ] );
 	}
@@ -650,7 +683,6 @@ class ApiParseTest extends ApiTestCase {
 			function ( $parser ) {
 				$output = $parser->getOutput();
 				$output->addModules( [ 'foo', 'bar' ] );
-				$output->addModuleScripts( [ 'baz', 'quuz' ] );
 				$output->addModuleStyles( [ 'aaa', 'zzz' ] );
 				$output->addJsConfigVars( [ 'x' => 'y', 'z' => -3 ] );
 			}
@@ -663,7 +695,7 @@ class ApiParseTest extends ApiTestCase {
 		] );
 
 		$this->assertSame( [ 'foo', 'bar' ], $res[0]['parse']['modules'] );
-		$this->assertSame( [ 'baz', 'quuz' ], $res[0]['parse']['modulescripts'] );
+		$this->assertSame( [], $res[0]['parse']['modulescripts'] );
 		$this->assertSame( [ 'aaa', 'zzz' ], $res[0]['parse']['modulestyles'] );
 		$this->assertSame( [ 'x' => 'y', 'z' => -3 ], $res[0]['parse']['jsconfigvars'] );
 		$this->assertSame( '{"x":"y","z":-3}', $res[0]['parse']['encodedjsconfigvars'] );
@@ -770,14 +802,14 @@ class ApiParseTest extends ApiTestCase {
 		] );
 
 		// We don't bother testing the actual values here
-		$this->assertInternalType( 'array', $res[0]['parse']['limitreportdata'] );
-		$this->assertInternalType( 'string', $res[0]['parse']['limitreporthtml'] );
+		$this->assertIsArray( $res[0]['parse']['limitreportdata'] );
+		$this->assertIsString( $res[0]['parse']['limitreporthtml'] );
 		$this->assertArrayNotHasKey( 'warnings', $res[0] );
 	}
 
 	public function testParseTreeNonWikitext() {
-		$this->setExpectedException( ApiUsageException::class,
-			'"prop=parsetree" is only supported for wikitext content.' );
+		$this->expectException( ApiUsageException::class );
+		$this->expectExceptionMessage( '"prop=parsetree" is only supported for wikitext content.' );
 
 		$this->doApiRequest( [
 			'action' => 'parse',
@@ -795,13 +827,11 @@ class ApiParseTest extends ApiTestCase {
 			'prop' => 'parsetree',
 		] );
 
-		// Preprocessor_DOM and Preprocessor_Hash give different results here,
-		// so we'll accept either
-		$this->assertRegExp(
-			'#^<root>Some \'\'text\'\' is <template><title>nice</title>' .
+		$this->assertEquals(
+			'<root>Some \'\'text\'\' is <template><title>nice</title>' .
 				'<part><name index="1"/><value>to have</value></part>' .
-				'<part><name>i</name>(?:<equals>)?=(?:</equals>)?<value>think</value></part>' .
-				'</template></root>$#',
+				'<part><name>i</name><equals>=</equals><value>think</value></part>' .
+				'</template></root>',
 			$res[0]['parse']['parsetree']
 		);
 		$this->assertArrayNotHasKey( 'warnings', $res[0] );

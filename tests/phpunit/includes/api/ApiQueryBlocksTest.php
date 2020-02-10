@@ -1,7 +1,8 @@
 <?php
 
-use MediaWiki\Block\Restriction\PageRestriction;
+use MediaWiki\Block\DatabaseBlock;
 use MediaWiki\Block\Restriction\NamespaceRestriction;
+use MediaWiki\Block\Restriction\PageRestriction;
 
 /**
  * @group API
@@ -29,7 +30,7 @@ class ApiQueryBlocksTest extends ApiTestCase {
 		$badActor = $this->getTestUser()->getUser();
 		$sysop = $this->getTestSysop()->getUser();
 
-		$block = new Block( [
+		$block = new DatabaseBlock( [
 			'address' => $badActor->getName(),
 			'user' => $badActor->getId(),
 			'by' => $sysop->getId(),
@@ -42,8 +43,8 @@ class ApiQueryBlocksTest extends ApiTestCase {
 			'action' => 'query',
 			'list' => 'blocks',
 		] );
-		$this->arrayHasKey( 'query', $data );
-		$this->arrayHasKey( 'blocks', $data['query'] );
+		$this->assertArrayHasKey( 'query', $data );
+		$this->assertArrayHasKey( 'blocks', $data['query'] );
 		$this->assertCount( 1, $data['query']['blocks'] );
 		$subset = [
 			'id' => $block->getId(),
@@ -57,7 +58,7 @@ class ApiQueryBlocksTest extends ApiTestCase {
 		$badActor = $this->getTestUser()->getUser();
 		$sysop = $this->getTestSysop()->getUser();
 
-		$block = new Block( [
+		$block = new DatabaseBlock( [
 			'address' => $badActor->getName(),
 			'user' => $badActor->getId(),
 			'by' => $sysop->getId(),
@@ -71,8 +72,8 @@ class ApiQueryBlocksTest extends ApiTestCase {
 			'action' => 'query',
 			'list' => 'blocks',
 		] );
-		$this->arrayHasKey( 'query', $data );
-		$this->arrayHasKey( 'blocks', $data['query'] );
+		$this->assertArrayHasKey( 'query', $data );
+		$this->assertArrayHasKey( 'blocks', $data['query'] );
 		$this->assertCount( 1, $data['query']['blocks'] );
 		$subset = [
 			'id' => $block->getId(),
@@ -87,7 +88,7 @@ class ApiQueryBlocksTest extends ApiTestCase {
 		$badActor = $this->getTestUser()->getUser();
 		$sysop = $this->getTestSysop()->getUser();
 
-		$block = new Block( [
+		$block = new DatabaseBlock( [
 			'address' => $badActor->getName(),
 			'user' => $badActor->getId(),
 			'by' => $sysop->getId(),
@@ -112,6 +113,12 @@ class ApiQueryBlocksTest extends ApiTestCase {
 			'ir_type' => PageRestriction::TYPE_ID,
 			'ir_value' => $pageId,
 		] );
+		// Page that has been deleted.
+		$this->db->insert( 'ipblocks_restrictions', [
+			'ir_ipb_id' => $block->getId(),
+			'ir_type' => PageRestriction::TYPE_ID,
+			'ir_value' => 999999,
+		] );
 		$this->db->insert( 'ipblocks_restrictions', [
 			'ir_ipb_id' => $block->getId(),
 			'ir_type' => NamespaceRestriction::TYPE_ID,
@@ -128,8 +135,8 @@ class ApiQueryBlocksTest extends ApiTestCase {
 			'action' => 'query',
 			'list' => 'blocks',
 		] );
-		$this->arrayHasKey( 'query', $data );
-		$this->arrayHasKey( 'blocks', $data['query'] );
+		$this->assertArrayHasKey( 'query', $data );
+		$this->assertArrayHasKey( 'blocks', $data['query'] );
 		$this->assertCount( 1, $data['query']['blocks'] );
 		$flagSubset = array_merge( $subset, [
 			'partial' => !$block->isSitewide(),
@@ -143,8 +150,8 @@ class ApiQueryBlocksTest extends ApiTestCase {
 			'list' => 'blocks',
 			'bkprop' => 'id|user|expiry|restrictions'
 		] );
-		$this->arrayHasKey( 'query', $data );
-		$this->arrayHasKey( 'blocks', $data['query'] );
+		$this->assertArrayHasKey( 'query', $data );
+		$this->assertArrayHasKey( 'blocks', $data['query'] );
 		$this->assertCount( 1, $data['query']['blocks'] );
 		$restrictionsSubset = array_merge( $subset, [
 			'restrictions' => [

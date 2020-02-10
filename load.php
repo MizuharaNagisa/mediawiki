@@ -1,6 +1,7 @@
 <?php
 /**
- * This file is the entry point for ResourceLoader.
+ * The web entry point for ResourceLoader. It serves static CSS and JavaScript
+ * assets for web browsers.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,39 +19,33 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
+ * @ingroup entrypoint
+ * @ingroup ResourceLoader
  * @author Roan Kattouw
  * @author Trevor Parscal
  */
 
-use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
 
 // This endpoint is supposed to be independent of request cookies and other
 // details of the session. Enforce this constraint with respect to session use.
 define( 'MW_NO_SESSION', 1 );
 
-require __DIR__ . '/includes/WebStart.php';
+define( 'MW_ENTRY_POINT', 'load' );
 
-// URL safety checks
-if ( !$wgRequest->checkUrlExtension() ) {
-	return;
-}
+require __DIR__ . '/includes/WebStart.php';
 
 // Disable ChronologyProtector so that we don't wait for unrelated MediaWiki
 // writes when getting database connections for ResourceLoader. (T192611)
 MediaWikiServices::getInstance()->getDBLoadBalancerFactory()->disableChronologyProtection();
 
-// Set up ResourceLoader
-$resourceLoader = new ResourceLoader(
-	ConfigFactory::getDefaultInstance()->makeConfig( 'main' ),
-	LoggerFactory::getInstance( 'resourceloader' )
-);
+$resourceLoader = MediaWikiServices::getInstance()->getResourceLoader();
 $context = new ResourceLoaderContext( $resourceLoader, $wgRequest );
 
 // Respond to ResourceLoader request
 $resourceLoader->respond( $context );
 
-Profiler::instance()->setTemplated( true );
+Profiler::instance()->setAllowOutput();
 
 $mediawiki = new MediaWiki();
-$mediawiki->doPostOutputShutdown( 'fast' );
+$mediawiki->doPostOutputShutdown();

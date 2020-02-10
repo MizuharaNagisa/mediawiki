@@ -20,7 +20,7 @@ class ApiQueryWatchlistIntegrationTest extends ApiTestCase {
 		);
 	}
 
-	protected function setUp() {
+	protected function setUp() : void {
 		parent::setUp();
 		self::$users['ApiQueryWatchlistIntegrationTestUser'] = $this->getMutableTestUser();
 		self::$users['ApiQueryWatchlistIntegrationTestUser2'] = $this->getMutableTestUser();
@@ -228,16 +228,8 @@ class ApiQueryWatchlistIntegrationTest extends ApiTestCase {
 		}
 	}
 
-	private function getTitleFormatter() {
-		return new MediaWikiTitleCodec(
-			Language::factory( 'en' ),
-			MediaWikiServices::getInstance()->getGenderCache()
-		);
-	}
-
 	private function getPrefixedText( LinkTarget $target ) {
-		$formatter = $this->getTitleFormatter();
-		return $formatter->getPrefixedText( $target );
+		return MediaWikiServices::getInstance()->getTitleFormatter()->getPrefixedText( $target );
 	}
 
 	private function cleanTestUsersWatchlist() {
@@ -544,7 +536,7 @@ class ApiQueryWatchlistIntegrationTest extends ApiTestCase {
 
 		$this->assertCount( 1, $items );
 		$this->assertArrayHasKey( 'timestamp', $items[0] );
-		$this->assertInternalType( 'string', $items[0]['timestamp'] );
+		$this->assertIsString( $items[0]['timestamp'] );
 	}
 
 	public function testSizesPropParameter() {
@@ -1480,7 +1472,7 @@ class ApiQueryWatchlistIntegrationTest extends ApiTestCase {
 		$this->watchPages( $otherUser, [ $target ] );
 
 		$reloadedUser = User::newFromName( $otherUser->getName() );
-		$this->assertEquals( '1234567890', $reloadedUser->getOption( 'watchlisttoken' ) );
+		$this->assertSame( '1234567890', $reloadedUser->getOption( 'watchlisttoken' ) );
 
 		$result = $this->doListWatchlistRequest( [
 			'wlowner' => $otherUser->getName(),
@@ -1505,7 +1497,8 @@ class ApiQueryWatchlistIntegrationTest extends ApiTestCase {
 		$otherUser->setOption( 'watchlisttoken', '1234567890' );
 		$otherUser->saveSettings();
 
-		$this->setExpectedException( ApiUsageException::class, 'Incorrect watchlist token provided' );
+		$this->expectException( ApiUsageException::class );
+		$this->expectExceptionMessage( 'Incorrect watchlist token provided' );
 
 		$this->doListWatchlistRequest( [
 			'wlowner' => $otherUser->getName(),
@@ -1514,7 +1507,8 @@ class ApiQueryWatchlistIntegrationTest extends ApiTestCase {
 	}
 
 	public function testOwnerAndTokenParams_noWatchlistTokenSet() {
-		$this->setExpectedException( ApiUsageException::class, 'Incorrect watchlist token provided' );
+		$this->expectException( ApiUsageException::class );
+		$this->expectExceptionMessage( 'Incorrect watchlist token provided' );
 
 		$this->doListWatchlistRequest( [
 			'wlowner' => $this->getNonLoggedInTestUser()->getName(),
@@ -1583,7 +1577,7 @@ class ApiQueryWatchlistIntegrationTest extends ApiTestCase {
 		$pages = array_values( $result[0]['query']['pages'] );
 
 		$this->assertCount( 1, $pages );
-		$this->assertEquals( 0, $pages[0]['ns'] );
+		$this->assertSame( 0, $pages[0]['ns'] );
 		$this->assertEquals( $this->getPrefixedText( $target ), $pages[0]['title'] );
 		$this->assertArraySubsetsEqual(
 			$pages[0]['revisions'],

@@ -27,7 +27,14 @@ class PreferencesFormOOUI extends OOUIHTMLForm {
 	// Override default value from HTMLForm
 	protected $mSubSectionBeforeFields = false;
 
+	/** @var User|null */
 	private $modifiedUser;
+
+	/** @var bool */
+	private $privateInfoEditable = true;
+
+	/** @var bool */
+	private $optionsEditable = true;
 
 	/**
 	 * @param User $user
@@ -45,6 +52,35 @@ class PreferencesFormOOUI extends OOUIHTMLForm {
 		} else {
 			return $this->modifiedUser;
 		}
+	}
+
+	/**
+	 * @return bool
+	 */
+	public function isPrivateInfoEditable() {
+		return $this->privateInfoEditable;
+	}
+
+	/**
+	 * Whether the
+	 * @param bool $editable
+	 */
+	public function setPrivateInfoEditable( $editable ) {
+		$this->privateInfoEditable = $editable;
+	}
+
+	/**
+	 * @return bool
+	 */
+	public function areOptionsEditable() {
+		return $this->optionsEditable;
+	}
+
+	/**
+	 * @param bool $optionsEditable
+	 */
+	public function setOptionsEditable( $optionsEditable ) {
+		$this->optionsEditable = $optionsEditable;
 	}
 
 	/**
@@ -71,13 +107,13 @@ class PreferencesFormOOUI extends OOUIHTMLForm {
 	 * @return string
 	 */
 	function getButtons() {
-		if ( !$this->getModifiedUser()->isAllowedAny( 'editmyprivateinfo', 'editmyoptions' ) ) {
+		if ( !$this->areOptionsEditable() && !$this->isPrivateInfoEditable() ) {
 			return '';
 		}
 
 		$html = parent::getButtons();
 
-		if ( $this->getModifiedUser()->isAllowed( 'editmyoptions' ) ) {
+		if ( $this->areOptionsEditable() ) {
 			$t = $this->getTitle()->getSubpage( 'reset' );
 
 			$html .= new OOUI\ButtonWidget( [
@@ -104,6 +140,8 @@ class PreferencesFormOOUI extends OOUIHTMLForm {
 	function filterDataForSubmit( $data ) {
 		foreach ( $this->mFlatFields as $fieldname => $field ) {
 			if ( $field instanceof HTMLNestedFilterable ) {
+				// @phan-suppress-next-next-line PhanUndeclaredProperty All HTMLForm fields have mParams,
+				// but the instanceof confuses phan, which doesn't support intersections
 				$info = $field->mParams;
 				$prefix = $info['prefix'] ?? $fieldname;
 				foreach ( $field->filterDataForSubmit( $data[$fieldname] ) as $key => $value ) {
@@ -117,45 +155,12 @@ class PreferencesFormOOUI extends OOUIHTMLForm {
 	}
 
 	protected function wrapFieldSetSection( $legend, $section, $attributes, $isRoot ) {
-		// to get a user visible effect, wrap the fieldset into a framed panel layout
-		if ( $isRoot ) {
-			// Mimic TabPanelLayout
-			$wrapper = new OOUI\PanelLayout( [
-				'expanded' => false,
-				'scrollable' => true,
-				// Framed and padded for no-JS, frame hidden with CSS
-				'framed' => true,
-				'infusable' => false,
-				'classes' => [ 'oo-ui-stackLayout oo-ui-indexLayout-stackLayout' ]
-			] );
-			$layout = new OOUI\PanelLayout( [
-				'expanded' => false,
-				'scrollable' => true,
-				'infusable' => false,
-				'classes' => [ 'oo-ui-tabPanelLayout' ]
-			] );
-			$wrapper->appendContent( $layout );
-		} else {
-			$wrapper = $layout = new OOUI\PanelLayout( [
-				'expanded' => false,
-				'padded' => true,
-				'framed' => true,
-				'infusable' => false,
-			] );
-		}
+		$layout = parent::wrapFieldSetSection( $legend, $section, $attributes, $isRoot );
 
-		$layout->appendContent(
-			new OOUI\FieldsetLayout( [
-				'label' => $legend,
-				'infusable' => false,
-				'items' => [
-					new OOUI\Widget( [
-						'content' => new OOUI\HtmlSnippet( $section )
-					] ),
-				],
-			] + $attributes )
-		);
-		return $wrapper;
+		$layout->addClasses( [ 'mw-prefs-fieldset-wrapper' ] );
+		$layout->removeClasses( [ 'oo-ui-panelLayout-framed' ] );
+
+		return $layout;
 	}
 
 	/**
@@ -163,61 +168,57 @@ class PreferencesFormOOUI extends OOUIHTMLForm {
 	 * @return string
 	 */
 	function getBody() {
-		// Construct fake tabs to avoid FOUC. The structure mimics OOUI's tabPanelLayout.
-		// TODO: Consider creating an infusable TabPanelLayout in OOUI-PHP.
-		$fakeTabs = [];
-		foreach ( $this->getPreferenceSections() as $i => $key ) {
-			$fakeTabs[] =
-				Html::rawElement(
-					'div',
-					[
-						'class' =>
-							'oo-ui-widget oo-ui-widget-enabled oo-ui-optionWidget ' .
-							'oo-ui-tabOptionWidget oo-ui-labelElement' .
-							( $i === 0 ? ' oo-ui-optionWidget-selected' : '' )
-					],
-					Html::element(
-						'a',
-						[
-							'class' => 'oo-ui-labelElement-label',
-							// Make this a usable link instead of a span so the tabs
-							// can be used before JS runs
-							'href' => '#mw-prefsection-' . $key
-						],
-						$this->getLegend( $key )
-					)
-				);
-		}
-		$fakeTabsHtml = Html::rawElement(
-			'div',
-			[ 'class' => 'oo-ui-layout oo-ui-panelLayout oo-ui-indexLayout-tabPanel' ],
-			Html::rawElement(
-				'div',
-				[ 'class' => 'oo-ui-widget oo-ui-widget-enabled oo-ui-selectWidget ' .
-					'oo-ui-selectWidget-depressed oo-ui-tabSelectWidget' ],
-				implode( $fakeTabs )
-			)
-		);
-
-		return Html::rawElement(
-			'div',
-			[ 'class' => 'oo-ui-layout oo-ui-panelLayout oo-ui-panelLayout-framed mw-prefs-faketabs' ],
-			Html::rawElement(
-				'div',
-				[ 'class' => 'oo-ui-layout oo-ui-menuLayout oo-ui-menuLayout-static ' .
-					'oo-ui-menuLayout-top oo-ui-menuLayout-showMenu oo-ui-indexLayout' ],
-				Html::rawElement(
-					'div',
-					[ 'class' => 'oo-ui-menuLayout-menu' ],
-					$fakeTabsHtml
+		$tabPanels = [];
+		foreach ( $this->mFieldTree as $key => $val ) {
+			if ( !is_array( $val ) ) {
+				wfDebug( __METHOD__ . " encountered a field not attached to a section: '$key'" );
+				continue;
+			}
+			$label = $this->getLegend( $key );
+			$content =
+				$this->getHeaderText( $key ) .
+				$this->displaySection(
+					$val,
+					"",
+					"mw-prefsection-$key-"
 				) .
-				Html::rawElement(
-					'div',
-					[ 'class' => 'oo-ui-menuLayout-content mw-htmlform-autoinfuse-lazy' ],
-					$this->displaySection( $this->mFieldTree, '', 'mw-prefsection-' )
-				)
-			)
-		);
+				$this->getFooterText( $key );
+
+			$tabPanels[] = new OOUI\TabPanelLayout( 'mw-prefsection-' . $key, [
+				'classes' => [ 'mw-htmlform-autoinfuse-lazy' ],
+				'label' => $label,
+				'content' => new OOUI\FieldsetLayout( [
+					'classes' => [ 'mw-prefs-section-fieldset' ],
+					'id' => "mw-prefsection-$key",
+					'label' => $label,
+					'items' => [
+						new OOUI\Widget( [
+							'content' => new OOUI\HtmlSnippet( $content )
+						] ),
+					],
+				] ),
+				'expanded' => false,
+				'framed' => true,
+			] );
+		}
+
+		$indexLayout = new OOUI\IndexLayout( [
+			'infusable' => true,
+			'expanded' => false,
+			'autoFocus' => false,
+			'classes' => [ 'mw-prefs-tabs' ],
+		] );
+		$indexLayout->addTabPanels( $tabPanels );
+
+		$header = $this->formatFormHeader();
+		$form = new OOUI\PanelLayout( [
+			'framed' => true,
+			'expanded' => false,
+			'classes' => [ 'mw-prefs-tabs-wrapper' ],
+			'content' => $indexLayout
+		] );
+
+		return $header . $form;
 	}
 
 	/**
@@ -234,7 +235,7 @@ class PreferencesFormOOUI extends OOUIHTMLForm {
 
 	/**
 	 * Get the keys of each top level preference section.
-	 * @return array of section keys
+	 * @return string[] List of section keys
 	 */
 	function getPreferenceSections() {
 		return array_keys( array_filter( $this->mFieldTree, 'is_array' ) );

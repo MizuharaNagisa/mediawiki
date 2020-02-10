@@ -30,7 +30,13 @@ use MediaWiki\MediaWikiServices;
  * @ingroup SpecialPage
  */
 class ImportStreamSource implements ImportSource {
-	function __construct( $handle ) {
+	/** @var resource */
+	private $mHandle;
+
+	/**
+	 * @param resource $handle
+	 */
+	public function __construct( $handle ) {
 		$this->mHandle = $handle;
 	}
 
@@ -112,7 +118,7 @@ class ImportStreamSource implements ImportSource {
 		# quicker and sorts out user-agent problems which might
 		# otherwise prevent importing from large sites, such
 		# as the Wikimedia cluster, etc.
-		$data = Http::request(
+		$data = MediaWikiServices::getInstance()->getHttpRequestFactory()->request(
 			$method,
 			$url,
 			[

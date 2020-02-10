@@ -91,7 +91,7 @@
 			// Hide the current pane
 			if ( requestedPaneId === currentPaneId ) {
 				// FIXME: Use CSS transition
-				// eslint-disable-next-line jquery/no-slide
+				// eslint-disable-next-line no-jquery/no-slide
 				$currentPane.slideUp( updateHov );
 				debug.$container.data( 'currentPane', null );
 				return;
@@ -101,7 +101,7 @@
 
 			if ( currentPaneId === undefined || currentPaneId === null ) {
 				// FIXME: Use CSS transition
-				// eslint-disable-next-line jquery/no-slide
+				// eslint-disable-next-line no-jquery/no-slide
 				$requestedPane.slideDown( updateHov );
 			} else {
 				$currentPane.hide();
@@ -114,7 +114,7 @@
 		 * Construct the HTML for the debugging toolbar
 		 */
 		buildHtml: function () {
-			var $container, $bits, panes, id, gitInfo;
+			var $container, $bits, panes, id, gitInfoText, $gitInfo;
 
 			$container = $( '<div>' )
 				.attr( {
@@ -188,30 +188,28 @@
 
 			paneTriggerBitDiv( 'includes', 'PHP includes', this.data.includes.length );
 
-			gitInfo = '';
 			if ( this.data.gitRevision !== false ) {
-				gitInfo = '(' + this.data.gitRevision.slice( 0, 7 ) + ')';
+				gitInfoText = '(' + this.data.gitRevision.slice( 0, 7 ) + ')';
 				if ( this.data.gitViewUrl !== false ) {
-					gitInfo = $( '<a>' )
+					$gitInfo = $( '<a>' )
 						.attr( 'href', this.data.gitViewUrl )
-						.text( gitInfo );
+						.text( gitInfoText );
+				} else {
+					$gitInfo = $( document.createTextNode( gitInfoText ) );
 				}
 			}
 
 			bitDiv( 'mwversion' )
-				.append( $( '<a>' ).attr( 'href', '//www.mediawiki.org/' ).text( 'MediaWiki' ) )
+				.append( $( '<a>' ).attr( 'href', 'https://www.mediawiki.org/' ).text( 'MediaWiki' ) )
 				.append( document.createTextNode( ': ' + this.data.mwVersion + ' ' ) )
-				.append( gitInfo );
+				.append( $gitInfo );
 
 			if ( this.data.gitBranch !== false ) {
 				bitDiv( 'gitbranch' ).text( 'Git branch: ' + this.data.gitBranch );
 			}
 
 			bitDiv( 'phpversion' )
-				.append( this.data.phpEngine === 'HHVM' ?
-					$( '<a>' ).attr( 'href', 'https://hhvm.com/' ).text( 'HHVM' ) :
-					$( '<a>' ).attr( 'href', 'https://php.net/' ).text( 'PHP' )
-				)
+				.append( $( '<a>' ).attr( 'href', 'https://php.net/' ).text( 'PHP' ) )
 				.append( ': ' + this.data.phpVersion );
 
 			bitDiv( 'time' )
@@ -298,10 +296,10 @@
 			$table = $( '<table>' ).attr( 'id', 'mw-debug-querylist' );
 
 			$( '<tr>' )
-				.append( $( '<th>' ).text( '#' ).css( 'width', '4em' ) )
-				.append( $( '<th>' ).text( 'SQL' ) )
-				.append( $( '<th>' ).text( 'Time' ).css( 'width', '8em' ) )
-				.append( $( '<th>' ).text( 'Call' ).css( 'width', '18em' ) )
+				.append( $( '<th>' ).attr( 'scope', 'col' ).text( '#' ).css( 'width', '4em' ) )
+				.append( $( '<th>' ).attr( 'scope', 'col' ).text( 'SQL' ) )
+				.append( $( '<th>' ).attr( 'scope', 'col' ).text( 'Time' ).css( 'width', '8em' ) )
+				.append( $( '<th>' ).attr( 'scope', 'col' ).text( 'Call' ).css( 'width', '18em' ) )
 				.appendTo( $table );
 
 			for ( i = 0, length = this.data.queries.length; i < length; i += 1 ) {
@@ -352,12 +350,15 @@
 				$table = $( '<table>' ).appendTo( $unit );
 
 				$( '<tr>' )
-					.html( '<th>Key</th><th>Value</th>' )
+					.append(
+						$( '<th>' ).attr( 'scope', 'col' ).text( 'Key' ),
+						$( '<th>' ).attr( 'scope', 'col' ).text( 'Value' )
+					)
 					.appendTo( $table );
 
 				for ( key in data ) {
 					$( '<tr>' )
-						.append( $( '<th>' ).text( key ) )
+						.append( $( '<th>' ).attr( 'scope', 'row' ).text( key ) )
 						.append( $( '<td>' ).text( data[ key ] ) )
 						.appendTo( $table );
 				}

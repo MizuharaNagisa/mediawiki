@@ -1,17 +1,21 @@
 <?php
 
+use MediaWiki\MediaWikiServices;
+use PHPUnit\Framework\TestSuite;
 use Wikimedia\ScopedCallback;
 
 /**
  * The UnitTest must be either a class that inherits from MediaWikiTestCase
  * or a class that provides a public static suite() method which returns
- * an PHPUnit_Framework_Test object
+ * an PHPUnit\Framework\Test object
  *
  * @group Parser
  * @group ParserTests
  * @group Database
  */
-class ParserTestTopLevelSuite extends PHPUnit_Framework_TestSuite {
+class ParserTestTopLevelSuite extends TestSuite {
+	use SuiteEventsTrait;
+
 	/** @var ParserTestRunner */
 	private $ptRunner;
 
@@ -57,13 +61,13 @@ class ParserTestTopLevelSuite extends PHPUnit_Framework_TestSuite {
 	 * @param int $flags Bitwise flag to filter out the $wgParserTestFiles that
 	 * will be included.  Default: ParserTestTopLevelSuite::CORE_ONLY
 	 *
-	 * @return PHPUnit_Framework_TestSuite
+	 * @return TestSuite
 	 */
 	public static function suite( $flags = self::CORE_ONLY ) {
 		return new self( $flags );
 	}
 
-	function __construct( $flags ) {
+	public function __construct( $flags ) {
 		parent::__construct();
 
 		$this->ptRecorder = new PhpunitTestRecorder;
@@ -113,7 +117,7 @@ class ParserTestTopLevelSuite extends PHPUnit_Framework_TestSuite {
 			$testsName = $extensionName . '__' . basename( $fileName, '.txt' );
 			$parserTestClassName = ucfirst( $testsName );
 
-			// Official spec for class names: https://secure.php.net/manual/en/language.oop5.basic.php
+			// Official spec for class names: https://www.php.net/manual/en/language.oop5.basic.php
 			// Prepend 'ParserTest_' to be paranoid about it not starting with a number
 			$parserTestClassName = 'ParserTest_' .
 				preg_replace( '/[^a-zA-Z0-9_\x7f-\xff]/', '_', $parserTestClassName );
@@ -134,13 +138,13 @@ class ParserTestTopLevelSuite extends PHPUnit_Framework_TestSuite {
 		}
 	}
 
-	public function setUp() {
+	public function setUp() : void {
 		wfDebug( __METHOD__ );
 
-		$db = wfGetDB( DB_MASTER );
+		$lb = MediaWikiServices::getInstance()->getDBLoadBalancer();
+		$db = $lb->getConnection( DB_MASTER );
 		$type = $db->getType();
-		$prefix = $type === 'oracle' ?
-			MediaWikiTestCase::ORA_DB_PREFIX : MediaWikiTestCase::DB_PREFIX;
+		$prefix = MediaWikiTestCase::DB_PREFIX;
 		$this->oldTablePrefix = $db->tablePrefix();
 		MediaWikiTestCase::setupTestDB( $db, $prefix );
 		CloneDatabase::changePrefix( $prefix );
@@ -158,7 +162,7 @@ class ParserTestTopLevelSuite extends PHPUnit_Framework_TestSuite {
 		$this->ptTeardownScope = $teardown;
 	}
 
-	public function tearDown() {
+	public function tearDown() : void {
 		wfDebug( __METHOD__ );
 		if ( $this->ptTeardownScope ) {
 			ScopedCallback::consume( $this->ptTeardownScope );

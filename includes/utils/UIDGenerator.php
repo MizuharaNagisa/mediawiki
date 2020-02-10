@@ -19,8 +19,9 @@
  *
  * @file
  */
-use Wikimedia\Assert\Assert;
 use MediaWiki\MediaWikiServices;
+use Wikimedia\Assert\Assert;
+use Wikimedia\Timestamp\ConvertibleTimestamp;
 
 /**
  * Class for getting statistically unique IDs
@@ -137,8 +138,7 @@ class UIDGenerator {
 			$time = $info['time'];
 			$counter = $info['offsetCounter'];
 		} else {
-			$time = $info[0];
-			$counter = $info[1];
+			list( $time, $counter ) = $info;
 		}
 		// Take the 46 LSBs of "milliseconds since epoch"
 		$id_bin = $this->millisecondsSinceEpochBinary( $time );
@@ -192,9 +192,7 @@ class UIDGenerator {
 			$counter = $info['offsetCounter'];
 			$clkSeq = $info['clkSeq'];
 		} else {
-			$time = $info[0];
-			$counter = $info[1];
-			$clkSeq = $info[2];
+			list( $time, $counter, $clkSeq ) = $info;
 		}
 		// Take the 46 LSBs of "milliseconds since epoch"
 		$id_bin = $this->millisecondsSinceEpochBinary( $time );
@@ -236,6 +234,30 @@ class UIDGenerator {
 	 */
 	public static function newRawUUIDv1() {
 		return str_replace( '-', '', self::newUUIDv1() );
+	}
+
+	/**
+	 * Get timestamp in a specified format from UUIDv1
+	 *
+	 * @param string $uuid the UUID to get the timestamp from
+	 * @param int $format the format to convert the timestamp to. Default: TS_MW
+	 * @return string|false timestamp in requested format or false
+	 */
+	public static function getTimestampFromUUIDv1( string $uuid, int $format = TS_MW ) {
+		$components = [];
+		if ( !preg_match(
+			'/^([0-9a-f]{8})-([0-9a-f]{4})-(1[0-9a-f]{3})-([89ab][0-9a-f]{3})-([0-9a-f]{12})$/',
+			$uuid,
+			$components )
+		) {
+			throw new InvalidArgumentException( "Invalid UUIDv1 {$uuid}" );
+		}
+
+		$timestamp = hexdec( substr( $components[3], 1 ) . $components[2] . $components[1] );
+		// The 60 bit timestamp value is constructed from fields of this UUID.
+		// The timestamp is measured in 100-nanosecond units since midnight, October 15, 1582 UTC.
+		$unixTime = ( $timestamp - 0x01b21dd213814000 ) / 1e7;
+		return ConvertibleTimestamp::convert( $format, $unixTime );
 	}
 
 	/**
@@ -577,7 +599,7 @@ class UIDGenerator {
 		$start = microtime( true );
 		do {
 			$ct = time();
-			// https://secure.php.net/manual/en/language.operators.comparison.php
+			// https://www.php.net/manual/en/language.operators.comparison.php
 			if ( $ct >= $time ) {
 				// current time is higher than or equal to than $time
 				return $ct;
@@ -680,7 +702,7 @@ class UIDGenerator {
 		$gen->deleteCacheFiles();
 	}
 
-	function __destruct() {
+	public function __destruct() {
 		array_map( 'fclose', array_filter( $this->fileHandles ) );
 	}
 }

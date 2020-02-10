@@ -1,5 +1,7 @@
 <?php
 
+use MediaWiki\MediaWikiServices;
+
 /**
  * Implementation of near match title search.
  * TODO: split into service/implementation.
@@ -16,9 +18,17 @@ class SearchNearMatcher {
 	 */
 	private $language;
 
+	/**
+	 * Current language converter
+	 * @var ILanguageConverter
+	 */
+	private $languageConverter;
+
 	public function __construct( Config $config, Language $lang ) {
 		$this->config = $config;
 		$this->language = $lang;
+		$this->languageConverter = MediaWikiServices::getInstance()->getLanguageConverterFactory()
+			->getLanguageConverter( $lang );
 	}
 
 	/**
@@ -37,10 +47,10 @@ class SearchNearMatcher {
 
 	/**
 	 * Do a near match (see SearchEngine::getNearMatch) and wrap it into a
-	 * SearchResultSet.
+	 * ISearchResultSet.
 	 *
 	 * @param string $searchterm
-	 * @return SearchResultSet
+	 * @return ISearchResultSet
 	 */
 	public function getNearMatchResultSet( $searchterm ) {
 		return new SearchNearMatchResultSet( $this->getNearMatch( $searchterm ) );
@@ -55,10 +65,10 @@ class SearchNearMatcher {
 		$lang = $this->language;
 		$allSearchTerms = [ $searchterm ];
 
-		if ( $lang->hasVariants() ) {
+		if ( $this->languageConverter->hasVariants() ) {
 			$allSearchTerms = array_unique( array_merge(
 				$allSearchTerms,
-				$lang->autoConvertToAllVariants( $searchterm )
+				$this->languageConverter->autoConvertToAllVariants( $searchterm )
 			) );
 		}
 
@@ -77,7 +87,7 @@ class SearchNearMatcher {
 		foreach ( $allSearchTerms as $term ) {
 			# Exact match? No need to look further.
 			$title = Title::newFromText( $term );
-			if ( is_null( $title ) ) {
+			if ( $title === null ) {
 				return null;
 			}
 
@@ -150,7 +160,7 @@ class SearchNearMatcher {
 		# There may have been a funny upload, or it may be on a shared
 		# file repository such as Wikimedia Commons.
 		if ( $title->getNamespace() == NS_FILE ) {
-			$image = wfFindFile( $title );
+			$image = MediaWikiServices::getInstance()->getRepoGroup()->findFile( $title );
 			if ( $image ) {
 				return $title;
 			}
@@ -165,7 +175,7 @@ class SearchNearMatcher {
 		# Quoted term? Try without the quotes...
 		$matches = [];
 		if ( preg_match( '/^"([^"]+)"$/', $searchterm, $matches ) ) {
-			return self::getNearMatch( $matches[1] );
+			return $this->getNearMatch( $matches[1] );
 		}
 
 		return null;

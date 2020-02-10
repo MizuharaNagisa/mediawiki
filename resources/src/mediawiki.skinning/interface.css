@@ -6,6 +6,8 @@
  * they are outputted by the actual MonoBook/Vector code by convention.
  */
 
+/* stylelint-disable selector-class-pattern */
+
 /* Categories */
 .catlinks {
 	border: 1px solid #a2a9b1;
@@ -48,14 +50,6 @@ textarea {
 
 #localNotice {
 	margin-bottom: 0.9em;
-}
-
-.firstHeading {
-	margin-bottom: 0.1em;
-	/* These two rules hack around T4013 (fix for more limited T13325).
-	 * When T4013 is fixed properly, they should be removed. */
-	line-height: 1.2em;
-	padding-bottom: 0;
 }
 
 /* Sub-navigation */

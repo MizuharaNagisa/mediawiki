@@ -1,6 +1,7 @@
 <?php
 
 use MediaWiki\MediaWikiServices;
+use Wikimedia\TestingAccessWrapper;
 
 /**
  * Parser-related tests that don't suit for parserTests.txt
@@ -14,16 +15,16 @@ class ExtraParserTest extends MediaWikiTestCase {
 	/** @var Parser */
 	protected $parser;
 
-	protected function setUp() {
+	protected function setUp() : void {
 		parent::setUp();
 
-		$contLang = Language::factory( 'en' );
 		$this->setMwGlobals( [
 			'wgShowExceptionDetails' => true,
 			'wgCleanSignatures' => true,
 		] );
 		$this->setUserLang( 'en' );
-		$this->setContentLang( $contLang );
+		$this->setContentLang( 'en' );
+		$contLang = MediaWikiServices::getInstance()->getContentLanguage();
 
 		// FIXME: This test should pass without setting global content language
 		$this->options = ParserOptions::newFromUserAndLang( new User, $contLang );
@@ -59,7 +60,7 @@ class ExtraParserTest extends MediaWikiTestCase {
 		RequestContext::getMain()->getWikiPage()->CustomTestProp = true;
 
 		$parsed = $this->parser->parse( $text, $title, $options )->getText();
-		$this->assertContains( 'apihelp-header', $parsed );
+		$this->assertStringContainsString( 'apihelp-header', $parsed );
 
 		// Verify that this property wasn't wiped out by the parse
 		$this->assertTrue( RequestContext::getMain()->getWikiPage()->CustomTestProp );
@@ -201,7 +202,7 @@ class ExtraParserTest extends MediaWikiTestCase {
 	 *
 	 * @return array
 	 */
-	static function statelessFetchTemplate( $title, $parser = false ) {
+	public static function statelessFetchTemplate( $title, $parser = false ) {
 		$text = "Content of ''" . $title->getFullText() . "''";
 		$deps = [];
 
@@ -242,7 +243,8 @@ class ExtraParserTest extends MediaWikiTestCase {
 	public function testParseLinkParameter( $input, $expected, $expectedLinks, $desc ) {
 		$this->parser->startExternalParse( Title::newFromText( __FUNCTION__ ),
 			$this->options, Parser::OT_HTML );
-		$output = $this->parser->parseLinkParameter( $input );
+		$output = TestingAccessWrapper::newFromObject( $this->parser )
+			->parseLinkParameter( $input );
 
 		$this->assertEquals( $expected[0], $output[0], "$desc (type)" );
 

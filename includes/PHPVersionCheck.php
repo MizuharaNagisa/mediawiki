@@ -20,6 +20,7 @@
 
 // phpcs:disable Generic.Arrays.DisallowLongArraySyntax,PSR2.Classes.PropertyDeclaration,MediaWiki.Usage.DirUsage
 // phpcs:disable Squiz.Scope.MemberVarScope.Missing,Squiz.Scope.MethodScope.Missing
+// @phan-file-suppress PhanPluginDuplicateConditionalNullCoalescing
 /**
  * Check PHP Version, as well as for composer dependencies in entry points,
  * and display something vaguely comprehensible in the event of a totally
@@ -30,12 +31,10 @@
  *
  * @note This class uses setter methods instead of a constructor so that
  * it can be compatible with PHP 4, PHP 5 and PHP 7 (without warnings).
- *
- * @class
  */
 class PHPVersionCheck {
 	/* @var string The number of the MediaWiki version used. */
-	var $mwVersion = '1.33';
+	var $mwVersion = '1.35';
 
 	/* @var array A mapping of PHP functions to PHP extensions. */
 	var $functionsExtensionsMapping = array(
@@ -76,86 +75,35 @@ class PHPVersionCheck {
 	}
 
 	/**
-	 * Return the version of the installed PHP implementation.
-	 *
-	 * @param string $impl By default, the function returns the info of the currently installed PHP
-	 *  implementation. Using this parameter the caller can decide, what version info will be
-	 *  returned. Valid values: HHVM, PHP
-	 * @return array An array of information about the PHP implementation, containing:
-	 *  - 'version': The version of the PHP implementation (specific to the implementation, not
-	 *  the version of the implemented PHP version)
-	 *  - 'implementation': The name of the implementation used
-	 *  - 'vendor': The development group, vendor or developer of the implementation.
-	 *  - 'upstreamSupported': The minimum version of the implementation supported by the named vendor.
-	 *  - 'minSupported': The minimum version supported by MediaWiki
-	 *  - 'upgradeURL': The URL to the website of the implementation that contains
-	 *  upgrade/installation instructions.
-	 */
-	function getPHPInfo( $impl = false ) {
-		if (
-			( defined( 'HHVM_VERSION' ) && $impl !== 'PHP' ) ||
-			$impl === 'HHVM'
-		) {
-			return array(
-				'implementation' => 'HHVM',
-				'version' => defined( 'HHVM_VERSION' ) ? HHVM_VERSION : 'undefined',
-				'vendor' => 'Facebook',
-				'upstreamSupported' => '3.18.5',
-				'minSupported' => '3.18.5',
-				'upgradeURL' => 'https://docs.hhvm.com/hhvm/installation/introduction',
-			);
-		}
-		return array(
-			'implementation' => 'PHP',
-			'version' => PHP_VERSION,
-			'vendor' => 'the PHP Group',
-			'upstreamSupported' => '5.6.0',
-			'minSupported' => '7.0.0',
-			'upgradeURL' => 'https://secure.php.net/downloads.php',
-		);
-	}
-
-	/**
 	 * Displays an error, if the installed PHP version does not meet the minimum requirement.
 	 */
 	function checkRequiredPHPVersion() {
-		$phpInfo = $this->getPHPInfo();
-		$minimumVersion = $phpInfo['minSupported'];
-		$otherInfo = $this->getPHPInfo( $phpInfo['implementation'] === 'HHVM' ? 'PHP' : 'HHVM' );
-		if (
-			!function_exists( 'version_compare' )
-			|| version_compare( $phpInfo['version'], $minimumVersion ) < 0
-		) {
-			$shortText = "MediaWiki $this->mwVersion requires at least {$phpInfo['implementation']}"
-				. " version $minimumVersion or {$otherInfo['implementation']} version "
-				. "{$otherInfo['minSupported']}, you are using {$phpInfo['implementation']} "
-				. "{$phpInfo['version']}.";
+		$minimumVersion = '7.2.9';
 
-			$longText = "Error: You might be using an older {$phpInfo['implementation']} version "
-				. "({$phpInfo['implementation']} {$phpInfo['version']}). \n"
-				. "MediaWiki $this->mwVersion needs {$phpInfo['implementation']}"
-				. " $minimumVersion or higher or {$otherInfo['implementation']} version "
-				. "{$otherInfo['minSupported']}.\n\nCheck if you have a"
-				. " newer PHP executable with a different name.\n\n";
+		if ( version_compare( PHP_VERSION, $minimumVersion ) < 0 ) {
+			$shortText = "MediaWiki $this->mwVersion requires at least PHP version $minimumVersion; "
+				. "you are using PHP " . PHP_VERSION . ".";
+
+			$longText = "Error: You might be using an older PHP version (PHP " . PHP_VERSION . ").\n"
+				. "MediaWiki $this->mwVersion needs PHP $minimumVersion or higher.\n\nCheck if you "
+				. "have a newer PHP executable with a different name.\n\n";
 
 			// phpcs:disable Generic.Files.LineLength
 			$longHtml = <<<HTML
-			Please consider <a href="{$phpInfo['upgradeURL']}">upgrading your copy of
-			{$phpInfo['implementation']}</a>.
-			{$phpInfo['implementation']} versions less than {$phpInfo['upstreamSupported']} are no
-			longer supported by {$phpInfo['vendor']} and will not receive
+			Please consider <a href="https://www.php.net/downloads.php">upgrading your copy of PHP</a>.
+			PHP versions less than v7.1.0 are no longer supported by the PHP Group and will not receive
 			security or bugfix updates.
 		</p>
 		<p>
-			If for some reason you are unable to upgrade your {$phpInfo['implementation']} version,
-			you will need to <a href="https://www.mediawiki.org/wiki/Download">download</a> an
-			older version of MediaWiki from our website.
-			See our <a href="https://www.mediawiki.org/wiki/Compatibility#PHP">compatibility page</a>
-			for details of which versions are compatible with prior versions of {$phpInfo['implementation']}.
+			If for some reason you are unable to upgrade your PHP version, you will need to
+			<a href="https://www.mediawiki.org/wiki/Download">download</a> an older version of
+			MediaWiki from our website. See our
+			<a href="https://www.mediawiki.org/wiki/Compatibility#PHP">compatibility page</a>
+			for details of which versions are compatible with prior versions of PHP.
 HTML;
 			// phpcs:enable Generic.Files.LineLength
 			$this->triggerError(
-				"Supported {$phpInfo['implementation']} versions",
+				"Supported PHP versions",
 				$shortText,
 				$longText,
 				$longHtml
@@ -171,14 +119,14 @@ HTML;
 			$shortText = "Installing some external dependencies (e.g. via composer) is required.";
 
 			$longText = "Error: You are missing some external dependencies. \n"
-				. "MediaWiki now also has some external dependencies that need to be installed\n"
+				. "MediaWiki also has some external dependencies that need to be installed\n"
 				. "via composer or from a separate git repo. Please see\n"
 				. "https://www.mediawiki.org/wiki/Download_from_Git#Fetch_external_libraries\n"
 				. "for help on installing the required components.";
 
 			// phpcs:disable Generic.Files.LineLength
 			$longHtml = <<<HTML
-		MediaWiki now also has some external dependencies that need to be installed via
+		MediaWiki also has some external dependencies that need to be installed via
 		composer or from a separate git repo. Please see
 		<a href="https://www.mediawiki.org/wiki/Download_from_Git#Fetch_external_libraries">mediawiki.org</a>
 		for help on installing the required components.
@@ -205,7 +153,7 @@ HTML;
 
 			$missingExtText = '';
 			$missingExtHtml = '';
-			$baseUrl = 'https://secure.php.net';
+			$baseUrl = 'https://www.php.net';
 			foreach ( $missingExtensions as $ext ) {
 				$missingExtText .= " * $ext <$baseUrl/$ext>\n";
 				$missingExtHtml .= "<li><b>$ext</b> "
@@ -262,7 +210,7 @@ HTML;
 	<head>
 		<meta charset="UTF-8" />
 		<title>MediaWiki {$this->mwVersion}</title>
-		<style media='screen'>
+		<style media="screen">
 			body {
 				color: #000;
 				background-color: #fff;
@@ -270,7 +218,7 @@ HTML;
 				padding: 2em;
 				text-align: center;
 			}
-			p, img, h1, h2, ul  {
+			p, img, h1, h2, ul {
 				text-align: left;
 				margin: 0.5em 0 1em;
 			}
@@ -283,9 +231,9 @@ HTML;
 		</style>
 	</head>
 	<body>
-		<img src="{$encLogo}" alt='The MediaWiki logo' />
+		<img src="{$encLogo}" alt="The MediaWiki logo" />
 		<h1>MediaWiki {$this->mwVersion} internal error</h1>
-		<div class='error'>
+		<div class="error">
 		<p>
 			{$shortHtml}
 		</p>

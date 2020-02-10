@@ -8,7 +8,7 @@ class GIFHandlerTest extends MediaWikiMediaTestCase {
 	/** @var GIFHandler */
 	protected $handler;
 
-	protected function setUp() {
+	protected function setUp() : void {
 		parent::setUp();
 
 		$this->handler = new GIFHandler();
@@ -158,7 +158,7 @@ class GIFHandlerTest extends MediaWikiMediaTestCase {
 	public function testGetLength( $filename, $expectedLength ) {
 		$file = $this->dataFile( $filename, 'image/gif' );
 		$actualLength = $file->getLength();
-		$this->assertEquals( $expectedLength, $actualLength, '', 0.00001 );
+		$this->assertEqualsWithDelta( $expectedLength, $actualLength, 0.00001 );
 	}
 
 	public function provideGetLength() {

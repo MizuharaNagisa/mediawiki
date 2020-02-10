@@ -9,7 +9,7 @@
  * @covers ApiWatch
  */
 class ApiWatchTest extends ApiTestCase {
-	function getTokens() {
+	protected function getTokens() {
 		return $this->getTokenList( self::$users['sysop'] );
 	}
 
@@ -64,7 +64,7 @@ class ApiWatchTest extends ApiTestCase {
 				unset( $data[0]['query']['watchlist'][$index] );
 			}
 		}
-		$this->assertEquals( 0, count( $data[0]['query']['watchlist'] ) );
+		$this->assertSame( [], $data[0]['query']['watchlist'] );
 
 		return $data;
 	}

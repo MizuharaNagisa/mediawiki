@@ -21,15 +21,20 @@
  */
 
 use MediaWiki\MediaWikiServices;
-use Wikimedia\Rdbms\ResultWrapper;
+use Wikimedia\Rdbms\IResultWrapper;
 
 /**
  * Class for viewing MediaWiki file description pages
  *
  * @ingroup Media
+ *
+ * @property WikiFilePage $mPage Set by overwritten newPage() in this class
+ * @method WikiFilePage getPage()
  */
 class ImagePage extends Article {
-	/** @var File */
+	use MediaFileTrait;
+
+	/** @var File|false */
 	private $displayImg;
 
 	/** @var FileRepo */
@@ -40,11 +45,6 @@ class ImagePage extends Article {
 
 	/** @var bool */
 	protected $mExtraDescription = false;
-
-	/**
-	 * @var WikiFilePage
-	 */
-	protected $mPage;
 
 	/**
 	 * @param Title $title
@@ -75,9 +75,10 @@ class ImagePage extends Article {
 
 		Hooks::run( 'ImagePageFindFile', [ $this, &$img, &$this->displayImg ] );
 		if ( !$img ) { // not set by hook?
-			$img = wfFindFile( $this->getTitle() );
+			$services = MediaWikiServices::getInstance();
+			$img = $services->getRepoGroup()->findFile( $this->getTitle() );
 			if ( !$img ) {
-				$img = wfLocalFile( $this->getTitle() );
+				$img = $services->getRepoGroup()->getLocalRepo()->newFile( $this->getTitle() );
 			}
 		}
 		$this->mPage->setFile( $img );
@@ -184,6 +185,7 @@ class ImagePage extends Article {
 		}
 
 		if ( $showmeta ) {
+			'@phan-var array $formattedMetadata';
 			$out->addHTML( Xml::element(
 				'h2',
 				[ 'id' => 'metadata' ],
@@ -321,14 +323,12 @@ class ImagePage extends Article {
 		$dirmark = $lang->getDirMarkEntity();
 		$request = $this->getContext()->getRequest();
 
-		$max = $this->getImageLimitsFromOption( $user, 'imagesize' );
-		$maxWidth = $max[0];
-		$maxHeight = $max[1];
-
 		if ( $this->displayImg->exists() ) {
+			list( $maxWidth, $maxHeight ) = $this->getImageLimitsFromOption( $user, 'imagesize' );
+
 			# image
 			$page = $request->getIntOrNull( 'page' );
-			if ( is_null( $page ) ) {
+			if ( $page === null ) {
 				$params = [];
 				$page = 1;
 			} else {
@@ -336,7 +336,7 @@ class ImagePage extends Article {
 			}
 
 			$renderLang = $this->getLanguageForRendering( $request, $this->displayImg );
-			if ( !is_null( $renderLang ) ) {
+			if ( $renderLang !== null ) {
 				$params['lang'] = $renderLang;
 			}
 
@@ -357,11 +357,14 @@ class ImagePage extends Article {
 				# image
 				# "Download high res version" link below the image
 				# $msgsize = $this->getContext()->msg( 'file-info-size', $width_orig, $height_orig,
-				#   Linker::formatSize( $this->displayImg->getSize() ), $mime )->escaped();
+				#   Language::formatSize( $this->displayImg->getSize() ), $mime )->escaped();
 				# We'll show a thumbnail of this image
-				if ( $width > $maxWidth || $height > $maxHeight || $this->displayImg->isVectorized() ) {
-					list( $width, $height ) = $this->getDisplayWidthHeight(
-						$maxWidth, $maxHeight, $width, $height
+				if ( $width > $maxWidth ||
+					$height > $maxHeight ||
+					$this->displayImg->isVectorized()
+				) {
+					list( $width, $height ) = $this->displayImg->getDisplayWidthHeight(
+						$maxWidth, $maxHeight, $page
 					);
 					$linktext = $this->getContext()->msg( 'show-big-image' )->escaped();
 
@@ -442,14 +445,15 @@ class ImagePage extends Article {
 
 				if ( $isMulti ) {
 					$count = $this->displayImg->pageCount();
+					$linkRenderer = MediaWikiServices::getInstance()->getLinkRenderer();
 
 					if ( $page > 1 ) {
 						$label = $this->getContext()->msg( 'imgmultipageprev' )->text();
 						// on the client side, this link is generated in ajaxifyPageNavigation()
 						// in the mediawiki.page.image.pagination module
-						$link = Linker::linkKnown(
+						$link = $linkRenderer->makeKnownLink(
 							$this->getTitle(),
-							htmlspecialchars( $label ),
+							$label,
 							[],
 							[ 'page' => $page - 1 ]
 						);
@@ -467,9 +471,9 @@ class ImagePage extends Article {
 
 					if ( $page < $count ) {
 						$label = $this->getContext()->msg( 'imgmultipagenext' )->text();
-						$link = Linker::linkKnown(
+						$link = $linkRenderer->makeKnownLink(
 							$this->getTitle(),
-							htmlspecialchars( $label ),
+							$label,
 							[],
 							[ 'page' => $page + 1 ]
 						);
@@ -606,7 +610,10 @@ EOT
 				);
 			}
 
-			if ( $wgEnableUploads && $user->isAllowed( 'upload' ) ) {
+			if ( $wgEnableUploads && MediaWikiServices::getInstance()
+					->getPermissionManager()
+					->userHasRight( $user, 'upload' )
+			) {
 				// Only show an upload link if the user can upload
 				$uploadTitle = SpecialPage::getTitleFor( 'Upload' );
 				$nofile = [
@@ -737,13 +744,10 @@ EOT
 	}
 
 	/**
-	 * Print out the various links at the bottom of the image page, e.g. reupload,
-	 * external editing (and instructions link) etc.
+	 * Add the re-upload link (or message about not being able to re-upload) to the output.
 	 */
 	protected function uploadLinksBox() {
-		global $wgEnableUploads;
-
-		if ( !$wgEnableUploads ) {
+		if ( !$this->getContext()->getConfig()->get( 'EnableUploads' ) ) {
 			return;
 		}
 
@@ -752,27 +756,28 @@ EOT
 			return;
 		}
 
-		$out = $this->getContext()->getOutput();
-		$out->addHTML( "<ul>\n" );
-
-		# "Upload a new version of this file" link
-		$canUpload = $this->getTitle()->quickUserCan( 'upload', $this->getContext()->getUser() );
+		$canUpload = MediaWikiServices::getInstance()->getPermissionManager()
+			->quickUserCan( 'upload', $this->getContext()->getUser(), $this->getTitle() );
 		if ( $canUpload && UploadBase::userCanReUpload(
 				$this->getContext()->getUser(),
 				$this->mPage->getFile() )
 		) {
+			// "Upload a new version of this file" link
 			$ulink = Linker::makeExternalLink(
 				$this->getUploadUrl(),
 				$this->getContext()->msg( 'uploadnewversion-linktext' )->text()
 			);
-			$out->addHTML( "<li id=\"mw-imagepage-reupload-link\">"
-				. "<div class=\"plainlinks\">{$ulink}</div></li>\n" );
+			$attrs = [ 'class' => 'plainlinks', 'id' => 'mw-imagepage-reupload-link' ];
+			$linkPara = Html::rawElement( 'p', $attrs, $ulink );
 		} else {
-			$out->addHTML( "<li id=\"mw-imagepage-upload-disallowed\">"
-				. $this->getContext()->msg( 'upload-disallowed-here' )->escaped() . "</li>\n" );
+			// "You cannot overwrite this file." message
+			$attrs = [ 'id' => 'mw-imagepage-upload-disallowed' ];
+			$msg = $this->getContext()->msg( 'upload-disallowed-here' )->text();
+			$linkPara = Html::element( 'p', $attrs, $msg );
 		}
 
-		$out->addHTML( "</ul>\n" );
+		$uploadLinks = Html::rawElement( 'div', [ 'class' => 'mw-imagepage-upload-links' ], $linkPara );
+		$this->getContext()->getOutput()->addHTML( $uploadLinks );
 	}
 
 	/**
@@ -802,9 +807,9 @@ EOT
 	}
 
 	/**
-	 * @param string $target
+	 * @param string|string[] $target
 	 * @param int $limit
-	 * @return ResultWrapper
+	 * @return IResultWrapper
 	 */
 	protected function queryImageLinks( $target, $limit ) {
 		$dbr = wfGetDB( DB_REPLICA );
@@ -879,6 +884,8 @@ EOT
 		// Sort the list by namespace:title
 		usort( $rows, [ $this, 'compare' ] );
 
+		$linkRenderer = MediaWikiServices::getInstance()->getLinkRenderer();
+
 		// Create links for every element
 		$currentCount = 0;
 		foreach ( $rows as $element ) {
@@ -892,7 +899,7 @@ EOT
 			if ( isset( $redirects[$element->page_title] ) ) {
 				$query['redirect'] = 'no';
 			}
-			$link = Linker::linkKnown(
+			$link = $linkRenderer->makeKnownLink(
 				Title::makeTitle( $element->page_namespace, $element->page_title ),
 				null, [], $query
 			);
@@ -913,7 +920,8 @@ EOT
 						break;
 					}
 
-					$link2 = Linker::linkKnown( Title::makeTitle( $row->page_namespace, $row->page_title ) );
+					$link2 = $linkRenderer->makeKnownLink(
+						Title::makeTitle( $row->page_namespace, $row->page_title ) );
 					$li .= Html::rawElement(
 						'li',
 						[ 'class' => 'mw-imagepage-linkstoimage-ns' . $element->page_namespace ],
@@ -936,7 +944,7 @@ EOT
 				) . "\n"
 			);
 
-		};
+		}
 		$out->addHTML( Html::closeElement( 'ul' ) . "\n" );
 		$res->free();
 
@@ -962,13 +970,15 @@ EOT
 		);
 		$out->addHTML( "<ul class='mw-imagepage-duplicates'>\n" );
 
+		$linkRenderer = MediaWikiServices::getInstance()->getLinkRenderer();
+
 		/**
-		 * @var $file File
+		 * @var File $file
 		 */
 		foreach ( $dupes as $file ) {
 			$fromSrc = '';
 			if ( $file->isLocal() ) {
-				$link = Linker::linkKnown( $file->getTitle() );
+				$link = $linkRenderer->makeKnownLink( $file->getTitle() );
 			} else {
 				$link = Linker::makeExternalLink( $file->getDescriptionUrl(),
 					$file->getTitle()->getPrefixedText() );
@@ -992,6 +1002,7 @@ EOT
 			parent::delete();
 			return;
 		}
+		'@phan-var LocalFile $file';
 
 		$deleter = new FileDeleteForm( $file );
 		$deleter->execute();
@@ -1029,26 +1040,12 @@ EOT
 	 *
 	 * @param User $user
 	 * @param string $optionName Name of a option to check, typically imagesize or thumbsize
-	 * @return array
+	 * @return int[]
 	 * @since 1.21
+	 * @deprecated Since 1.35 Use static function MediaFileTrait::getImageLimitsFromOption
 	 */
 	public function getImageLimitsFromOption( $user, $optionName ) {
-		global $wgImageLimits;
-
-		$option = $user->getIntOption( $optionName );
-		if ( !isset( $wgImageLimits[$option] ) ) {
-			$option = User::getDefaultOption( $optionName );
-		}
-
-		// The user offset might still be incorrect, specially if
-		// $wgImageLimits got changed (see T10858).
-		if ( !isset( $wgImageLimits[$option] ) ) {
-			// Default to the first offset in $wgImageLimits
-			$option = 0;
-		}
-
-		// if nothing is set, fallback to a hardcoded default
-		return $wgImageLimits[$option] ?? [ 800, 600 ];
+		return MediaFileTrait::getImageLimitsFromOption( $user, $optionName );
 	}
 
 	/**
@@ -1077,7 +1074,7 @@ EOT
 			Xml::option(
 				$this->getContext()->msg( 'img-lang-default' )->text(),
 				'und',
-				is_null( $matchedRenderLang )
+				$matchedRenderLang === null
 			);
 
 		$select = Html::rawElement(
@@ -1120,54 +1117,13 @@ EOT
 	}
 
 	/**
-	 * Get the width and height to display image at.
-	 *
-	 * @note This method assumes that it is only called if one
-	 *  of the dimensions are bigger than the max, or if the
-	 *  image is vectorized.
-	 *
-	 * @param int $maxWidth Max width to display at
-	 * @param int $maxHeight Max height to display at
-	 * @param int $width Actual width of the image
-	 * @param int $height Actual height of the image
-	 * @throws MWException
-	 * @return array Array (width, height)
-	 */
-	protected function getDisplayWidthHeight( $maxWidth, $maxHeight, $width, $height ) {
-		if ( !$maxWidth || !$maxHeight ) {
-			// should never happen
-			throw new MWException( 'Using a choice from $wgImageLimits that is 0x0' );
-		}
-
-		if ( !$width || !$height ) {
-			return [ 0, 0 ];
-		}
-
-		# Calculate the thumbnail size.
-		if ( $width <= $maxWidth && $height <= $maxHeight ) {
-			// Vectorized image, do nothing.
-		} elseif ( $width / $height >= $maxWidth / $maxHeight ) {
-			# The limiting factor is the width, not the height.
-			$height = round( $height * $maxWidth / $width );
-			$width = $maxWidth;
-			# Note that $height <= $maxHeight now.
-		} else {
-			$newwidth = floor( $width * $maxHeight / $height );
-			$height = round( $height * $newwidth / $width );
-			$width = $newwidth;
-			# Note that $height <= $maxHeight now, but might not be identical
-			# because of rounding.
-		}
-		return [ $width, $height ];
-	}
-
-	/**
 	 * Get alternative thumbnail sizes.
 	 *
 	 * @note This will only list several alternatives if thumbnails are rendered on 404
 	 * @param int $origWidth Actual width of image
 	 * @param int $origHeight Actual height of image
-	 * @return array An array of [width, height] pairs.
+	 * @return int[][] An array of [width, height] pairs.
+	 * @phan-return array<int,array{0:int,1:int}>
 	 */
 	protected function getThumbSizes( $origWidth, $origHeight ) {
 		global $wgImageLimits;
@@ -1224,7 +1180,7 @@ EOT
 	 * @return TitleArray|Title[]
 	 */
 	public function getForeignCategories() {
-		$this->mPage->getForeignCategories();
+		return $this->mPage->getForeignCategories();
 	}
 
 }

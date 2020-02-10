@@ -25,16 +25,16 @@ use Wikimedia\Rdbms\IMaintainableDatabase;
 
 class CloneDatabase {
 	/** @var string Table prefix for cloning */
-	private $newTablePrefix = '';
+	private $newTablePrefix;
 
 	/** @var string Current table prefix */
-	private $oldTablePrefix = '';
+	private $oldTablePrefix;
 
 	/** @var array List of tables to be cloned */
-	private $tablesToClone = [];
+	private $tablesToClone;
 
 	/** @var bool Should we DROP tables containing the new names? */
-	private $dropCurrentTables = true;
+	private $dropCurrentTables;
 
 	/** @var bool Whether to use temporary tables or not */
 	private $useTemporaryTables = true;
@@ -93,9 +93,7 @@ class CloneDatabase {
 
 			// Postgres: Temp tables are automatically deleted upon end of session
 			//           Same Temp table name hides existing table for current session
-			if ( $this->dropCurrentTables
-				&& !in_array( $this->db->getType(), [ 'oracle' ] )
-			) {
+			if ( $this->dropCurrentTables ) {
 				if ( $oldTableName === $newTableName ) {
 					// Last ditch check to avoid data loss
 					throw new LogicException( "Not dropping new table, as '$newTableName'"
@@ -128,7 +126,7 @@ class CloneDatabase {
 	}
 
 	/**
-	 * Change the table prefix on all open DB connections/
+	 * Change the table prefix on all open DB connections
 	 *
 	 * @param string $prefix
 	 * @return void

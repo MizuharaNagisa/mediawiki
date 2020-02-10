@@ -1,65 +1,97 @@
 <?php
+
 namespace MediaWiki;
 
 use ActorMigration;
+use BagOStuff;
 use CommentStore;
 use Config;
 use ConfigFactory;
+use ConfiguredReadOnlyMode;
 use CryptHKDF;
-use CryptRand;
+use DateFormatterFactory;
 use EventRelayerGroup;
+use ExternalStoreAccess;
+use ExternalStoreFactory;
+use FileBackendGroup;
 use GenderCache;
 use GlobalVarConfig;
 use Hooks;
 use IBufferingStatsdDataFactory;
+use Language;
+use LinkCache;
 use Liuggio\StatsdClient\Factory\StatsdDataFactoryInterface;
+use LocalisationCache;
+use MagicWordFactory;
+use MediaHandlerFactory;
+use MediaWiki\Block\BlockErrorFormatter;
+use MediaWiki\Block\BlockManager;
+use MediaWiki\Block\BlockRestrictionStore;
+use MediaWiki\Cache\LinkBatchFactory;
+use MediaWiki\Config\ConfigRepository;
+use MediaWiki\Content\IContentHandlerFactory;
+use MediaWiki\FileBackend\FSFile\TempFSFileFactory;
+use MediaWiki\FileBackend\LockManager\LockManagerGroupFactory;
 use MediaWiki\Http\HttpRequestFactory;
+use MediaWiki\Interwiki\InterwikiLookup;
+use MediaWiki\Languages\LanguageConverterFactory;
+use MediaWiki\Languages\LanguageFactory;
+use MediaWiki\Languages\LanguageFallback;
+use MediaWiki\Languages\LanguageNameUtils;
+use MediaWiki\Linker\LinkRenderer;
+use MediaWiki\Linker\LinkRendererFactory;
+use MediaWiki\Page\MovePageFactory;
+use MediaWiki\Permissions\PermissionManager;
 use MediaWiki\Preferences\PreferencesFactory;
-use MediaWiki\Shell\CommandFactory;
+use MediaWiki\Revision\RevisionFactory;
+use MediaWiki\Revision\RevisionLookup;
 use MediaWiki\Revision\RevisionRenderer;
+use MediaWiki\Revision\RevisionStore;
+use MediaWiki\Revision\RevisionStoreFactory;
 use MediaWiki\Revision\SlotRoleRegistry;
+use MediaWiki\Shell\CommandFactory;
 use MediaWiki\Special\SpecialPageFactory;
 use MediaWiki\Storage\BlobStore;
 use MediaWiki\Storage\BlobStoreFactory;
 use MediaWiki\Storage\NameTableStore;
 use MediaWiki\Storage\NameTableStoreFactory;
-use MediaWiki\Revision\RevisionFactory;
-use MediaWiki\Revision\RevisionLookup;
-use MediaWiki\Revision\RevisionStore;
-use OldRevisionImporter;
-use MediaWiki\Revision\RevisionStoreFactory;
-use UploadRevisionImporter;
-use Wikimedia\Rdbms\LBFactory;
-use LinkCache;
-use Wikimedia\Rdbms\LoadBalancer;
-use MediaHandlerFactory;
-use MediaWiki\Config\ConfigRepository;
-use MediaWiki\Linker\LinkRenderer;
-use MediaWiki\Linker\LinkRendererFactory;
-use MWException;
+use MediaWiki\Storage\PageEditStash;
+use MessageCache;
 use MimeAnalyzer;
+use MWException;
+use NamespaceInfo;
 use ObjectCache;
+use OldRevisionImporter;
 use Parser;
 use ParserCache;
 use ParserFactory;
 use PasswordFactory;
+use PasswordReset;
 use ProxyLookup;
+use ReadOnlyMode;
+use RepoGroup;
+use ResourceLoader;
 use SearchEngine;
 use SearchEngineConfig;
 use SearchEngineFactory;
 use SiteLookup;
 use SiteStore;
-use WatchedItemStoreInterface;
-use WatchedItemQueryService;
 use SkinFactory;
+use TitleFactory;
 use TitleFormatter;
 use TitleParser;
+use UploadRevisionImporter;
 use VirtualRESTServiceClient;
+use WANObjectCache;
+use WatchedItemQueryService;
+use WatchedItemStoreInterface;
+use Wikimedia\Message\IMessageFormatterFactory;
+use Wikimedia\ObjectFactory;
+use Wikimedia\Rdbms\ILoadBalancer;
+use Wikimedia\Rdbms\LBFactory;
+use Wikimedia\Services\NoSuchServiceException;
 use Wikimedia\Services\SalvageableService;
 use Wikimedia\Services\ServiceContainer;
-use Wikimedia\Services\NoSuchServiceException;
-use MediaWiki\Interwiki\InterwikiLookup;
-use MagicWordFactory;
 
 /**
  * Service locator for MediaWiki core services.
@@ -94,7 +126,7 @@ use MagicWordFactory;
  * Services are defined in the "wiring" array passed to the constructor,
  * or by calling defineService().
  *
- * @see docs/injection.txt for an overview of using dependency injection in the
+ * @see docs/Injection.md for an overview of using dependency injection in the
  *      MediaWiki code base.
  */
 class MediaWikiServices extends ServiceContainer {
@@ -103,6 +135,16 @@ class MediaWikiServices extends ServiceContainer {
 	 * @var MediaWikiServices|null
 	 */
 	private static $instance = null;
+
+	/**
+	 * Returns true if an instance has already been initialized. This can be used to avoid accessing
+	 * services if it's not safe, such as in unit tests or early setup.
+	 *
+	 * @return bool
+	 */
+	public static function hasInstance() {
+		return self::$instance !== null;
+	}
 
 	/**
 	 * Returns the global default instance of the top level service locator.
@@ -217,6 +259,8 @@ class MediaWikiServices extends ServiceContainer {
 			$oldInstance->destroy();
 		}
 	}
+
+	/** @noinspection PhpDocSignatureInspection */
 
 	/**
 	 * Salvages the state of any salvageable service instances in $other.
@@ -412,15 +456,23 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.31
 	 * @return ActorMigration
 	 */
-	public function getActorMigration() {
+	public function getActorMigration() : ActorMigration {
 		return $this->getService( 'ActorMigration' );
+	}
+
+	/**
+	 * @since 1.34
+	 * @return BadFileLookup
+	 */
+	public function getBadFileLookup() : BadFileLookup {
+		return $this->getService( 'BadFileLookup' );
 	}
 
 	/**
 	 * @since 1.31
 	 * @return BlobStore
 	 */
-	public function getBlobStore() {
+	public function getBlobStore() : BlobStore {
 		return $this->getService( '_SqlBlobStore' );
 	}
 
@@ -428,8 +480,32 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.31
 	 * @return BlobStoreFactory
 	 */
-	public function getBlobStoreFactory() {
+	public function getBlobStoreFactory() : BlobStoreFactory {
 		return $this->getService( 'BlobStoreFactory' );
+	}
+
+	/**
+	 * @since 1.35
+	 * @return BlockErrorFormatter
+	 */
+	public function getBlockErrorFormatter() : BlockErrorFormatter {
+		return $this->getService( 'BlockErrorFormatter' );
+	}
+
+	/**
+	 * @since 1.34
+	 * @return BlockManager
+	 */
+	public function getBlockManager() : BlockManager {
+		return $this->getService( 'BlockManager' );
+	}
+
+	/**
+	 * @since 1.33
+	 * @return BlockRestrictionStore
+	 */
+	public function getBlockRestrictionStore() : BlockRestrictionStore {
+		return $this->getService( 'BlockRestrictionStore' );
 	}
 
 	/**
@@ -445,7 +521,7 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.27
 	 * @return Config
 	 */
-	public function getBootstrapConfig() {
+	public function getBootstrapConfig() : Config {
 		return $this->getService( 'BootstrapConfig' );
 	}
 
@@ -453,7 +529,7 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.32
 	 * @return NameTableStore
 	 */
-	public function getChangeTagDefStore() {
+	public function getChangeTagDefStore() : NameTableStore {
 		return $this->getService( 'NameTableStoreFactory' )->getChangeTagDef();
 	}
 
@@ -461,7 +537,7 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.31
 	 * @return CommentStore
 	 */
-	public function getCommentStore() {
+	public function getCommentStore() : CommentStore {
 		return $this->getService( 'CommentStore' );
 	}
 
@@ -469,7 +545,7 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.27
 	 * @return ConfigFactory
 	 */
-	public function getConfigFactory() {
+	public function getConfigFactory() : ConfigFactory {
 		return $this->getService( 'ConfigFactory' );
 	}
 
@@ -477,23 +553,31 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.32
 	 * @return ConfigRepository
 	 */
-	public function getConfigRepository() {
+	public function getConfigRepository() : ConfigRepository {
 		return $this->getService( 'ConfigRepository' );
 	}
 
 	/**
 	 * @since 1.29
-	 * @return \ConfiguredReadOnlyMode
+	 * @return ConfiguredReadOnlyMode
 	 */
-	public function getConfiguredReadOnlyMode() {
+	public function getConfiguredReadOnlyMode() : ConfiguredReadOnlyMode {
 		return $this->getService( 'ConfiguredReadOnlyMode' );
 	}
 
 	/**
-	 * @since 1.32
-	 * @return \Language
+	 * @since 1.35
+	 * @return IContentHandlerFactory
 	 */
-	public function getContentLanguage() {
+	public function getContentHandlerFactory() : IContentHandlerFactory {
+		return $this->getService( 'ContentHandlerFactory' );
+	}
+
+	/**
+	 * @since 1.32
+	 * @return Language
+	 */
+	public function getContentLanguage() : Language {
 		return $this->getService( 'ContentLanguage' );
 	}
 
@@ -501,7 +585,7 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.31
 	 * @return NameTableStore
 	 */
-	public function getContentModelStore() {
+	public function getContentModelStore() : NameTableStore {
 		return $this->getService( 'NameTableStoreFactory' )->getContentModels();
 	}
 
@@ -509,25 +593,23 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.28
 	 * @return CryptHKDF
 	 */
-	public function getCryptHKDF() {
+	public function getCryptHKDF() : CryptHKDF {
 		return $this->getService( 'CryptHKDF' );
 	}
 
 	/**
-	 * @since 1.28
-	 * @deprecated since 1.32, use random_bytes()/random_int()
-	 * @return CryptRand
+	 * @since 1.33
+	 * @return DateFormatterFactory
 	 */
-	public function getCryptRand() {
-		wfDeprecated( __METHOD__, '1.32' );
-		return $this->getService( 'CryptRand' );
+	public function getDateFormatterFactory() : DateFormatterFactory {
+		return $this->getService( 'DateFormatterFactory' );
 	}
 
 	/**
 	 * @since 1.28
-	 * @return LoadBalancer The main DB load balancer for the local wiki.
+	 * @return ILoadBalancer The main DB load balancer for the local wiki.
 	 */
-	public function getDBLoadBalancer() {
+	public function getDBLoadBalancer() : ILoadBalancer {
 		return $this->getService( 'DBLoadBalancer' );
 	}
 
@@ -535,7 +617,7 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.28
 	 * @return LBFactory
 	 */
-	public function getDBLoadBalancerFactory() {
+	public function getDBLoadBalancerFactory() : LBFactory {
 		return $this->getService( 'DBLoadBalancerFactory' );
 	}
 
@@ -543,23 +625,39 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.27
 	 * @return EventRelayerGroup
 	 */
-	public function getEventRelayerGroup() {
+	public function getEventRelayerGroup() : EventRelayerGroup {
 		return $this->getService( 'EventRelayerGroup' );
 	}
 
 	/**
-	 * @since 1.31
-	 * @return \ExternalStoreFactory
+	 * @since 1.34
+	 * @return ExternalStoreAccess
 	 */
-	public function getExternalStoreFactory() {
+	public function getExternalStoreAccess() : ExternalStoreAccess {
+		return $this->getService( 'ExternalStoreAccess' );
+	}
+
+	/**
+	 * @since 1.31
+	 * @return ExternalStoreFactory
+	 */
+	public function getExternalStoreFactory() : ExternalStoreFactory {
 		return $this->getService( 'ExternalStoreFactory' );
+	}
+
+	/**
+	 * @since 1.35
+	 * @return FileBackendGroup
+	 */
+	public function getFileBackendGroup() : FileBackendGroup {
+		return $this->getService( 'FileBackendGroup' );
 	}
 
 	/**
 	 * @since 1.28
 	 * @return GenderCache
 	 */
-	public function getGenderCache() {
+	public function getGenderCache() : GenderCache {
 		return $this->getService( 'GenderCache' );
 	}
 
@@ -567,7 +665,7 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.31
 	 * @return HttpRequestFactory
 	 */
-	public function getHttpRequestFactory() {
+	public function getHttpRequestFactory() : HttpRequestFactory {
 		return $this->getService( 'HttpRequestFactory' );
 	}
 
@@ -575,15 +673,55 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.28
 	 * @return InterwikiLookup
 	 */
-	public function getInterwikiLookup() {
+	public function getInterwikiLookup() : InterwikiLookup {
 		return $this->getService( 'InterwikiLookup' );
+	}
+
+	/**
+	 * @since 1.35
+	 * @return LanguageConverterFactory
+	 */
+	public function getLanguageConverterFactory() : LanguageConverterFactory {
+		return $this->getService( 'LanguageConverterFactory' );
+	}
+
+	/**
+	 * @since 1.35
+	 * @return LanguageFactory
+	 */
+	public function getLanguageFactory() : LanguageFactory {
+		return $this->getService( 'LanguageFactory' );
+	}
+
+	/**
+	 * @since 1.35
+	 * @return LanguageFallback
+	 */
+	public function getLanguageFallback() : LanguageFallback {
+		return $this->getService( 'LanguageFallback' );
+	}
+
+	/**
+	 * @since 1.34
+	 * @return LanguageNameUtils
+	 */
+	public function getLanguageNameUtils() {
+		return $this->getService( 'LanguageNameUtils' );
+	}
+
+	/**
+	 * @since 1.35
+	 * @return LinkBatchFactory
+	 */
+	public function getLinkBatchFactory() : LinkBatchFactory {
+		return $this->getService( 'LinkBatchFactory' );
 	}
 
 	/**
 	 * @since 1.28
 	 * @return LinkCache
 	 */
-	public function getLinkCache() {
+	public function getLinkCache() : LinkCache {
 		return $this->getService( 'LinkCache' );
 	}
 
@@ -594,7 +732,7 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.28
 	 * @return LinkRenderer
 	 */
-	public function getLinkRenderer() {
+	public function getLinkRenderer() : LinkRenderer {
 		return $this->getService( 'LinkRenderer' );
 	}
 
@@ -602,23 +740,39 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.28
 	 * @return LinkRendererFactory
 	 */
-	public function getLinkRendererFactory() {
+	public function getLinkRendererFactory() : LinkRendererFactory {
 		return $this->getService( 'LinkRendererFactory' );
 	}
 
 	/**
-	 * @since 1.28
-	 * @return \BagOStuff
+	 * @since 1.34
+	 * @return LocalisationCache
 	 */
-	public function getLocalServerObjectCache() {
+	public function getLocalisationCache() : LocalisationCache {
+		return $this->getService( 'LocalisationCache' );
+	}
+
+	/**
+	 * @since 1.28
+	 * @return BagOStuff
+	 */
+	public function getLocalServerObjectCache() : BagOStuff {
 		return $this->getService( 'LocalServerObjectCache' );
+	}
+
+	/**
+	 * @since 1.34
+	 * @return LockManagerGroupFactory
+	 */
+	public function getLockManagerGroupFactory() : LockManagerGroupFactory {
+		return $this->getService( 'LockManagerGroupFactory' );
 	}
 
 	/**
 	 * @since 1.32
 	 * @return MagicWordFactory
 	 */
-	public function getMagicWordFactory() {
+	public function getMagicWordFactory() : MagicWordFactory {
 		return $this->getService( 'MagicWordFactory' );
 	}
 
@@ -629,23 +783,23 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.27
 	 * @return Config
 	 */
-	public function getMainConfig() {
+	public function getMainConfig() : Config {
 		return $this->getService( 'MainConfig' );
 	}
 
 	/**
 	 * @since 1.28
-	 * @return \BagOStuff
+	 * @return BagOStuff
 	 */
-	public function getMainObjectStash() {
+	public function getMainObjectStash() : BagOStuff {
 		return $this->getService( 'MainObjectStash' );
 	}
 
 	/**
 	 * @since 1.28
-	 * @return \WANObjectCache
+	 * @return WANObjectCache
 	 */
-	public function getMainWANObjectCache() {
+	public function getMainWANObjectCache() : WANObjectCache {
 		return $this->getService( 'MainWANObjectCache' );
 	}
 
@@ -653,38 +807,90 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.28
 	 * @return MediaHandlerFactory
 	 */
-	public function getMediaHandlerFactory() {
+	public function getMediaHandlerFactory() : MediaHandlerFactory {
 		return $this->getService( 'MediaHandlerFactory' );
+	}
+
+	/**
+	 * @since 1.34
+	 * @return MessageCache
+	 */
+	public function getMessageCache() : MessageCache {
+		return $this->getService( 'MessageCache' );
+	}
+
+	/**
+	 * @since 1.34
+	 * @return IMessageFormatterFactory
+	 */
+	public function getMessageFormatterFactory() : IMessageFormatterFactory {
+		return $this->getService( 'MessageFormatterFactory' );
 	}
 
 	/**
 	 * @since 1.28
 	 * @return MimeAnalyzer
 	 */
-	public function getMimeAnalyzer() {
+	public function getMimeAnalyzer() : MimeAnalyzer {
 		return $this->getService( 'MimeAnalyzer' );
+	}
+
+	/**
+	 * @since 1.34
+	 * @return MovePageFactory
+	 */
+	public function getMovePageFactory() : MovePageFactory {
+		return $this->getService( 'MovePageFactory' );
+	}
+
+	/**
+	 * @since 1.34
+	 * @return NamespaceInfo
+	 */
+	public function getNamespaceInfo() : NamespaceInfo {
+		return $this->getService( 'NamespaceInfo' );
 	}
 
 	/**
 	 * @since 1.32
 	 * @return NameTableStoreFactory
 	 */
-	public function getNameTableStoreFactory() {
+	public function getNameTableStoreFactory() : NameTableStoreFactory {
 		return $this->getService( 'NameTableStoreFactory' );
 	}
 
 	/**
+	 * ObjectFactory is intended for instantiating "handlers" from declarative definitions,
+	 * such as Action API modules, special pages, or REST API handlers.
+	 *
+	 * @since 1.34
+	 * @return ObjectFactory
+	 */
+	public function getObjectFactory() : ObjectFactory {
+		return $this->getService( 'ObjectFactory' );
+	}
+
+	/**
+	 * @since 1.32
 	 * @return OldRevisionImporter
 	 */
-	public function getOldRevisionImporter() {
+	public function getOldRevisionImporter() : OldRevisionImporter {
 		return $this->getService( 'OldRevisionImporter' );
+	}
+
+	/**
+	 * @return PageEditStash
+	 * @since 1.34
+	 */
+	public function getPageEditStash() : PageEditStash {
+		return $this->getService( 'PageEditStash' );
 	}
 
 	/**
 	 * @since 1.29
 	 * @return Parser
 	 */
-	public function getParser() {
+	public function getParser() : Parser {
 		return $this->getService( 'Parser' );
 	}
 
@@ -692,7 +898,7 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.30
 	 * @return ParserCache
 	 */
-	public function getParserCache() {
+	public function getParserCache() : ParserCache {
 		return $this->getService( 'ParserCache' );
 	}
 
@@ -700,7 +906,7 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.32
 	 * @return ParserFactory
 	 */
-	public function getParserFactory() {
+	public function getParserFactory() : ParserFactory {
 		return $this->getService( 'ParserFactory' );
 	}
 
@@ -708,23 +914,39 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.32
 	 * @return PasswordFactory
 	 */
-	public function getPasswordFactory() {
+	public function getPasswordFactory() : PasswordFactory {
 		return $this->getService( 'PasswordFactory' );
+	}
+
+	/**
+	 * @since 1.34
+	 * @return PasswordReset
+	 */
+	public function getPasswordReset() : PasswordReset {
+		return $this->getService( 'PasswordReset' );
 	}
 
 	/**
 	 * @since 1.32
 	 * @return StatsdDataFactoryInterface
 	 */
-	public function getPerDbNameStatsdDataFactory() {
+	public function getPerDbNameStatsdDataFactory() : StatsdDataFactoryInterface {
 		return $this->getService( 'PerDbNameStatsdDataFactory' );
+	}
+
+	/**
+	 * @since 1.33
+	 * @return PermissionManager
+	 */
+	public function getPermissionManager() : PermissionManager {
+		return $this->getService( 'PermissionManager' );
 	}
 
 	/**
 	 * @since 1.31
 	 * @return PreferencesFactory
 	 */
-	public function getPreferencesFactory() {
+	public function getPreferencesFactory() : PreferencesFactory {
 		return $this->getService( 'PreferencesFactory' );
 	}
 
@@ -732,23 +954,39 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.28
 	 * @return ProxyLookup
 	 */
-	public function getProxyLookup() {
+	public function getProxyLookup() : ProxyLookup {
 		return $this->getService( 'ProxyLookup' );
 	}
 
 	/**
 	 * @since 1.29
-	 * @return \ReadOnlyMode
+	 * @return ReadOnlyMode
 	 */
-	public function getReadOnlyMode() {
+	public function getReadOnlyMode() : ReadOnlyMode {
 		return $this->getService( 'ReadOnlyMode' );
+	}
+
+	/**
+	 * @since 1.34
+	 * @return RepoGroup
+	 */
+	public function getRepoGroup() : RepoGroup {
+		return $this->getService( 'RepoGroup' );
+	}
+
+	/**
+	 * @since 1.33
+	 * @return ResourceLoader
+	 */
+	public function getResourceLoader() : ResourceLoader {
+		return $this->getService( 'ResourceLoader' );
 	}
 
 	/**
 	 * @since 1.31
 	 * @return RevisionFactory
 	 */
-	public function getRevisionFactory() {
+	public function getRevisionFactory() : RevisionFactory {
 		return $this->getService( 'RevisionFactory' );
 	}
 
@@ -756,7 +994,7 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.31
 	 * @return RevisionLookup
 	 */
-	public function getRevisionLookup() {
+	public function getRevisionLookup() : RevisionLookup {
 		return $this->getService( 'RevisionLookup' );
 	}
 
@@ -764,7 +1002,7 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.32
 	 * @return RevisionRenderer
 	 */
-	public function getRevisionRenderer() {
+	public function getRevisionRenderer() : RevisionRenderer {
 		return $this->getService( 'RevisionRenderer' );
 	}
 
@@ -772,7 +1010,7 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.31
 	 * @return RevisionStore
 	 */
-	public function getRevisionStore() {
+	public function getRevisionStore() : RevisionStore {
 		return $this->getService( 'RevisionStore' );
 	}
 
@@ -780,7 +1018,7 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.32
 	 * @return RevisionStoreFactory
 	 */
-	public function getRevisionStoreFactory() {
+	public function getRevisionStoreFactory() : RevisionStoreFactory {
 		return $this->getService( 'RevisionStoreFactory' );
 	}
 
@@ -788,7 +1026,7 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.27
 	 * @return SearchEngine
 	 */
-	public function newSearchEngine() {
+	public function newSearchEngine() : SearchEngine {
 		// New engine object every time, since they keep state
 		return $this->getService( 'SearchEngineFactory' )->create();
 	}
@@ -797,7 +1035,7 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.27
 	 * @return SearchEngineConfig
 	 */
-	public function getSearchEngineConfig() {
+	public function getSearchEngineConfig() : SearchEngineConfig {
 		return $this->getService( 'SearchEngineConfig' );
 	}
 
@@ -805,7 +1043,7 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.27
 	 * @return SearchEngineFactory
 	 */
-	public function getSearchEngineFactory() {
+	public function getSearchEngineFactory() : SearchEngineFactory {
 		return $this->getService( 'SearchEngineFactory' );
 	}
 
@@ -813,7 +1051,7 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.30
 	 * @return CommandFactory
 	 */
-	public function getShellCommandFactory() {
+	public function getShellCommandFactory() : CommandFactory {
 		return $this->getService( 'ShellCommandFactory' );
 	}
 
@@ -821,7 +1059,7 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.27
 	 * @return SiteLookup
 	 */
-	public function getSiteLookup() {
+	public function getSiteLookup() : SiteLookup {
 		return $this->getService( 'SiteLookup' );
 	}
 
@@ -829,7 +1067,7 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.27
 	 * @return SiteStore
 	 */
-	public function getSiteStore() {
+	public function getSiteStore() : SiteStore {
 		return $this->getService( 'SiteStore' );
 	}
 
@@ -837,7 +1075,7 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.27
 	 * @return SkinFactory
 	 */
-	public function getSkinFactory() {
+	public function getSkinFactory() : SkinFactory {
 		return $this->getService( 'SkinFactory' );
 	}
 
@@ -845,7 +1083,7 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.33
 	 * @return SlotRoleRegistry
 	 */
-	public function getSlotRoleRegistry() {
+	public function getSlotRoleRegistry() : SlotRoleRegistry {
 		return $this->getService( 'SlotRoleRegistry' );
 	}
 
@@ -853,7 +1091,7 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.31
 	 * @return NameTableStore
 	 */
-	public function getSlotRoleStore() {
+	public function getSlotRoleStore() : NameTableStore {
 		return $this->getService( 'NameTableStoreFactory' )->getSlotRoles();
 	}
 
@@ -869,15 +1107,31 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.27
 	 * @return IBufferingStatsdDataFactory
 	 */
-	public function getStatsdDataFactory() {
+	public function getStatsdDataFactory() : IBufferingStatsdDataFactory {
 		return $this->getService( 'StatsdDataFactory' );
+	}
+
+	/**
+	 * @since 1.34
+	 * @return TempFSFileFactory
+	 */
+	public function getTempFSFileFactory() : TempFSFileFactory {
+		return $this->getService( 'TempFSFileFactory' );
+	}
+
+	/**
+	 * @since 1.35
+	 * @return TitleFactory
+	 */
+	public function getTitleFactory() : TitleFactory {
+		return $this->getService( 'TitleFactory' );
 	}
 
 	/**
 	 * @since 1.28
 	 * @return TitleFormatter
 	 */
-	public function getTitleFormatter() {
+	public function getTitleFormatter() : TitleFormatter {
 		return $this->getService( 'TitleFormatter' );
 	}
 
@@ -885,7 +1139,7 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.28
 	 * @return TitleParser
 	 */
-	public function getTitleParser() {
+	public function getTitleParser() : TitleParser {
 		return $this->getService( 'TitleParser' );
 	}
 
@@ -893,7 +1147,7 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.32
 	 * @return UploadRevisionImporter
 	 */
-	public function getUploadRevisionImporter() {
+	public function getUploadRevisionImporter() : UploadRevisionImporter {
 		return $this->getService( 'UploadRevisionImporter' );
 	}
 
@@ -901,7 +1155,7 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.28
 	 * @return VirtualRESTServiceClient
 	 */
-	public function getVirtualRESTServiceClient() {
+	public function getVirtualRESTServiceClient() : VirtualRESTServiceClient {
 		return $this->getService( 'VirtualRESTServiceClient' );
 	}
 
@@ -909,7 +1163,7 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.28
 	 * @return WatchedItemQueryService
 	 */
-	public function getWatchedItemQueryService() {
+	public function getWatchedItemQueryService() : WatchedItemQueryService {
 		return $this->getService( 'WatchedItemQueryService' );
 	}
 
@@ -917,31 +1171,31 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.28
 	 * @return WatchedItemStoreInterface
 	 */
-	public function getWatchedItemStore() {
+	public function getWatchedItemStore() : WatchedItemStoreInterface {
 		return $this->getService( 'WatchedItemStore' );
 	}
 
 	/**
 	 * @since 1.31
-	 * @return \OldRevisionImporter
+	 * @return OldRevisionImporter
 	 */
-	public function getWikiRevisionOldRevisionImporter() {
+	public function getWikiRevisionOldRevisionImporter() : OldRevisionImporter {
 		return $this->getService( 'OldRevisionImporter' );
 	}
 
 	/**
 	 * @since 1.31
-	 * @return \OldRevisionImporter
+	 * @return OldRevisionImporter
 	 */
-	public function getWikiRevisionOldRevisionImporterNoUpdates() {
+	public function getWikiRevisionOldRevisionImporterNoUpdates() : OldRevisionImporter {
 		return $this->getService( 'WikiRevisionOldRevisionImporterNoUpdates' );
 	}
 
 	/**
 	 * @since 1.31
-	 * @return \UploadRevisionImporter
+	 * @return UploadRevisionImporter
 	 */
-	public function getWikiRevisionUploadImporter() {
+	public function getWikiRevisionUploadImporter() : UploadRevisionImporter {
 		return $this->getService( 'UploadRevisionImporter' );
 	}
 

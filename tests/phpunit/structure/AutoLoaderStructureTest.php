@@ -1,8 +1,7 @@
 <?php
 
-/**
- * @coversNothing
- */
+use SebastianBergmann\FileIterator\Facade;
+
 class AutoLoaderStructureTest extends MediaWikiTestCase {
 	/**
 	 * Assert that there were no classes loaded that are not registered with the AutoLoader.
@@ -28,7 +27,7 @@ class AutoLoaderStructureTest extends MediaWikiTestCase {
 	}
 
 	private function recurseFiles( $dir ) {
-		return ( new File_Iterator_Facade() )->getFilesAsArray( $dir, [ '.php' ] );
+		return ( new Facade() )->getFilesAsArray( $dir, [ '.php' ] );
 	}
 
 	/**
@@ -49,7 +48,9 @@ class AutoLoaderStructureTest extends MediaWikiTestCase {
 			// Check that the expected class name (based on the filename) is the
 			// same as the one we found.
 			// Strip directory prefix from front of filename, and .php extension
-			$abbrFileName = substr( substr( $file, strlen( $dir ) ), 0, -4 );
+			$dirNameLength = strlen( realpath( $dir ) ) + 1; // +1 for the trailing slash
+			$fileBaseName = substr( $file, $dirNameLength );
+			$abbrFileName = substr( $fileBaseName, 0, -4 );
 			$expectedClassName = $prefix . str_replace( '/', '\\', $abbrFileName );
 
 			$this->assertSame(
@@ -112,14 +113,12 @@ class AutoLoaderStructureTest extends MediaWikiTestCase {
 				// 'class Foo {}'
 				$class = $fileNamespace . $match['class'];
 				$classesInFile[$class] = true;
+			} elseif ( !empty( $match['original'] ) ) {
+				// 'class_alias( "Foo", "Bar" );'
+				$aliasesInFile[$match['alias']] = $match['original'];
 			} else {
-				if ( !empty( $match['original'] ) ) {
-					// 'class_alias( "Foo", "Bar" );'
-					$aliasesInFile[$match['alias']] = $match['original'];
-				} else {
-					// 'class_alias( Foo::class, "Bar" );'
-					$aliasesInFile[$match['aliasString']] = $fileNamespace . $match['originalStatic'];
-				}
+				// 'class_alias( Foo::class, "Bar" );'
+				$aliasesInFile[$match['aliasString']] = $fileNamespace . $match['originalStatic'];
 			}
 		}
 
@@ -201,7 +200,7 @@ class AutoLoaderStructureTest extends MediaWikiTestCase {
 	}
 
 	public function testAutoloadOrder() {
-		$path = realpath( __DIR__ . '/../../..' );
+		$path = __DIR__ . '/../../..';
 		$oldAutoload = file_get_contents( $path . '/autoload.php' );
 		$generator = new AutoloadGenerator( $path, 'local' );
 		$generator->setPsr4Namespaces( AutoLoader::getAutoloadNamespaces() );

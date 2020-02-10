@@ -58,7 +58,8 @@ class LogPage {
 	private $type;
 
 	/** @var string One of '', 'block', 'protect', 'rights', 'delete',
-	 *   'upload', 'move', 'move_redir' */
+	 *   'upload', 'move', 'move_redir'
+	 */
 	private $action;
 
 	/** @var string Comment associated with action */
@@ -93,8 +94,7 @@ class LogPage {
 
 		$dbw = wfGetDB( DB_MASTER );
 
-		// @todo FIXME private/protected/public property?
-		$this->timestamp = $now = wfTimestampNow();
+		$now = wfTimestampNow();
 		$data = [
 			'log_type' => $this->type,
 			'log_action' => $this->action,
@@ -104,7 +104,11 @@ class LogPage {
 			'log_page' => $this->target->getArticleID(),
 			'log_params' => $this->params
 		];
-		$data += CommentStore::getStore()->insert( $dbw, 'log_comment', $this->comment );
+		$data += MediaWikiServices::getInstance()->getCommentStore()->insert(
+			$dbw,
+			'log_comment',
+			$this->comment
+		);
 		$data += ActorMigration::newMigration()->getInsertValues( $dbw, 'log_user', $this->doer );
 		$dbw->insert( 'logging', $data, __METHOD__ );
 		$newId = $dbw->insertId();
@@ -225,7 +229,7 @@ class LogPage {
 	) {
 		global $wgLang, $wgLogActions;
 
-		if ( is_null( $skin ) ) {
+		if ( $skin === null ) {
 			$langObj = MediaWikiServices::getInstance()->getContentLanguage();
 			$langObjOrNull = null;
 		} else {
@@ -236,10 +240,10 @@ class LogPage {
 		$key = "$type/$action";
 
 		if ( isset( $wgLogActions[$key] ) ) {
-			if ( is_null( $title ) ) {
+			if ( $title === null ) {
 				$rv = wfMessage( $wgLogActions[$key] )->inLanguage( $langObj )->escaped();
 			} else {
-				$titleLink = self::getTitleLink( $type, $langObjOrNull, $title, $params );
+				$titleLink = self::getTitleLink( $title, $langObjOrNull );
 
 				if ( count( $params ) == 0 ) {
 					$rv = wfMessage( $wgLogActions[$key] )->rawParams( $titleLink )
@@ -282,40 +286,31 @@ class LogPage {
 	}
 
 	/**
-	 * @todo Document
-	 * @param string $type
-	 * @param Language|null $lang
 	 * @param Title $title
-	 * @param array &$params
-	 * @return string
+	 * @param ?Language $lang
+	 * @return string HTML
 	 */
-	protected static function getTitleLink( $type, $lang, $title, &$params ) {
+	private static function getTitleLink( Title $title, ?Language $lang ) : string {
 		if ( !$lang ) {
 			return $title->getPrefixedText();
 		}
 
 		$services = MediaWikiServices::getInstance();
 		$linkRenderer = $services->getLinkRenderer();
-		if ( $title->isSpecialPage() ) {
-			list( $name, $par ) = $services->getSpecialPageFactory()->
-				resolveAlias( $title->getDBkey() );
 
-			# Use the language name for log titles, rather than Log/X
-			if ( $name == 'Log' ) {
+		if ( $title->isSpecialPage() ) {
+			[ $name, $par ] = $services->getSpecialPageFactory()->resolveAlias( $title->getDBkey() );
+
+			if ( $name === 'Log' ) {
 				$logPage = new LogPage( $par );
-				$titleLink = $linkRenderer->makeLink( $title, $logPage->getName()->text() );
-				$titleLink = wfMessage( 'parentheses' )
+				return wfMessage( 'parentheses' )
+					->rawParams( $linkRenderer->makeLink( $title, $logPage->getName()->text() ) )
 					->inLanguage( $lang )
-					->rawParams( $titleLink )
 					->escaped();
-			} else {
-				$titleLink = $linkRenderer->makeLink( $title );
 			}
-		} else {
-			$titleLink = $linkRenderer->makeLink( $title );
 		}
 
-		return $titleLink;
+		return $linkRenderer->makeLink( $title );
 	}
 
 	/**
@@ -399,7 +394,7 @@ class LogPage {
 		}
 
 		$dbw = wfGetDB( DB_MASTER );
-		$dbw->insert( 'log_search', $data, __METHOD__, 'IGNORE' );
+		$dbw->insert( 'log_search', $data, __METHOD__, [ 'IGNORE' ] );
 
 		return true;
 	}

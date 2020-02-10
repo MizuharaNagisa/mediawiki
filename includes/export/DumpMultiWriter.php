@@ -27,11 +27,15 @@
  * @ingroup Dump
  */
 class DumpMultiWriter {
+	/** @var array */
+	private $sinks;
+	/** @var int */
+	private $count;
 
 	/**
 	 * @param array $sinks
 	 */
-	function __construct( $sinks ) {
+	public function __construct( $sinks ) {
 		$this->sinks = $sinks;
 		$this->count = count( $sinks );
 	}

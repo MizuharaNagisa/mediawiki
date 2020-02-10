@@ -46,7 +46,7 @@ class BenchmarkParse extends Maintenance {
 	/** @var array Cache that maps a Title DB key to revision ID for the requested timestamp */
 	private $idCache = [];
 
-	function __construct() {
+	public function __construct() {
 		parent::__construct();
 		$this->addDescription( 'Benchmark parse operation' );
 		$this->addArg( 'title', 'The name of the page to parse' );
@@ -65,7 +65,7 @@ class BenchmarkParse extends Maintenance {
 			false, false );
 	}
 
-	function execute() {
+	public function execute() {
 		if ( $this->hasOption( 'tpl-time' ) ) {
 			$this->templateTimestamp = wfTimestamp( TS_MW, strtotime( $this->getOption( 'tpl-time' ) ) );
 			Hooks::register( 'BeforeParserFetchTemplateAndtitle', [ $this, 'onFetchTemplate' ] );
@@ -75,7 +75,7 @@ class BenchmarkParse extends Maintenance {
 		// Set as a member variable to avoid function calls when we're timing the parse
 		$this->linkCache = MediaWikiServices::getInstance()->getLinkCache();
 
-		$title = Title::newFromText( $this->getArg() );
+		$title = Title::newFromText( $this->getArg( 0 ) );
 		if ( !$title ) {
 			$this->error( "Invalid title" );
 			exit( 1 );
@@ -132,7 +132,7 @@ class BenchmarkParse extends Maintenance {
 	 * @param string $timestamp
 	 * @return bool|string Revision ID, or false if not found or error
 	 */
-	function getRevIdForTime( Title $title, $timestamp ) {
+	private function getRevIdForTime( Title $title, $timestamp ) {
 		$dbr = $this->getDB( DB_REPLICA );
 
 		$id = $dbr->selectField(
@@ -145,7 +145,7 @@ class BenchmarkParse extends Maintenance {
 			],
 			__METHOD__,
 			[ 'ORDER BY' => 'rev_timestamp DESC', 'LIMIT' => 1 ],
-			[ 'revision' => [ 'INNER JOIN', 'rev_page=page_id' ] ]
+			[ 'revision' => [ 'JOIN', 'rev_page=page_id' ] ]
 		);
 
 		return $id;
@@ -156,7 +156,7 @@ class BenchmarkParse extends Maintenance {
 	 *
 	 * @param Revision $revision
 	 */
-	function runParser( Revision $revision ) {
+	private function runParser( Revision $revision ) {
 		$content = $revision->getContent();
 		$content->getParserOutput( $revision->getTitle(), $revision->getId() );
 		if ( $this->clearLinkCache ) {
@@ -174,7 +174,7 @@ class BenchmarkParse extends Maintenance {
 	 * @param string|bool &$id
 	 * @return bool
 	 */
-	function onFetchTemplate( Parser $parser, Title $title, &$skip, &$id ) {
+	private function onFetchTemplate( Parser $parser, Title $title, &$skip, &$id ) {
 		$pdbk = $title->getPrefixedDBkey();
 		if ( !isset( $this->idCache[$pdbk] ) ) {
 			$proposedId = $this->getRevIdForTime( $title, $this->templateTimestamp );

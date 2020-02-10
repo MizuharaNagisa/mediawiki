@@ -21,9 +21,14 @@
 
 /**
  * Generic list for change tagging.
+ *
+ * @property ChangeTagsLogItem $current
+ * @method ChangeTagsLogItem next()
+ * @method ChangeTagsLogItem reset()
+ * @method ChangeTagsLogItem current()
  */
 abstract class ChangeTagsList extends RevisionListBase {
-	function __construct( IContextSource $context, Title $title, array $ids ) {
+	public function __construct( IContextSource $context, Title $title, array $ids ) {
 		parent::__construct( $context, $title );
 		$this->ids = $ids;
 	}
@@ -68,7 +73,7 @@ abstract class ChangeTagsList extends RevisionListBase {
 	 *
 	 * @param array $tagsToAdd
 	 * @param array $tagsToRemove
-	 * @param array $params
+	 * @param string|null $params
 	 * @param string $reason
 	 * @param User $user
 	 * @return Status

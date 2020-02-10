@@ -23,6 +23,7 @@
 
 use MediaWiki\Auth\AuthManager;
 use MediaWiki\Logger\LoggerFactory;
+use MediaWiki\MediaWikiServices;
 
 /**
  * Implements Special:CreateAccount
@@ -50,11 +51,15 @@ class SpecialCreateAccount extends LoginSignupSpecialPage {
 	}
 
 	public function isRestricted() {
-		return !User::groupHasPermission( '*', 'createaccount' );
+		return !MediaWikiServices::getInstance()
+			->getPermissionManager()
+			->groupHasPermission( '*', 'createaccount' );
 	}
 
 	public function userCanExecute( User $user ) {
-		return $user->isAllowed( 'createaccount' );
+		return MediaWikiServices::getInstance()
+			->getPermissionManager()
+			->userHasRight( $user, 'createaccount' );
 	}
 
 	public function checkPermissions() {
@@ -63,10 +68,6 @@ class SpecialCreateAccount extends LoginSignupSpecialPage {
 		$user = $this->getUser();
 		$status = AuthManager::singleton()->checkAccountCreatePermissions( $user );
 		if ( !$status->isGood() ) {
-			// track block with a cookie if it doesn't exists already
-			if ( $user->isBlockedFromCreateAccount() ) {
-				$user->trackBlockWithCookie();
-			}
 			throw new ErrorPageError( 'createacct-error', $status->getMessage() );
 		}
 	}

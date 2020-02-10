@@ -2,6 +2,7 @@
 
 namespace MediaWiki\Session;
 
+use MediaWiki\MediaWikiServices;
 use MediaWikiTestCase;
 use Wikimedia\TestingAccessWrapper;
 
@@ -134,7 +135,7 @@ class SessionProviderTest extends MediaWikiTestCase {
 			$this->fail( 'Expected exception not thrown' );
 		} catch ( \BadMethodCallException $ex ) {
 			$this->assertSame(
-				'MediaWiki\\Session\\SessionProvider::preventSessionsForUser must be implmented ' .
+				'MediaWiki\\Session\\SessionProvider::preventSessionsForUser must be implemented ' .
 					'when canChangeUser() is false',
 				$ex->getMessage()
 			);
@@ -181,7 +182,8 @@ class SessionProviderTest extends MediaWikiTestCase {
 
 		$this->assertSame(
 			'MockSessionProvider sessions',
-			$provider->describe( \Language::factory( 'en' ) )
+			$provider->describe(
+				MediaWikiServices::getInstance()->getLanguageFactory()->getLanguage( 'en' ) )
 		);
 	}
 

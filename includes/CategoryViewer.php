@@ -85,7 +85,7 @@ class CategoryViewer extends ContextSource {
 	 * @param array $until An array with 3 keys for until of each section (since 1.17)
 	 * @param array $query
 	 */
-	function __construct( $title, IContextSource $context, $from = [],
+	public function __construct( $title, IContextSource $context, $from = [],
 		$until = [], $query = []
 	) {
 		$this->title = $title;
@@ -125,7 +125,7 @@ class CategoryViewer extends ContextSource {
 			// @todo FIXME: Cannot be completely suppressed because it
 			//        is unknown if 'until' or 'from' makes this
 			//        give 0 results.
-			$r = $r . $this->getCategoryTop();
+			$r = $this->getCategoryTop();
 		} else {
 			$r = $this->getCategoryTop() .
 				$r .
@@ -339,7 +339,7 @@ class CategoryViewer extends ContextSource {
 					'ORDER BY' => $this->flip[$type] ? 'cl_sortkey DESC' : 'cl_sortkey',
 				],
 				[
-					'categorylinks' => [ 'INNER JOIN', 'cl_from = page_id' ],
+					'categorylinks' => [ 'JOIN', 'cl_from = page_id' ],
 					'category' => [ 'LEFT JOIN', [
 						'cat_title = page_title',
 						'page_namespace' => NS_CATEGORY

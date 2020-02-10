@@ -1,8 +1,9 @@
 <?php
+
 namespace MediaWiki\Tests\Revision;
 
-use Wikimedia\Rdbms\IMaintainableDatabase;
 use MediaWiki\DB\PatchFileLocation;
+use Wikimedia\Rdbms\IMaintainableDatabase;
 
 /**
  * Trait providing schema overrides that allow tests to run against the post-migration
@@ -45,10 +46,10 @@ trait McrSchemaOverride {
 			$overrides['scripts'][] = $this->getSqlPatchPath( $db, 'patch-slot_roles' );
 			$overrides['scripts'][] = $this->getSqlPatchPath( $db, 'patch-content_models' );
 			$overrides['scripts'][] = $this->getSqlPatchPath( $db, 'patch-content' );
-			$overrides['scripts'][] = $this->getSqlPatchPath( $db, 'patch-slots.sql' );
+			$overrides['scripts'][] = $this->getSqlPatchPath( $db, 'patch-slots' );
 		}
 
-		if ( !$this->hasPreMcrFields( $db ) ) {
+		if ( $this->hasPreMcrFields( $db ) ) {
 			$overrides['alter'][] = 'revision';
 			$overrides['scripts'][] = $this->getSqlPatchPath( $db, 'drop-pre-mcr-fields', __DIR__ );
 		}

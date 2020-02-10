@@ -23,8 +23,8 @@
 
 require_once __DIR__ . '/Maintenance.php';
 
-use Wikimedia\Rdbms\IDatabase;
 use MediaWiki\MediaWikiServices;
+use Wikimedia\Rdbms\IDatabase;
 
 /**
  * Usage:
@@ -133,7 +133,10 @@ class PopulateContentModel extends Maintenance {
 		$key = "{$prefix}_id";
 
 		$count = count( $ids );
-		$format = ContentHandler::getForModelID( $model )->getDefaultFormat();
+		$format = MediaWikiServices::getInstance()
+			->getContentHandlerFactory()
+			->getContentHandler( $model )
+			->getDefaultFormat();
 		$this->output( "Setting $count rows to $model / $format..." );
 		$dbw->update(
 			$table,
@@ -160,7 +163,7 @@ class PopulateContentModel extends Maintenance {
 		} else { // revision
 			$selectTables = [ 'revision', 'page' ];
 			$fields = [ 'page_title', 'page_namespace' ];
-			$join_conds = [ 'page' => [ 'INNER JOIN', 'rev_page=page_id' ] ];
+			$join_conds = [ 'page' => [ 'JOIN', 'rev_page=page_id' ] ];
 			$where = $ns === 'all' ? [] : [ 'page_namespace' => $ns ];
 			$page_id_column = 'rev_page';
 			$rev_id_column = 'rev_id';
@@ -195,7 +198,9 @@ class PopulateContentModel extends Maintenance {
 				}
 				$lastId = $row->{$key};
 				try {
-					$handler = ContentHandler::getForTitle( $title );
+					$handler = MediaWikiServices::getInstance()
+						->getContentHandlerFactory()
+						->getContentHandler( $title->getContentModel() );
 				} catch ( MWException $e ) {
 					$this->error( "Invalid content model for $title" );
 					continue;

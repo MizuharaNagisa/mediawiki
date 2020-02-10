@@ -1,7 +1,9 @@
 <?php
+
 namespace Wikimedia\Services;
 
 use Exception;
+use Psr\Container\NotFoundExceptionInterface;
 use RuntimeException;
 
 /**
@@ -30,7 +32,8 @@ use RuntimeException;
 /**
  * Exception thrown when the requested service is not known.
  */
-class NoSuchServiceException extends RuntimeException {
+class NoSuchServiceException extends RuntimeException
+	implements NotFoundExceptionInterface {
 
 	/**
 	 * @param string $serviceName
@@ -41,9 +44,3 @@ class NoSuchServiceException extends RuntimeException {
 	}
 
 }
-
-/**
- * Retain the old class name for backwards compatibility.
- * @deprecated since 1.33
- */
-class_alias( NoSuchServiceException::class, 'MediaWiki\Services\NoSuchServiceException' );

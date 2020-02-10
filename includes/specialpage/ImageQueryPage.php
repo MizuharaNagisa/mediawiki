@@ -21,8 +21,8 @@
  * @ingroup SpecialPage
  */
 
-use Wikimedia\Rdbms\IResultWrapper;
 use Wikimedia\Rdbms\IDatabase;
+use Wikimedia\Rdbms\IResultWrapper;
 
 /**
  * Variant of QueryPage which uses a gallery to output results, thus
@@ -68,6 +68,7 @@ abstract class ImageQueryPage extends QueryPage {
 
 	// Gotta override this since it's abstract
 	function formatResult( $skin, $result ) {
+		return false;
 	}
 
 	/**

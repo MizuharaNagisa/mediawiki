@@ -243,6 +243,11 @@
 				) {
 					item.$element.addClass( 'apihelp-deprecated-value' );
 				}
+				if ( this.paramInfo.internalvalues &&
+					this.paramInfo.internalvalues.indexOf( data ) >= 0
+				) {
+					item.$element.addClass( 'apihelp-internal-value' );
+				}
 				return item;
 			}
 		},
@@ -289,8 +294,8 @@
 				// Can't, sorry.
 			},
 			apiCheckValid: function () {
-				var ok = this.getValue() !== null || suppressErrors;
-				this.setIcon( ok ? null : 'alert' );
+				var ok = this.getValue() !== null && this.getValue() !== undefined || suppressErrors;
+				this.info.setIcon( ok ? null : 'alert' );
 				this.setTitle( ok ? '' : mw.message( 'apisandbox-alert-field' ).plain() );
 				return $.Deferred().resolve( ok ).promise();
 			}
@@ -472,9 +477,7 @@
 					widget.getValidity = widget.input.getValidity.bind( widget.input );
 					widget.paramInfo = pi;
 					$.extend( widget, WidgetMethods.textInputWidget );
-					if ( Util.apiBool( pi.enforcerange ) ) {
-						widget.setRange( pi.min || -Infinity, pi.max || Infinity );
-					}
+					widget.setRange( pi.min || -Infinity, pi.max || Infinity );
 					multiModeAllowed = true;
 					multiModeInput = widget;
 					break;
@@ -524,7 +527,7 @@
 					break;
 
 				case 'namespace':
-					// eslint-disable-next-line jquery/no-map-util
+					// eslint-disable-next-line no-jquery/no-map-util
 					items = $.map( mw.config.get( 'wgFormattedNamespaces' ), function ( name, ns ) {
 						if ( ns === '0' ) {
 							name = mw.message( 'blanknamespace' ).text();
@@ -571,6 +574,9 @@
 						if ( pi.deprecatedvalues && pi.deprecatedvalues.indexOf( v ) >= 0 ) {
 							config.classes.push( 'apihelp-deprecated-value' );
 						}
+						if ( pi.internalvalues && pi.internalvalues.indexOf( v ) >= 0 ) {
+							config.classes.push( 'apihelp-internal-value' );
+						}
 						return new OO.ui.MenuOptionWidget( config );
 					} );
 					if ( Util.apiBool( pi.multi ) ) {
@@ -607,6 +613,14 @@
 								this.$element.toggleClass(
 									'apihelp-deprecated-value',
 									pi.deprecatedvalues.indexOf( item.data ) >= 0
+								);
+							}, [], widget );
+						}
+						if ( pi.internalvalues ) {
+							widget.getMenu().on( 'select', function ( item ) {
+								this.$element.toggleClass(
+									'apihelp-internal-value',
+									pi.internalvalues.indexOf( item.data ) >= 0
 								);
 							}, [], widget );
 						}
@@ -724,37 +738,32 @@
 		 * @return {OO.ui.MenuOptionWidget[]} Each item's data should be an OO.ui.FieldLayout
 		 */
 		formatRequest: function ( displayParams, rawParams ) {
-			var jsonInput,
+			var jsonLayout,
 				items = [
 					new OO.ui.MenuOptionWidget( {
 						label: Util.parseMsg( 'apisandbox-request-format-url-label' ),
-						data: new OO.ui.FieldLayout(
-							new OO.ui.TextInputWidget( {
-								readOnly: true,
-								value: mw.util.wikiScript( 'api' ) + '?' + $.param( displayParams )
-							} ), {
-								label: Util.parseMsg( 'apisandbox-request-url-label' )
-							}
-						)
+						data: new mw.widgets.CopyTextLayout( {
+							label: Util.parseMsg( 'apisandbox-request-url-label' ),
+							copyText: mw.util.wikiScript( 'api' ) + '?' + $.param( displayParams )
+						} )
 					} ),
 					new OO.ui.MenuOptionWidget( {
 						label: Util.parseMsg( 'apisandbox-request-format-json-label' ),
-						data: new OO.ui.FieldLayout(
-							jsonInput = new OO.ui.MultilineTextInputWidget( {
+						data: jsonLayout = new mw.widgets.CopyTextLayout( {
+							label: Util.parseMsg( 'apisandbox-request-json-label' ),
+							copyText: JSON.stringify( displayParams, null, '\t' ),
+							multiline: true,
+							textInput: {
 								classes: [ 'mw-apisandbox-textInputCode' ],
-								readOnly: true,
 								autosize: true,
-								maxRows: 6,
-								value: JSON.stringify( displayParams, null, '\t' )
-							} ), {
-								label: Util.parseMsg( 'apisandbox-request-json-label' )
+								maxRows: 6
 							}
-						).on( 'toggle', function ( visible ) {
+						} ).on( 'toggle', function ( visible ) {
 							if ( visible ) {
 								// Call updatePosition instead of adjustSize
 								// because the latter has weird caching
 								// behavior and the former bypasses it.
-								jsonInput.updatePosition();
+								jsonLayout.textInput.updatePosition();
 							}
 						} )
 					} )
@@ -781,10 +790,10 @@
 	};
 
 	/**
-	* Interface to ApiSandbox UI
-	*
-	* @class mw.special.ApiSandbox
-	*/
+	 * Interface to ApiSandbox UI
+	 *
+	 * @class mw.special.ApiSandbox
+	 */
 	ApiSandbox = {
 		/**
 		 * Initialize the UI
@@ -797,7 +806,7 @@
 			$content = $( '#mw-apisandbox' );
 
 			windowManager = new OO.ui.WindowManager();
-			$( 'body' ).append( windowManager.$element );
+			$( document.body ).append( windowManager.$element );
 			windowManager.addWindows( {
 				errorAlert: new OO.ui.MessageDialog()
 			} );
@@ -1083,12 +1092,11 @@
 				progressLoading = false;
 				$progressText = $( '<span>' ).text( mw.message( 'apisandbox-sending-request' ).text() );
 				progress = new OO.ui.ProgressBarWidget( {
-					progress: false,
-					$content: $progressText
+					progress: false
 				} );
 
 				$result = $( '<div>' )
-					.append( progress.$element );
+					.append( $progressText, progress.$element );
 
 				resultPage = page = new OO.ui.PageLayout( '|results|', { expanded: false } );
 				page.setupOutlineItem = function () {
@@ -1389,7 +1397,7 @@
 	 * @return {OO.ui.FieldLayout} return.helpField
 	 */
 	ApiSandbox.PageLayout.prototype.makeWidgetFieldLayouts = function ( ppi, name ) {
-		var j, l, widget, descriptionContainer, tmp, flag, count, button, widgetField, helpField, layoutConfig;
+		var j, l, widget, $descriptionContainer, tmp, $tmp, flag, count, button, widgetField, helpField, layoutConfig;
 
 		widget = Util.createWidgetForParameter( ppi );
 		if ( ppi.tokentype ) {
@@ -1399,20 +1407,20 @@
 			widget.on( 'change', this.updateTemplatedParameters, [ null ], this );
 		}
 
-		descriptionContainer = $( '<div>' );
+		$descriptionContainer = $( '<div>' );
 
-		tmp = Util.parseHTML( ppi.description );
-		tmp.filter( 'dl' ).makeCollapsible( {
+		$tmp = Util.parseHTML( ppi.description );
+		$tmp.filter( 'dl' ).makeCollapsible( {
 			collapsed: true
 		} ).children( '.mw-collapsible-toggle' ).each( function () {
 			var $this = $( this );
 			$this.parent().prev( 'p' ).append( $this );
 		} );
-		descriptionContainer.append( $( '<div>' ).addClass( 'description' ).append( tmp ) );
+		$descriptionContainer.append( $( '<div>' ).addClass( 'description' ).append( $tmp ) );
 
 		if ( ppi.info && ppi.info.length ) {
 			for ( j = 0; j < ppi.info.length; j++ ) {
-				descriptionContainer.append( $( '<div>' )
+				$descriptionContainer.append( $( '<div>' )
 					.addClass( 'info' )
 					.append( Util.parseHTML( ppi.info[ j ] ) )
 				);
@@ -1427,27 +1435,17 @@
 				break;
 
 			case 'limit':
-				if ( ppi.highmax !== undefined ) {
-					descriptionContainer.append( $( '<div>' )
-						.addClass( 'info' )
-						.append(
-							Util.parseMsg(
-								'api-help-param-limit2', ppi.max, ppi.highmax
-							),
-							' ',
-							Util.parseMsg( 'apisandbox-param-limit' )
-						)
-					);
-				} else {
-					descriptionContainer.append( $( '<div>' )
-						.addClass( 'info' )
-						.append(
-							Util.parseMsg( 'api-help-param-limit', ppi.max ),
-							' ',
-							Util.parseMsg( 'apisandbox-param-limit' )
-						)
-					);
-				}
+				$descriptionContainer.append( $( '<div>' )
+					.addClass( 'info' )
+					.append(
+						Util.parseMsg(
+							'paramvalidator-help-type-number-minmax', 1,
+							ppi.min, ppi.highmax !== undefined ? ppi.highmax : ppi.max
+						),
+						' ',
+						Util.parseMsg( 'apisandbox-param-limit' )
+					)
+				);
 				break;
 
 			case 'integer':
@@ -1459,10 +1457,10 @@
 					tmp += 'max';
 				}
 				if ( tmp !== '' ) {
-					descriptionContainer.append( $( '<div>' )
+					$descriptionContainer.append( $( '<div>' )
 						.addClass( 'info' )
 						.append( Util.parseMsg(
-							'api-help-param-integer-' + tmp,
+							'paramvalidator-help-type-number-' + tmp,
 							Util.apiBool( ppi.multi ) ? 2 : 1,
 							ppi.min, ppi.max
 						) )
@@ -1489,45 +1487,45 @@
 			}
 			if ( count > ppi.lowlimit ) {
 				tmp.push(
-					mw.message( 'api-help-param-multi-max', ppi.lowlimit, ppi.highlimit ).parse()
+					mw.message( 'paramvalidator-help-multi-max', ppi.lowlimit, ppi.highlimit ).parse()
 				);
 			}
 			if ( tmp.length ) {
-				descriptionContainer.append( $( '<div>' )
+				$descriptionContainer.append( $( '<div>' )
 					.addClass( 'info' )
 					.append( Util.parseHTML( tmp.join( ' ' ) ) )
 				);
 			}
 		}
 		if ( 'maxbytes' in ppi ) {
-			descriptionContainer.append( $( '<div>' )
+			$descriptionContainer.append( $( '<div>' )
 				.addClass( 'info' )
-				.append( Util.parseMsg( 'api-help-param-maxbytes', ppi.maxbytes ) )
+				.append( Util.parseMsg( 'paramvalidator-help-type-string-maxbytes', ppi.maxbytes ) )
 			);
 		}
 		if ( 'maxchars' in ppi ) {
-			descriptionContainer.append( $( '<div>' )
+			$descriptionContainer.append( $( '<div>' )
 				.addClass( 'info' )
-				.append( Util.parseMsg( 'api-help-param-maxchars', ppi.maxchars ) )
+				.append( Util.parseMsg( 'paramvalidator-help-type-string-maxchars', ppi.maxchars ) )
 			);
 		}
 		if ( ppi.usedTemplateVars && ppi.usedTemplateVars.length ) {
-			tmp = $();
+			$tmp = $();
 			for ( j = 0, l = ppi.usedTemplateVars.length; j < l; j++ ) {
-				tmp = tmp.add( $( '<var>' ).text( ppi.usedTemplateVars[ j ] ) );
+				$tmp = $tmp.add( $( '<var>' ).text( ppi.usedTemplateVars[ j ] ) );
 				if ( j === l - 2 ) {
-					tmp = tmp.add( mw.message( 'and' ).parseDom() );
-					tmp = tmp.add( mw.message( 'word-separator' ).parseDom() );
+					$tmp = $tmp.add( mw.message( 'and' ).parseDom() );
+					$tmp = $tmp.add( mw.message( 'word-separator' ).parseDom() );
 				} else if ( j !== l - 1 ) {
-					tmp = tmp.add( mw.message( 'comma-separator' ).parseDom() );
+					$tmp = $tmp.add( mw.message( 'comma-separator' ).parseDom() );
 				}
 			}
-			descriptionContainer.append( $( '<div>' )
+			$descriptionContainer.append( $( '<div>' )
 				.addClass( 'info' )
 				.append( Util.parseMsg(
 					'apisandbox-templated-parameter-reason',
 					ppi.usedTemplateVars.length,
-					tmp
+					$tmp
 				) )
 			);
 		}
@@ -1539,7 +1537,7 @@
 			} ), {
 				align: 'inline',
 				classes: [ 'mw-apisandbox-help-field' ],
-				label: descriptionContainer
+				label: $descriptionContainer
 			}
 		);
 
@@ -1599,7 +1597,7 @@
 		}
 
 		toRemove = {};
-		// eslint-disable-next-line jquery/no-each-util
+		// eslint-disable-next-line no-jquery/no-each-util
 		$.each( this.templatedItemsCache, function ( k, el ) {
 			if ( el.widget.isElementAttached() ) {
 				toRemove[ k ] = el;
@@ -1688,7 +1686,7 @@
 					}
 				} else {
 					newVars = {};
-					// eslint-disable-next-line jquery/no-each-util
+					// eslint-disable-next-line no-jquery/no-each-util
 					$.each( p.vars, function ( k, v ) {
 						newVars[ k ] = v.replace( placeholder, value );
 					} );
@@ -1704,11 +1702,11 @@
 		};
 		while ( toProcess.length ) {
 			p = toProcess.shift();
-			// eslint-disable-next-line jquery/no-each-util
+			// eslint-disable-next-line no-jquery/no-each-util
 			$.each( p.vars, doProcess );
 		}
 
-		// eslint-disable-next-line jquery/no-map-util
+		// eslint-disable-next-line no-jquery/no-map-util
 		toRemove = $.map( toRemove, function ( el, name ) {
 			delete that.widgets[ name ];
 			return [ el.widgetField, el.helpField ];
@@ -1781,14 +1779,16 @@
 			};
 
 		this.$element.empty()
-			.append( new OO.ui.ProgressBarWidget( {
-				progress: false,
-				text: mw.message( 'apisandbox-loading', this.displayText ).text()
-			} ).$element );
+			.append(
+				document.createTextNode(
+					mw.message( 'apisandbox-loading', this.displayText ).text()
+				),
+				new OO.ui.ProgressBarWidget( { progress: false } ).$element
+			);
 
 		Util.fetchModuleInfo( this.apiModule )
 			.done( function ( pi ) {
-				var prefix, i, j, tmp,
+				var prefix, i, j, tmp, $tmp,
 					items = [],
 					deprecatedItems = [],
 					buttons = [],
@@ -1862,11 +1862,11 @@
 							width: 'auto',
 							padded: true,
 							$content: $( '<ul>' ).append( pi.examples.map( function ( example ) {
-								var a = $( '<a>' )
+								var $a = $( '<a>' )
 									.attr( 'href', '#' + example.query )
 									.html( example.description );
-								a.find( 'a' ).contents().unwrap(); // Can't nest links
-								return $( '<li>' ).append( a );
+								$a.find( 'a' ).contents().unwrap(); // Can't nest links
+								return $( '<li>' ).append( $a );
 							} ) )
 						}
 					} ) );
@@ -1943,7 +1943,7 @@
 				}
 
 				that.deprecatedItemsFieldset = new OO.ui.FieldsetLayout().addItems( deprecatedItems ).toggle( false );
-				tmp = $( '<fieldset>' )
+				$tmp = $( '<fieldset>' )
 					.toggle( !that.deprecatedItemsFieldset.isEmpty() )
 					.append(
 						$( '<legend>' ).append(
@@ -1956,10 +1956,10 @@
 					.appendTo( that.$element );
 				that.deprecatedItemsFieldset.on( 'add', function () {
 					this.toggle( !that.deprecatedItemsFieldset.isEmpty() );
-				}, [], tmp );
+				}, [], $tmp );
 				that.deprecatedItemsFieldset.on( 'remove', function () {
 					this.toggle( !that.deprecatedItemsFieldset.isEmpty() );
-				}, [], tmp );
+				}, [], $tmp );
 
 				// Load stored params, if any, then update the booklet if we
 				// have subpages (or else just update our valid-indicator).
@@ -2000,7 +2000,7 @@
 		if ( this.paramInfo === null ) {
 			return [];
 		} else {
-			// eslint-disable-next-line jquery/no-map-util
+			// eslint-disable-next-line no-jquery/no-map-util
 			promises = $.map( this.widgets, function ( widget ) {
 				return widget.apiCheckValid();
 			} );
@@ -2026,7 +2026,7 @@
 		if ( this.paramInfo === null ) {
 			this.loadFromQueryParams = params;
 		} else {
-			// eslint-disable-next-line jquery/no-each-util
+			// eslint-disable-next-line no-jquery/no-each-util
 			$.each( this.widgets, function ( name, widget ) {
 				var v = Object.prototype.hasOwnProperty.call( params, name ) ? params[ name ] : undefined;
 				widget.setApiValue( v );
@@ -2042,7 +2042,7 @@
 	 * @param {Object} displayParams Write query parameters for display into this object
 	 */
 	ApiSandbox.PageLayout.prototype.getQueryParams = function ( params, displayParams ) {
-		// eslint-disable-next-line jquery/no-each-util
+		// eslint-disable-next-line no-jquery/no-each-util
 		$.each( this.widgets, function ( name, widget ) {
 			var value = widget.getApiValue();
 			if ( value !== undefined ) {
@@ -2062,7 +2062,7 @@
 	 */
 	ApiSandbox.PageLayout.prototype.getSubpages = function () {
 		var ret = [];
-		// eslint-disable-next-line jquery/no-each-util
+		// eslint-disable-next-line no-jquery/no-each-util
 		$.each( this.widgets, function ( name, widget ) {
 			var submodules, i;
 			if ( typeof widget.getSubmodules === 'function' ) {

@@ -1,4 +1,6 @@
 <?php
+
+use LightnCandy\LightnCandy;
 use MediaWiki\MediaWikiServices;
 
 /**
@@ -43,6 +45,8 @@ class TemplateParser {
 	 */
 	protected $compileFlags;
 
+	private static $cacheVersion = '1.2.4';
+
 	/**
 	 * @param string|null $templateDir
 	 * @param bool $forceRecompile
@@ -62,9 +66,9 @@ class TemplateParser {
 	 */
 	public function enableRecursivePartials( $enable ) {
 		if ( $enable ) {
-			$this->compileFlags = $this->compileFlags | LightnCandy::FLAG_RUNTIMEPARTIAL;
+			$this->compileFlags |= LightnCandy::FLAG_RUNTIMEPARTIAL;
 		} else {
-			$this->compileFlags = $this->compileFlags & ~LightnCandy::FLAG_RUNTIMEPARTIAL;
+			$this->compileFlags &= ~LightnCandy::FLAG_RUNTIMEPARTIAL;
 		}
 	}
 
@@ -122,7 +126,7 @@ class TemplateParser {
 		if ( $secretKey ) {
 			// See if the compiled PHP code is stored in cache.
 			$cache = ObjectCache::getLocalServerInstance( CACHE_ANYTHING );
-			$key = $cache->makeKey( 'template', $templateName, $fastHash );
+			$key = $cache->makeKey( 'lightncandy-compiled', self::$cacheVersion, $templateName, $fastHash );
 			$code = $this->forceRecompile ? null : $cache->get( $key );
 
 			if ( $code ) {
@@ -136,14 +140,14 @@ class TemplateParser {
 				}
 			}
 			if ( !$code ) {
-				$code = $this->compileForEval( $fileContents, $filename );
+				$code = $this->compile( $fileContents, $filename );
 
 				// Prefix the cached code with a keyed hash (64 hex chars) as an integrity check
 				$cache->set( $key, hash_hmac( 'sha256', $code, $secretKey ) . $code );
 			}
 		// If there is no secret key available, don't use cache
 		} else {
-			$code = $this->compileForEval( $fileContents, $filename );
+			$code = $this->compile( $fileContents, $filename );
 		}
 
 		$renderer = eval( $code );
@@ -155,47 +159,42 @@ class TemplateParser {
 	}
 
 	/**
-	 * Wrapper for compile() function that verifies successful compilation and strips
-	 * out the '<?php' part so that the code is ready for eval()
-	 * @param string $fileContents Mustache code
-	 * @param string $filename Name of the template
-	 * @return string PHP code (without '<?php')
-	 * @throws RuntimeException
-	 */
-	protected function compileForEval( $fileContents, $filename ) {
-		// Compile the template into PHP code
-		$code = $this->compile( $fileContents );
-
-		if ( !$code ) {
-			throw new RuntimeException( "Could not compile template: {$filename}" );
-		}
-
-		// Strip the "<?php" added by lightncandy so that it can be eval()ed
-		if ( substr( $code, 0, 5 ) === '<?php' ) {
-			$code = substr( $code, 5 );
-		}
-
-		return $code;
-	}
-
-	/**
 	 * Compile the Mustache code into PHP code using LightnCandy
 	 * @param string $code Mustache code
-	 * @return string PHP code (with '<?php')
-	 * @throws RuntimeException
+	 * @param string $filename File name the code came from; only used for error reporting
+	 * @return string PHP code
+	 * @suppress PhanTypeMismatchArgument
 	 */
-	protected function compile( $code ) {
-		if ( !class_exists( 'LightnCandy' ) ) {
-			throw new RuntimeException( 'LightnCandy class not defined' );
-		}
-		return LightnCandy::compile(
+	protected function compile( $code, $filename ) {
+		$compiled = LightnCandy::compile(
 			$code,
 			[
 				'flags' => $this->compileFlags,
 				'basedir' => $this->templateDir,
 				'fileext' => '.mustache',
+				'partialresolver' => function ( $cx, $name ) {
+					$filePath = "{$this->templateDir}/{$name}.mustache";
+					if ( !file_exists( $filePath ) ) {
+						throw new RuntimeException( "Failed to find partial `{$name}`" );
+					}
+
+					$fileContents = file_get_contents( $filePath );
+
+					if ( $fileContents === false ) {
+						throw new RuntimeException( "Failed to read partial `{$name}`" );
+					}
+
+					return $fileContents;
+				}
 			]
 		);
+		if ( !$compiled ) {
+			// This shouldn't happen because LightnCandy::FLAG_ERROR_EXCEPTION is set
+			// Errors should throw exceptions instead of returning false
+			// Check anyway for paranoia
+			throw new RuntimeException( "Could not compile template: {$filename}" );
+		}
+		return $compiled;
 	}
 
 	/**
@@ -220,6 +219,6 @@ class TemplateParser {
 	 */
 	public function processTemplate( $templateName, $args, array $scopes = [] ) {
 		$template = $this->getTemplate( $templateName );
-		return call_user_func( $template, $args, $scopes );
+		return $template( $args, $scopes );
 	}
 }

@@ -68,6 +68,30 @@ class MWDebug {
 	protected static $deprecationWarnings = [];
 
 	/**
+	 * @internal For use by Setup.php only.
+	 */
+	public static function setup() {
+		global $wgDebugToolbar,
+			$wgUseCdn, $wgUseFileCache, $wgCommandLineMode;
+
+		if (
+			// Easy to forget to falsify $wgDebugToolbar for static caches.
+			// If file cache or CDN cache is on, just disable this (DWIMD).
+			$wgUseCdn ||
+			$wgUseFileCache ||
+			// Keep MWDebug off on CLI. This prevents MWDebug from eating up
+			// all the memory for logging SQL queries in maintenance scripts.
+			$wgCommandLineMode
+		) {
+			return;
+		}
+
+		if ( $wgDebugToolbar ) {
+			self::init();
+		}
+	}
+
+	/**
 	 * Enabled the debugger and load resource module.
 	 * This is called by Setup.php when $wgDebugToolbar is true.
 	 *
@@ -183,7 +207,7 @@ class MWDebug {
 	 *
 	 * @since 1.19
 	 * @param string $function Function that is deprecated.
-	 * @param string|bool $version Version in which the function was deprecated.
+	 * @param string|false $version Version in which the function was deprecated.
 	 * @param string|bool $component Component to which the function belongs.
 	 *    If false, it is assumed the function is in MediaWiki core.
 	 * @param int $callerOffset How far up the callstack is the original
@@ -226,7 +250,7 @@ class MWDebug {
 				}
 			}
 
-			$component = $component === false ? 'MediaWiki' : $component;
+			$component = $component ?: 'MediaWiki';
 			$msg = "Use of $function was deprecated in $component $version.";
 		} else {
 			$msg = "Use of $function is deprecated.";
@@ -347,11 +371,11 @@ class MWDebug {
 	 * @since 1.19
 	 * @param string $sql
 	 * @param string $function
-	 * @param bool $isMaster
 	 * @param float $runTime Query run time
+	 * @param string $dbhost
 	 * @return bool True if debugger is enabled, false otherwise
 	 */
-	public static function query( $sql, $function, $isMaster, $runTime ) {
+	public static function query( $sql, $function, $runTime, $dbhost ) {
 		if ( !self::$enabled ) {
 			return false;
 		}
@@ -382,9 +406,8 @@ class MWDebug {
 		$sql = UtfNormal\Validator::cleanUp( $sql );
 
 		self::$query[] = [
-			'sql' => $sql,
+			'sql' => "$dbhost: $sql",
 			'function' => $function,
-			'master' => (bool)$isMaster,
 			'time' => $runTime,
 		];
 
@@ -431,7 +454,7 @@ class MWDebug {
 			// by the time this method is called.
 			$html = ResourceLoader::makeInlineScript(
 				ResourceLoader::makeConfigSetScript( [ 'debugInfo' => $debugInfo ] ),
-				$context->getOutput()->getCSPNonce()
+				$context->getOutput()->getCSP()->getNonce()
 			);
 		}
 
@@ -520,12 +543,6 @@ class MWDebug {
 		global $wgVersion;
 		$request = $context->getRequest();
 
-		// HHVM's reported memory usage from memory_get_peak_usage()
-		// is not useful when passing false, but we continue passing
-		// false for consistency of historical data in zend.
-		// see: https://github.com/facebook/hhvm/issues/2257#issuecomment-39362246
-		$realMemoryUsage = wfIsHHVM();
-
 		$branch = GitInfo::currentBranch();
 		if ( GitInfo::isSHA1( $branch ) ) {
 			// If it's a detached HEAD, the SHA1 will already be
@@ -535,8 +552,8 @@ class MWDebug {
 
 		return [
 			'mwVersion' => $wgVersion,
-			'phpEngine' => wfIsHHVM() ? 'HHVM' : 'PHP',
-			'phpVersion' => wfIsHHVM() ? HHVM_VERSION : PHP_VERSION,
+			'phpEngine' => 'PHP',
+			'phpVersion' => PHP_VERSION,
 			'gitRevision' => GitInfo::headSHA1(),
 			'gitBranch' => $branch,
 			'gitViewUrl' => GitInfo::headViewUrl(),
@@ -550,8 +567,8 @@ class MWDebug {
 				'headers' => $request->getAllHeaders(),
 				'params' => $request->getValues(),
 			],
-			'memory' => $context->getLanguage()->formatSize( memory_get_usage( $realMemoryUsage ) ),
-			'memoryPeak' => $context->getLanguage()->formatSize( memory_get_peak_usage( $realMemoryUsage ) ),
+			'memory' => $context->getLanguage()->formatSize( memory_get_usage() ),
+			'memoryPeak' => $context->getLanguage()->formatSize( memory_get_peak_usage() ),
 			'includes' => self::getFilesIncluded( $context ),
 		];
 	}

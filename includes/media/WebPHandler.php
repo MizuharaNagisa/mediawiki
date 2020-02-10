@@ -117,7 +117,7 @@ class WebPHandler extends BitmapHandler {
 
 	/**
 	 * Extracts the image size and WebP type from a file based on the chunk list
-	 * @param array $chunks Chunks as extracted by RiffExtractor
+	 * @param array[] $chunks Chunks as extracted by RiffExtractor
 	 * @param string $filename
 	 * @return array Header data array with entries 'compression', 'width' and 'height', where
 	 * 'compression' can be 'lossy', 'lossless', 'animated' or 'unknown'
@@ -182,14 +182,15 @@ class WebPHandler extends BitmapHandler {
 	 * Decodes a lossless chunk header
 	 * @param string $header First few bytes of the header, expected to be at least 13 bytes long
 	 * @return bool|array See WebPHandler::decodeHeader
+	 * @suppress PhanTypeInvalidLeftOperandOfIntegerOp
 	 */
 	public static function decodeLosslessChunkHeader( $header ) {
 		// Bytes 0-3 are 'VP8L'
 		// Bytes 4-7 are chunk stream size
 		// Byte 8 is 0x2F called the signature
-		if ( $header{8} != "\x2F" ) {
+		if ( $header[8] != "\x2F" ) {
 			wfDebugLog( 'WebP', __METHOD__ . ': Invalid signature: ' .
-				bin2hex( $header{8} ) . "\n" );
+				bin2hex( $header[8] ) . "\n" );
 			return [];
 		}
 		// Bytes 9-12 contain the image size

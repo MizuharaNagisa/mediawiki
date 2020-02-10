@@ -70,10 +70,9 @@ class AbstractPasswordPrimaryAuthenticationProviderTest extends \MediaWikiTestCa
 		$this->assertNull( $providerPriv->getNewPasswordExpiry( 'UTSysop' ) );
 
 		$config->set( 'PasswordExpirationDays', 5 );
-		$this->assertEquals(
+		$this->assertEqualsWithDelta(
 			time() + 5 * 86400,
 			wfTimestamp( TS_UNIX, $providerPriv->getNewPasswordExpiry( 'UTSysop' ) ),
-			'',
 			2 /* Fuzz */
 		);
 
@@ -83,7 +82,7 @@ class AbstractPasswordPrimaryAuthenticationProviderTest extends \MediaWikiTestCa
 				$expires = '30001231235959';
 			} ]
 		] );
-		$this->assertEquals( '30001231235959', $providerPriv->getNewPasswordExpiry( 'UTSysop' ) );
+		$this->assertSame( '30001231235959', $providerPriv->getNewPasswordExpiry( 'UTSysop' ) );
 	}
 
 	public function testCheckPasswordValidity() {
@@ -142,7 +141,7 @@ class AbstractPasswordPrimaryAuthenticationProviderTest extends \MediaWikiTestCa
 		$this->assertNull( $manager->getAuthenticationSessionData( 'reset-pass' ) );
 
 		$manager->removeAuthenticationSessionData( null );
-		$status = \Status::newGood();
+		$status = \Status::newGood( [ 'suggestChangeOnLogin' => true ] );
 		$status->error( 'testing' );
 		$providerPriv->setPasswordResetFlag( 'Foo', $status );
 		$ret = $manager->getAuthenticationSessionData( 'reset-pass' );

@@ -75,6 +75,10 @@ class ParsoidVirtualRESTService extends VirtualRESTService {
 		parent::__construct( $mparams );
 	}
 
+	/**
+	 * @inheritDoc
+	 * @phan-param array[] $reqs
+	 */
 	public function onRequests( array $reqs, Closure $idGeneratorFunc ) {
 		$result = [];
 		foreach ( $reqs as $key => $req ) {
@@ -121,6 +125,10 @@ class ParsoidVirtualRESTService extends VirtualRESTService {
 			if ( $this->params['forwardCookies'] ) {
 				$req['headers']['Cookie'] = $this->params['forwardCookies'];
 			}
+			// Parsoid/PHP is a MW instance, so it needs the Host header set,
+			// otherwise the server replies with a 404, so apply it unconditionally
+			// to all requests
+			$req['headers']['Host'] = $this->params['domain'];
 			$result[$key] = $req;
 		}
 		return $result;

@@ -71,10 +71,8 @@ class ConfigRepository implements SalvageableService {
 		if ( !$this->has( $name, true ) ) {
 			throw new \ConfigException( 'The configuration option ' . $name . ' does not exist.' );
 		}
-		if ( isset( $this->configItems['public'][$name] ) ) {
-			return $this->configItems['public'][$name];
-		}
-		return $this->configItems['private'][$name];
+
+		return $this->configItems['public'][$name] ?? $this->configItems['private'][$name];
 	}
 
 	/**
@@ -190,20 +188,15 @@ class ConfigRepository implements SalvageableService {
 	 */
 	public function salvage( SalvageableService $other ) {
 		Assert::parameterType( self::class, $other, '$other' );
+		/** @var self $other */
+		'@phan-var self $other';
 
-		/** @var ConfigRepository $other */
-		$otherCurrentObj = $other->current();
 		foreach ( $other->configItems['public'] as $name => $otherConfig ) {
 			if ( isset( $this->configItems['public'][$name] ) ) {
 				continue;
 			}
 
 			$this->add( $name, $otherConfig );
-
-			// recover the pointer of the other config repository
-			if ( $otherCurrentObj === $otherConfig ) {
-				end( $this->configItems['public'] );
-			}
 		}
 		foreach ( $other->configItems['private'] as $name => $otherConfig ) {
 			if ( isset( $this->configItems['private'][$name] ) ) {
@@ -211,11 +204,6 @@ class ConfigRepository implements SalvageableService {
 			}
 
 			$this->add( $name, $otherConfig );
-
-			// recover the pointer of the other config repository
-			if ( $otherCurrentObj === $otherConfig ) {
-				end( $this->configItems['private'] );
-			}
 		}
 
 		// disable $other

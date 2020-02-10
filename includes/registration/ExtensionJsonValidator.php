@@ -60,12 +60,16 @@ class ExtensionJsonValidator {
 				'The JsonSchema library cannot be found, please install it through composer.'
 			);
 			return false;
-		} elseif ( !class_exists( SpdxLicenses::class ) ) {
+		}
+
+		if ( !class_exists( SpdxLicenses::class ) ) {
 			call_user_func( $this->missingDepCallback,
 				'The spdx-licenses library cannot be found, please install it through composer.'
 			);
 			return false;
-		} elseif ( !class_exists( JsonParser::class ) ) {
+		}
+
+		if ( !class_exists( JsonParser::class ) ) {
 			call_user_func( $this->missingDepCallback,
 				'The JSON lint library cannot be found, please install it through composer.'
 			);
@@ -104,7 +108,9 @@ class ExtensionJsonValidator {
 			throw new ExtensionJsonValidationError(
 				"$path is using a non-supported schema version"
 			);
-		} elseif ( $version > ExtensionRegistry::MANIFEST_VERSION ) {
+		}
+
+		if ( $version > ExtensionRegistry::MANIFEST_VERSION ) {
 			throw new ExtensionJsonValidationError(
 				"$path is using a non-supported schema version"
 			);
@@ -135,20 +141,26 @@ class ExtensionJsonValidator {
 			}
 		}
 
+		// Deprecated stuff
+		if ( isset( $data->ParserTestFiles ) ) {
+			// phpcs:ignore Generic.Files.LineLength.TooLong
+			$extraErrors[] = '[ParserTestFiles] DEPRECATED: see <https://www.mediawiki.org/wiki/Manual:Extension.json/Schema#ParserTestFiles>';
+		}
+
 		$validator = new Validator;
 		$validator->check( $data, (object)[ '$ref' => 'file://' . $schemaPath ] );
 		if ( $validator->isValid() && !$extraErrors ) {
 			// All good.
 			return true;
-		} else {
-			$out = "$path did not pass validation.\n";
-			foreach ( $validator->getErrors() as $error ) {
-				$out .= "[{$error['property']}] {$error['message']}\n";
-			}
-			if ( $extraErrors ) {
-				$out .= implode( "\n", $extraErrors ) . "\n";
-			}
-			throw new ExtensionJsonValidationError( $out );
 		}
+
+		$out = "$path did not pass validation.\n";
+		foreach ( $validator->getErrors() as $error ) {
+			$out .= "[{$error['property']}] {$error['message']}\n";
+		}
+		if ( $extraErrors ) {
+			$out .= implode( "\n", $extraErrors ) . "\n";
+		}
+		throw new ExtensionJsonValidationError( $out );
 	}
 }

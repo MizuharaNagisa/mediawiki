@@ -1,4 +1,3 @@
-/* global sinon */
 ( function () {
 	'use strict';
 
@@ -258,7 +257,7 @@
 				// Check for incomplete animations/requests/etc and throw if there are any.
 				if ( $.timers && $.timers.length !== 0 ) {
 					timers = $.timers.length;
-					// eslint-disable-next-line jquery/no-each-util
+					// eslint-disable-next-line no-jquery/no-each-util
 					$.each( $.timers, function ( i, timer ) {
 						var node = timer.elem;
 						mw.log.warn( 'Unfinished animation #' + i + ' in ' + timer.queue + ' queue on ' +
@@ -307,7 +306,7 @@
 		var altPromises = [];
 
 		// When we have ES6 support we'll be able to use Array.from here
-		// eslint-disable-next-line jquery/no-each-util
+		// eslint-disable-next-line no-jquery/no-each-util
 		$.each( arguments, function ( i, arg ) {
 			var alt = $.Deferred();
 			altPromises.push( alt );
@@ -329,13 +328,13 @@
 	 * @return {Object|string} Plain JavaScript value representing the node.
 	 */
 	function getDomStructure( node ) {
-		var $node, children, processedChildren, i, len, el;
+		var $node, $children, processedChildren, i, len, el;
 		$node = $( node );
 		if ( node.nodeType === Node.ELEMENT_NODE ) {
-			children = $node.contents();
+			$children = $node.contents();
 			processedChildren = [];
-			for ( i = 0, len = children.length; i < len; i++ ) {
-				el = children[ i ];
+			for ( i = 0, len = $children.length; i < len; i++ ) {
+				el = $children[ i ];
 				if ( el.nodeType === Node.ELEMENT_NODE || el.nodeType === Node.TEXT_NODE ) {
 					processedChildren.push( getDomStructure( el ) );
 				}

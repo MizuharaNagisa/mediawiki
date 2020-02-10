@@ -55,7 +55,7 @@ use MediaWiki\MediaWikiServices;
  * @ingroup Parser
  */
 class MagicWord {
-	/**#@-*/
+	/** #@- */
 
 	/** @var string */
 	public $mId;
@@ -93,7 +93,7 @@ class MagicWord {
 	/** @var Language */
 	private $contLang;
 
-	/**#@-*/
+	/** #@- */
 
 	/**
 	 * Create a new MagicWord object
@@ -109,63 +109,7 @@ class MagicWord {
 		$this->mId = $id;
 		$this->mSynonyms = (array)$syn;
 		$this->mCaseSensitive = $cs;
-		$this->contLang = $contLang;
-
-		if ( !$contLang ) {
-			$this->contLang = MediaWikiServices::getInstance()->getContentLanguage();
-		}
-	}
-
-	/**
-	 * Factory: creates an object representing an ID
-	 *
-	 * @param string $id The internal name of the magic word
-	 *
-	 * @return MagicWord
-	 * @deprecated since 1.32, use MagicWordFactory::get
-	 */
-	public static function get( $id ) {
-		return MediaWikiServices::getInstance()->getMagicWordFactory()->get( $id );
-	}
-
-	/**
-	 * Get an array of parser variable IDs
-	 *
-	 * @return string[]
-	 * @deprecated since 1.32, use MagicWordFactory::getVariableIDs
-	 */
-	public static function getVariableIDs() {
-		return MediaWikiServices::getInstance()->getMagicWordFactory()->getVariableIDs();
-	}
-
-	/**
-	 * Get an array of parser substitution modifier IDs
-	 * @return string[]
-	 * @deprecated since 1.32, use MagicWordFactory::getSubstIDs
-	 */
-	public static function getSubstIDs() {
-		return MediaWikiServices::getInstance()->getMagicWordFactory()->getSubstIDs();
-	}
-
-	/**
-	 * Allow external reads of TTL array
-	 *
-	 * @param string $id
-	 * @return int
-	 * @deprecated since 1.32, use MagicWordFactory::getCacheTTL
-	 */
-	public static function getCacheTTL( $id ) {
-		return MediaWikiServices::getInstance()->getMagicWordFactory()->getCacheTTL( $id );
-	}
-
-	/**
-	 * Get a MagicWordArray of double-underscore entities
-	 *
-	 * @return MagicWordArray
-	 * @deprecated since 1.32, use MagicWordFactory::getDoubleUnderscoreArray
-	 */
-	public static function getDoubleUnderscoreArray() {
-		return MediaWikiServices::getInstance()->getMagicWordFactory()->getDoubleUnderscoreArray();
+		$this->contLang = $contLang ?: MediaWikiServices::getInstance()->getContentLanguage();
 	}
 
 	/**

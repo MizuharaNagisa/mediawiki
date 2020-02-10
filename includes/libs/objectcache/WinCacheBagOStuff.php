@@ -27,49 +27,79 @@
  *
  * @ingroup Cache
  */
-class WinCacheBagOStuff extends BagOStuff {
-	protected function doGet( $key, $flags = 0 ) {
-		$val = wincache_ucache_get( $key );
-		if ( is_string( $val ) ) {
-			$val = unserialize( $val );
+class WinCacheBagOStuff extends MediumSpecificBagOStuff {
+	public function __construct( array $params = [] ) {
+		$params['segmentationSize'] = $params['segmentationSize'] ?? INF;
+		parent::__construct( $params );
+	}
+
+	protected function doGet( $key, $flags = 0, &$casToken = null ) {
+		$casToken = null;
+
+		$blob = wincache_ucache_get( $key );
+		if ( !is_string( $blob ) && !is_int( $blob ) ) {
+			return false;
 		}
 
-		return $val;
+		$value = $this->unserialize( $blob );
+		if ( $value !== false ) {
+			$casToken = (string)$blob; // don't bother hashing this
+		}
+
+		return $value;
 	}
 
-	public function set( $key, $value, $expire = 0, $flags = 0 ) {
-		$result = wincache_ucache_set( $key, serialize( $value ), $expire );
+	protected function doCas( $casToken, $key, $value, $exptime = 0, $flags = 0 ) {
+		if ( !wincache_lock( $key ) ) { // optimize with FIFO lock
+			return false;
+		}
 
-		/* wincache_ucache_set returns an empty array on success if $value
-		 * was an array, bool otherwise */
-		return ( is_array( $result ) && $result === [] ) || $result;
+		$curCasToken = null; // passed by reference
+		$this->doGet( $key, self::READ_LATEST, $curCasToken );
+		if ( $casToken === $curCasToken ) {
+			$success = $this->set( $key, $value, $exptime, $flags );
+		} else {
+			$this->logger->info(
+				__METHOD__ . ' failed due to race condition for {key}.',
+				[ 'key' => $key ]
+			);
+
+			$success = false; // mismatched or failed
+		}
+
+		wincache_unlock( $key );
+
+		return $success;
 	}
 
-	public function delete( $key ) {
+	protected function doSet( $key, $value, $exptime = 0, $flags = 0 ) {
+		$result = wincache_ucache_set( $key, $this->serialize( $value ), $exptime );
+
+		// false positive, wincache_ucache_set returns an empty array
+		// in some circumstances.
+		// @phan-suppress-next-line PhanTypeComparisonToArray
+		return ( $result === [] || $result === true );
+	}
+
+	protected function doAdd( $key, $value, $exptime = 0, $flags = 0 ) {
+		if ( wincache_ucache_exists( $key ) ) {
+			return false; // avoid warnings
+		}
+
+		$result = wincache_ucache_add( $key, $this->serialize( $value ), $exptime );
+
+		// false positive, wincache_ucache_add returns an empty array
+		// in some circumstances.
+		// @phan-suppress-next-line PhanTypeComparisonToArray
+		return ( $result === [] || $result === true );
+	}
+
+	protected function doDelete( $key, $flags = 0 ) {
 		wincache_ucache_delete( $key );
 
 		return true;
 	}
 
-	public function merge( $key, callable $callback, $exptime = 0, $attempts = 10, $flags = 0 ) {
-		if ( wincache_lock( $key ) ) { // optimize with FIFO lock
-			$ok = $this->mergeViaLock( $key, $callback, $exptime, $attempts, $flags );
-			wincache_unlock( $key );
-		} else {
-			$ok = false;
-		}
-
-		return $ok;
-	}
-
-	/**
-	 * Construct a cache key.
-	 *
-	 * @since 1.27
-	 * @param string $keyspace
-	 * @param array $args
-	 * @return string
-	 */
 	public function makeKeyInternal( $keyspace, $args ) {
 		// WinCache keys have a maximum length of 150 characters. From that,
 		// subtract the number of characters we need for the keyspace and for
@@ -98,26 +128,26 @@ class WinCacheBagOStuff extends BagOStuff {
 		return $keyspace . ':' . implode( ':', $args );
 	}
 
-	/**
-	 * Increase stored value of $key by $value while preserving its original TTL
-	 * @param string $key Key to increase
-	 * @param int $value Value to add to $key (Default 1)
-	 * @return int|bool New value or false on failure
-	 */
-	public function incr( $key, $value = 1 ) {
-		if ( !$this->lock( $key ) ) {
+	public function incr( $key, $value = 1, $flags = 0 ) {
+		if ( !wincache_lock( $key ) ) { // optimize with FIFO lock
 			return false;
 		}
-		$n = $this->get( $key );
-		if ( $this->isInteger( $n ) ) { // key exists?
-			$n += intval( $value );
+
+		$n = $this->doGet( $key );
+		if ( $this->isInteger( $n ) ) {
+			$n = max( $n + (int)$value, 0 );
 			$oldTTL = wincache_ucache_info( false, $key )["ucache_entries"][1]["ttl_seconds"];
-			$this->set( $key, max( 0, $n ), $oldTTL );
+			$this->set( $key, $n, $oldTTL );
 		} else {
 			$n = false;
 		}
-		$this->unlock( $key );
+
+		wincache_unlock( $key );
 
 		return $n;
+	}
+
+	public function decr( $key, $value = 1, $flags = 0 ) {
+		return $this->incr( $key, -$value, $flags );
 	}
 }

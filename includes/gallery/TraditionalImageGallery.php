@@ -1,4 +1,7 @@
 <?php
+
+use MediaWiki\MediaWikiServices;
+
 /**
  * Image gallery.
  *
@@ -72,11 +75,9 @@ class TraditionalImageGallery extends ImageGalleryBase {
 		$lang = $this->getRenderLang();
 		# Output each image...
 		foreach ( $this->mImages as $pair ) {
+			// "text" means "caption" here
 			/** @var Title $nt */
-			$nt = $pair[0];
-			$text = $pair[1]; # "text" means "caption" here
-			$alt = $pair[2];
-			$link = $pair[3];
+			list( $nt, $text, $alt, $link ) = $pair;
 
 			$descQuery = false;
 			if ( $nt->getNamespace() === NS_FILE ) {
@@ -89,7 +90,7 @@ class TraditionalImageGallery extends ImageGalleryBase {
 					# Fetch and register the file (file title may be different via hooks)
 					list( $img, $nt ) = $this->mParser->fetchFileAndTitle( $nt, $options );
 				} else {
-					$img = wfFindFile( $nt );
+					$img = MediaWikiServices::getInstance()->getRepoGroup()->findFile( $nt );
 				}
 			} else {
 				$img = false;
@@ -110,16 +111,18 @@ class TraditionalImageGallery extends ImageGalleryBase {
 				if ( $this->mParser instanceof Parser ) {
 					$this->mParser->addTrackingCategory( 'broken-file-category' );
 				}
-			} elseif ( $this->mHideBadImages
-				&& wfIsBadImage( $nt->getDBkey(), $this->getContextTitle() )
+			} elseif ( $this->mHideBadImages && MediaWikiServices::getInstance()->getBadFileLookup()
+				->isBadFile( $nt->getDBkey(), $this->getContextTitle() )
 			) {
+				if ( $this->mParser instanceof Parser ) {
+					$linkRenderer = $this->mParser->getLinkRenderer();
+				} else {
+					$linkRenderer = MediaWikiServices::getInstance()->getLinkRenderer();
+				}
 				# The image is blacklisted, just show it as a text link.
 				$thumbhtml = "\n\t\t\t" . '<div class="thumb" style="height: ' .
 					( $this->getThumbPadding() + $this->mHeights ) . 'px;">' .
-					Linker::linkKnown(
-						$nt,
-						htmlspecialchars( $nt->getText() )
-					) .
+					$linkRenderer->makeKnownLink( $nt, $nt->getText() ) .
 					'</div>';
 			} else {
 				$thumb = $img->transform( $transformOptions );
@@ -171,7 +174,8 @@ class TraditionalImageGallery extends ImageGalleryBase {
 
 			// @todo Code is incomplete.
 			// $linkTarget = Title::newFromText( MediaWikiServices::getInstance()->
-			// getContentLanguage()->getNsText( MWNamespace::getUser() ) . ":{$ut}" );
+			// getContentLanguage()->getNsText( MediaWikiServices::getInstance()->
+			// getNamespaceInfo()->getUser() ) . ":{$ut}" );
 			// $ul = Linker::link( $linkTarget, $ut );
 
 			$meta = [];
@@ -221,14 +225,17 @@ class TraditionalImageGallery extends ImageGalleryBase {
 	 * @return string HTML
 	 */
 	protected function getCaptionHtml( Title $nt, Language $lang ) {
+		if ( $this->mParser instanceof Parser ) {
+			$linkRenderer = $this->mParser->getLinkRenderer();
+		} else {
+			$linkRenderer = MediaWikiServices::getInstance()->getLinkRenderer();
+		}
 		// Preloaded into LinkCache in toHTML
-		return Linker::linkKnown(
+		return $linkRenderer->makeKnownLink(
 			$nt,
-			htmlspecialchars(
-				is_int( $this->getCaptionLength() ) ?
-					$lang->truncateForVisual( $nt->getText(), $this->getCaptionLength() ) :
-					$nt->getText()
-			),
+			is_int( $this->getCaptionLength() ) ?
+				$lang->truncateForVisual( $nt->getText(), $this->getCaptionLength() ) :
+				$nt->getText(),
 			[
 				'class' => 'galleryfilename' .
 					( $this->getCaptionLength() === true ? ' galleryfilename-truncate' : '' )

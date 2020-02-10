@@ -22,16 +22,22 @@
  * @author Brion Vibber
  */
 
-use Wikimedia\Rdbms\IResultWrapper;
 use Wikimedia\Rdbms\IDatabase;
+use Wikimedia\Rdbms\IResultWrapper;
 
 /**
  * Special:LinkSearch to search the external-links table.
  * @ingroup SpecialPage
  */
-class LinkSearchPage extends QueryPage {
+class SpecialLinkSearch extends QueryPage {
 	/** @var array|bool */
 	private $mungedQuery = false;
+	/** @var string|null */
+	private $mQuery;
+	/** @var int|null */
+	private $mNs;
+	/** @var string|null */
+	private $mProt;
 
 	function setParams( $params ) {
 		$this->mQuery = $params['query'];
@@ -159,6 +165,7 @@ class LinkSearchPage extends QueryPage {
 	public function getQueryInfo() {
 		$dbr = wfGetDB( DB_REPLICA );
 
+		$orderBy = [];
 		if ( $this->mQuery === '*' && $this->mProt !== '' ) {
 			$this->mungedQuery = [
 				'el_index_60' . $dbr->buildLike( $this->mProt, $dbr->anyString() ),
@@ -169,16 +176,13 @@ class LinkSearchPage extends QueryPage {
 				'oneWildcard' => true,
 				'db' => $dbr
 			] );
-		}
-		if ( $this->mungedQuery === false ) {
-			// Invalid query; return no results
-			return [ 'tables' => 'page', 'fields' => 'page_id', 'conds' => '0=1' ];
-		}
-
-		$orderBy = [];
-		if ( !isset( $this->mungedQuery['el_index_60'] ) ) {
+			if ( $this->mungedQuery === false ) {
+				// Invalid query; return no results
+				return [ 'tables' => 'page', 'fields' => 'page_id', 'conds' => '0=1' ];
+			}
 			$orderBy[] = 'el_index_60';
 		}
+
 		$orderBy[] = 'el_id';
 
 		$retval = [
@@ -240,7 +244,7 @@ class LinkSearchPage extends QueryPage {
 	}
 
 	protected function getGroupName() {
-		return 'redirects';
+		return 'pages';
 	}
 
 	/**

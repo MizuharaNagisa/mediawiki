@@ -61,14 +61,14 @@ class ChangesListStringOptionsFilterGroup extends ChangesListFilterGroup {
 	/**
 	 * Defaul parameter value
 	 *
-	 * @var string $defaultValue
+	 * @var string
 	 */
 	protected $defaultValue;
 
 	/**
 	 * Callable used to do the actual query modification; see constructor
 	 *
-	 * @var callable $queryCallable
+	 * @var callable
 	 */
 	protected $queryCallable;
 
@@ -155,6 +155,7 @@ class ChangesListStringOptionsFilterGroup extends ChangesListFilterGroup {
 	 * Registers a filter in this group
 	 *
 	 * @param ChangesListStringOptionsFilter $filter
+	 * @suppress PhanParamSignaturePHPDocMismatchHasParamType,PhanParamSignatureMismatch
 	 */
 	public function registerFilter( ChangesListStringOptionsFilter $filter ) {
 		$this->filters[$filter->getName()] = $filter;

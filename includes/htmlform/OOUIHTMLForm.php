@@ -145,19 +145,21 @@ class OOUIHTMLForm extends HTMLForm {
 			[ 'class' => 'mw-htmlform-submit-buttons' ], "\n$buttons" ) . "\n";
 	}
 
+	/**
+	 * @inheritDoc
+	 * @return OOUI\PanelLayout
+	 */
 	protected function wrapFieldSetSection( $legend, $section, $attributes, $isRoot ) {
 		// to get a user visible effect, wrap the fieldset into a framed panel layout
 		$layout = new OOUI\PanelLayout( [
 			'expanded' => false,
 			'padded' => true,
 			'framed' => true,
-			'infusable' => false,
 		] );
 
 		$layout->appendContent(
 			new OOUI\FieldsetLayout( [
 				'label' => $legend,
-				'infusable' => false,
 				'items' => [
 					new OOUI\Widget( [
 						'content' => new OOUI\HtmlSnippet( $section )
@@ -230,7 +232,7 @@ class OOUIHTMLForm extends HTMLForm {
 			$error = new OOUI\HtmlSnippet( $error );
 		}
 
-		// Used in getBody()
+		// Used in formatFormHeader()
 		if ( $elementsType === 'error' ) {
 			$this->oouiErrors = $errors;
 		} else {
@@ -240,7 +242,7 @@ class OOUIHTMLForm extends HTMLForm {
 	}
 
 	public function getHeaderText( $section = null ) {
-		if ( is_null( $section ) ) {
+		if ( $section === null ) {
 			// We handle $this->mHeader elsewhere, in getBody()
 			return '';
 		} else {
@@ -248,51 +250,59 @@ class OOUIHTMLForm extends HTMLForm {
 		}
 	}
 
+	protected function formatFormHeader() {
+		if ( !( $this->mHeader || $this->oouiErrors || $this->oouiWarnings ) ) {
+			return '';
+		}
+		$classes = [ 'mw-htmlform-ooui-header' ];
+		if ( $this->oouiErrors ) {
+			$classes[] = 'mw-htmlform-ooui-header-errors';
+		}
+		if ( $this->oouiWarnings ) {
+			$classes[] = 'mw-htmlform-ooui-header-warnings';
+		}
+		// if there's no header, don't create an (empty) LabelWidget, simply use a placeholder
+		if ( $this->mHeader ) {
+			$element = new OOUI\LabelWidget( [ 'label' => new OOUI\HtmlSnippet( $this->mHeader ) ] );
+		} else {
+			$element = new OOUI\Widget( [] );
+		}
+		return new OOUI\FieldLayout(
+			$element,
+			[
+				'align' => 'top',
+				'errors' => $this->oouiErrors,
+				'notices' => $this->oouiWarnings,
+				'classes' => $classes,
+			]
+		);
+	}
+
 	public function getBody() {
 		$html = parent::getBody();
-		if ( $this->mHeader || $this->oouiErrors || $this->oouiWarnings ) {
-			$classes = [ 'mw-htmlform-ooui-header' ];
-			if ( $this->oouiErrors ) {
-				$classes[] = 'mw-htmlform-ooui-header-errors';
-			}
-			if ( $this->oouiWarnings ) {
-				$classes[] = 'mw-htmlform-ooui-header-warnings';
-			}
-			// if there's no header, don't create an (empty) LabelWidget, simply use a placeholder
-			if ( $this->mHeader ) {
-				$element = new OOUI\LabelWidget( [ 'label' => new OOUI\HtmlSnippet( $this->mHeader ) ] );
-			} else {
-				$element = new OOUI\Widget( [] );
-			}
-			$html = new OOUI\FieldLayout(
-				$element,
-				[
-					'align' => 'top',
-					'errors' => $this->oouiErrors,
-					'notices' => $this->oouiWarnings,
-					'classes' => $classes,
-				]
-			) . $html;
-		}
+		$html = $this->formatFormHeader() . $html;
 		return $html;
 	}
 
 	public function wrapForm( $html ) {
 		if ( is_string( $this->mWrapperLegend ) ) {
-			$content = new OOUI\FieldsetLayout( [
+			$phpClass = $this->mCollapsible ? CollapsibleFieldsetLayout::class : OOUI\FieldsetLayout::class;
+			$content = new $phpClass( [
 				'label' => $this->mWrapperLegend,
+				'collapsed' => $this->mCollapsed,
 				'items' => [
 					new OOUI\Widget( [
 						'content' => new OOUI\HtmlSnippet( $html )
 					] ),
 				],
-			] );
+			] + OOUI\Element::configFromHtmlAttributes( $this->mWrapperAttributes ) );
 		} else {
 			$content = new OOUI\HtmlSnippet( $html );
 		}
 
+		$classes = [ 'mw-htmlform', 'mw-htmlform-ooui' ];
 		$form = new OOUI\FormLayout( $this->getFormAttributes() + [
-			'classes' => [ 'mw-htmlform', 'mw-htmlform-ooui' ],
+			'classes' => $classes,
 			'content' => $content,
 		] );
 

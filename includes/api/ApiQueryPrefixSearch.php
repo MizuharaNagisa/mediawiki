@@ -42,7 +42,7 @@ class ApiQueryPrefixSearch extends ApiQueryGeneratorBase {
 	}
 
 	/**
-	 * @param ApiPageSet $resultPageSet
+	 * @param ApiPageSet|null $resultPageSet
 	 */
 	private function run( $resultPageSet = null ) {
 		$params = $this->extractRequestParams();
@@ -74,13 +74,13 @@ class ApiQueryPrefixSearch extends ApiQueryGeneratorBase {
 			$count = 0;
 			foreach ( $titles as $title ) {
 				$vals = [
-					'ns' => intval( $title->getNamespace() ),
+					'ns' => (int)$title->getNamespace(),
 					'title' => $title->getPrefixedText(),
 				];
 				if ( $title->isSpecialPage() ) {
 					$vals['special'] = true;
 				} else {
-					$vals['pageid'] = intval( $title->getArticleID() );
+					$vals['pageid'] = (int)$title->getArticleID();
 				}
 				$fit = $result->addValue( [ 'query', $this->getModuleName() ], null, $vals );
 				++$count;

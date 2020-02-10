@@ -145,13 +145,16 @@
 				this.constructor.static.dialog,
 				this.thankYouDialog
 			] );
-			$( 'body' )
+			$( document.body )
 				.append( this.constructor.static.windowManager.$element );
 		}
 		// Open the dialog
 		this.constructor.static.windowManager.openWindow(
 			this.constructor.static.dialog,
 			{
+				// The following messages are used here
+				// * feedback-dialog-title
+				// * config.dialogTitleMessageKey ...
 				title: mw.msg( this.dialogTitleMessageKey ),
 				foreignApi: this.foreignApi,
 				settings: {
@@ -229,9 +232,6 @@
 			expanded: false,
 			padded: true
 		} );
-
-		this.$spinner = $( '<div>' )
-			.addClass( 'feedback-spinner' );
 
 		// Feedback form
 		this.feedbackMessageLabel = new OO.ui.LabelWidget( {
@@ -340,7 +340,7 @@
 				this.messagePosterPromise = settings.messagePosterPromise;
 				this.setBugReportLink( settings.bugsTaskSubmissionLink );
 				this.feedbackPageTitle = settings.title;
-				this.feedbackPageName = settings.title.getNameText();
+				this.feedbackPageName = settings.title.getMainText();
 
 				// Useragent checkbox
 				if ( settings.useragentCheckbox.show ) {
@@ -429,7 +429,12 @@
 	 * @return {OO.ui.Error}
 	 */
 	mw.Feedback.Dialog.prototype.getErrorMessage = function () {
-		// Messages: feedback-error1, feedback-error2, feedback-error3, feedback-error4
+		if ( this.$statusFromApi ) {
+			return new OO.ui.Error( this.$statusFromApi );
+		}
+		// The following messages can be used here:
+		// * feedback-error1
+		// * feedback-error4
 		return new OO.ui.Error( mw.msg( 'feedback-' + this.status ) );
 	};
 
@@ -461,6 +466,7 @@
 					fb.status = 'error2';
 					mw.log.warn( 'Feedback report failed with API error: ' + secondaryCode );
 				}
+				fb.$statusFromApi = ( new mw.Api() ).getErrorMessage( details );
 			} else {
 				fb.status = 'error1';
 			}

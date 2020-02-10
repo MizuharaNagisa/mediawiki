@@ -25,6 +25,7 @@ namespace MediaWiki\Auth;
 
 use Config;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Permissions\PermissionManager;
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerInterface;
 use Status;
@@ -83,39 +84,42 @@ use Wikimedia\ObjectFactory;
  */
 class AuthManager implements LoggerAwareInterface {
 	/** Log in with an existing (not necessarily local) user */
-	const ACTION_LOGIN = 'login';
+	public const ACTION_LOGIN = 'login';
 	/** Continue a login process that was interrupted by the need for user input or communication
-	 * with an external provider */
-	const ACTION_LOGIN_CONTINUE = 'login-continue';
+	 * with an external provider
+	 */
+	public const ACTION_LOGIN_CONTINUE = 'login-continue';
 	/** Create a new user */
-	const ACTION_CREATE = 'create';
+	public const ACTION_CREATE = 'create';
 	/** Continue a user creation process that was interrupted by the need for user input or
-	 * communication with an external provider */
-	const ACTION_CREATE_CONTINUE = 'create-continue';
+	 * communication with an external provider
+	 */
+	public const ACTION_CREATE_CONTINUE = 'create-continue';
 	/** Link an existing user to a third-party account */
-	const ACTION_LINK = 'link';
+	public const ACTION_LINK = 'link';
 	/** Continue a user linking process that was interrupted by the need for user input or
-	 * communication with an external provider */
-	const ACTION_LINK_CONTINUE = 'link-continue';
+	 * communication with an external provider
+	 */
+	public const ACTION_LINK_CONTINUE = 'link-continue';
 	/** Change a user's credentials */
-	const ACTION_CHANGE = 'change';
+	public const ACTION_CHANGE = 'change';
 	/** Remove a user's credentials */
-	const ACTION_REMOVE = 'remove';
+	public const ACTION_REMOVE = 'remove';
 	/** Like ACTION_REMOVE but for linking providers only */
-	const ACTION_UNLINK = 'unlink';
+	public const ACTION_UNLINK = 'unlink';
 
 	/** Security-sensitive operations are ok. */
-	const SEC_OK = 'ok';
+	public const SEC_OK = 'ok';
 	/** Security-sensitive operations should re-authenticate. */
-	const SEC_REAUTH = 'reauth';
+	public const SEC_REAUTH = 'reauth';
 	/** Security-sensitive should not be performed. */
-	const SEC_FAIL = 'fail';
+	public const SEC_FAIL = 'fail';
 
 	/** Auto-creation is due to SessionManager */
-	const AUTOCREATE_SOURCE_SESSION = \MediaWiki\Session\SessionManager::class;
+	public const AUTOCREATE_SOURCE_SESSION = \MediaWiki\Session\SessionManager::class;
 
 	/** Auto-creation is due to a Maintenance script */
-	const AUTOCREATE_SOURCE_MAINT = '::Maintenance::';
+	public const AUTOCREATE_SOURCE_MAINT = '::Maintenance::';
 
 	/** @var AuthManager|null */
 	private static $instance = null;
@@ -232,7 +236,9 @@ class AuthManager implements LoggerAwareInterface {
 	}
 
 	/**
-	 * Call a legacy AuthPlugin method, if necessary
+	 * This used to call a legacy AuthPlugin method, if necessary. Since that code has
+	 * been removed, it now just returns the $return parameter.
+	 *
 	 * @codeCoverageIgnore
 	 * @deprecated For backwards compatibility only, should be avoided in new code
 	 * @param string $method AuthPlugin method to call
@@ -241,13 +247,8 @@ class AuthManager implements LoggerAwareInterface {
 	 * @return mixed Return value from the AuthPlugin method, or $return
 	 */
 	public static function callLegacyAuthPlugin( $method, array $params, $return = null ) {
-		global $wgAuth;
-
-		if ( $wgAuth && !$wgAuth instanceof AuthManagerAuthPlugin ) {
-			return $wgAuth->$method( ...$params );
-		} else {
-			return $return;
-		}
+		wfDeprecated( __METHOD__, '1.33' );
+		return $return;
 	}
 
 	/**
@@ -829,7 +830,7 @@ class AuthManager implements LoggerAwareInterface {
 		return array_keys( $ret );
 	}
 
-	/**@}*/
+	/** @} */
 
 	/**
 	 * @name Authentication data changing
@@ -910,7 +911,7 @@ class AuthManager implements LoggerAwareInterface {
 		}
 	}
 
-	/**@}*/
+	/** @} */
 
 	/**
 	 * @name Account creation
@@ -996,7 +997,9 @@ class AuthManager implements LoggerAwareInterface {
 
 		// This is awful, this permission check really shouldn't go through Title.
 		$permErrors = \SpecialPage::getTitleFor( 'CreateAccount' )
-			->getUserPermissionsErrors( 'createaccount', $creator, 'secure' );
+			->getUserPermissionsErrors(
+				'createaccount', $creator, PermissionManager::RIGOR_SECURE
+			);
 		if ( $permErrors ) {
 			$status = Status::newGood();
 			foreach ( $permErrors as $args ) {
@@ -1005,26 +1008,21 @@ class AuthManager implements LoggerAwareInterface {
 			return $status;
 		}
 
+		$ip = $this->getRequest()->getIP();
+
 		$block = $creator->isBlockedFromCreateAccount();
 		if ( $block ) {
-			$errorParams = [
-				$block->getTarget(),
-				$block->mReason ?: wfMessage( 'blockednoreason' )->text(),
-				$block->getByName()
-			];
-
-			if ( $block->getType() === \Block::TYPE_RANGE ) {
-				$errorMessage = 'cantcreateaccount-range-text';
-				$errorParams[] = $this->getRequest()->getIP();
-			} else {
-				$errorMessage = 'cantcreateaccount-text';
-			}
-
-			return Status::newFatal( wfMessage( $errorMessage, $errorParams ) );
+			$language = \RequestContext::getMain()->getLanguage();
+			$formatter = MediaWikiServices::getInstance()->getBlockErrorFormatter();
+			return Status::newFatal(
+				$formatter->getMessage( $block, $creator, $language, $ip )
+			);
 		}
 
-		$ip = $this->getRequest()->getIP();
-		if ( $creator->isDnsBlacklisted( $ip, true /* check $wgProxyWhitelist */ ) ) {
+		if (
+			MediaWikiServices::getInstance()->getBlockManager()
+				->isDnsBlacklisted( $ip, true /* check $wgProxyWhitelist */ )
+		) {
 			return Status::newFatal( 'sorbs_create_account_reason' );
 		}
 
@@ -1426,7 +1424,7 @@ class AuthManager implements LoggerAwareInterface {
 					// @codeCoverageIgnoreEnd
 				}
 				$this->setDefaultUserOptions( $user, $creator->isAnon() );
-				\Hooks::run( 'LocalUserCreated', [ $user, false ] );
+				\Hooks::runWithoutAbort( 'LocalUserCreated', [ $user, false ] );
 				$user->saveSettings();
 				$state['userid'] = $user->getId();
 
@@ -1635,8 +1633,9 @@ class AuthManager implements LoggerAwareInterface {
 
 		// Is the IP user able to create accounts?
 		$anon = new User;
-		if ( $source !== self::AUTOCREATE_SOURCE_MAINT &&
-			!$anon->isAllowedAny( 'createaccount', 'autocreateaccount' )
+		if ( $source !== self::AUTOCREATE_SOURCE_MAINT && !MediaWikiServices::getInstance()
+				->getPermissionManager()
+				->userHasAnyRight( $anon, 'createaccount', 'autocreateaccount' )
 		) {
 			$this->logger->debug( __METHOD__ . ': IP lacks the ability to create or autocreate accounts', [
 				'username' => $username,
@@ -1745,7 +1744,6 @@ class AuthManager implements LoggerAwareInterface {
 		// Inform the providers
 		$this->callMethodOnProviders( 6, 'autoCreatedAccount', [ $user, $source ] );
 
-		\Hooks::run( 'AuthPluginAutoCreate', [ $user ], '1.27' );
 		\Hooks::run( 'LocalUserCreated', [ $user, true ] );
 		$user->saveSettings();
 
@@ -1777,7 +1775,7 @@ class AuthManager implements LoggerAwareInterface {
 		return Status::newGood();
 	}
 
-	/**@}*/
+	/** @} */
 
 	/**
 	 * @name Account linking
@@ -2002,7 +2000,7 @@ class AuthManager implements LoggerAwareInterface {
 		}
 	}
 
-	/**@}*/
+	/** @} */
 
 	/**
 	 * @name Information methods
@@ -2105,10 +2103,8 @@ class AuthManager implements LoggerAwareInterface {
 				$id = $req->getUniqueId();
 
 				// If a required request if from a Primary, mark it as "primary-required" instead
-				if ( $isPrimary ) {
-					if ( $req->required ) {
-						$req->required = AuthenticationRequest::PRIMARY_REQUIRED;
-					}
+				if ( $isPrimary && $req->required ) {
+					$req->required = AuthenticationRequest::PRIMARY_REQUIRED;
 				}
 
 				if (
@@ -2237,7 +2233,7 @@ class AuthManager implements LoggerAwareInterface {
 		return null;
 	}
 
-	/**@}*/
+	/** @} */
 
 	/**
 	 * @name Internal methods
@@ -2425,8 +2421,10 @@ class AuthManager implements LoggerAwareInterface {
 		$lang = $useContextLang ? \RequestContext::getMain()->getLanguage() : $contLang;
 		$user->setOption( 'language', $lang->getPreferredVariant() );
 
-		if ( $contLang->hasVariants() ) {
-			$user->setOption( 'variant', $contLang->getPreferredVariant() );
+		$contLangConverter = MediaWikiServices::getInstance()->getLanguageConverterFactory()
+			->getLanguageConverter();
+		if ( $contLangConverter->hasVariants() ) {
+			$user->setOption( 'variant', $contLangConverter->getPreferredVariant() );
 		}
 	}
 
@@ -2465,7 +2463,7 @@ class AuthManager implements LoggerAwareInterface {
 		self::$instance = null;
 	}
 
-	/**@}*/
+	/** @} */
 
 }
 

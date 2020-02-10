@@ -16,7 +16,7 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup Deployment
+ * @ingroup Installer
  */
 
 use MediaWiki\MediaWikiServices;
@@ -28,10 +28,8 @@ class WebInstallerName extends WebInstallerPage {
 	 */
 	public function execute() {
 		$r = $this->parent->request;
-		if ( $r->wasPosted() ) {
-			if ( $this->submit() ) {
-				return 'continue';
-			}
+		if ( $r->wasPosted() && $this->submit() ) {
+			return 'continue';
 		}
 
 		$this->startForm();
@@ -117,7 +115,7 @@ class WebInstallerName extends WebInstallerPage {
 				'value' => true,
 			] ) .
 			$this->getFieldsetEnd() .
-			$this->parent->getInfoBox( wfMessage( 'config-almost-done' )->text() ) .
+			$this->parent->getInfoBox( wfMessage( 'config-almost-done' )->plain() ) .
 			// getRadioSet() builds a set of labeled radio buttons.
 			// For grep: The following messages are used as the item labels:
 			// config-optional-continue, config-optional-skip

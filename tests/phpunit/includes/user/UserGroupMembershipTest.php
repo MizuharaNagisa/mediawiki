@@ -1,5 +1,7 @@
 <?php
 
+use MediaWiki\MediaWikiServices;
+
 /**
  * @group Database
  */
@@ -22,7 +24,7 @@ class UserGroupMembershipTest extends MediaWikiTestCase {
 	 */
 	protected $expiryTime;
 
-	protected function setUp() {
+	protected function setUp() : void {
 		parent::setUp();
 
 		$this->setMwGlobals( [
@@ -61,7 +63,9 @@ class UserGroupMembershipTest extends MediaWikiTestCase {
 		$user->clearInstanceCache();
 		$this->assertContains( 'unittesters', $user->getGroups() );
 		$this->assertArrayHasKey( 'unittesters', $user->getGroupMemberships() );
-		$this->assertTrue( $user->isAllowed( 'runtest' ) );
+		$this->assertTrue( MediaWikiServices::getInstance()
+			->getPermissionManager()
+			->userHasRight( $user, 'runtest' ) );
 
 		// try updating without allowUpdate. Should fail
 		$ugm = new UserGroupMembership( $user->getId(), 'unittesters', $this->expiryTime );
@@ -72,7 +76,9 @@ class UserGroupMembershipTest extends MediaWikiTestCase {
 		$user->clearInstanceCache();
 		$this->assertContains( 'unittesters', $user->getGroups() );
 		$this->assertArrayHasKey( 'unittesters', $user->getGroupMemberships() );
-		$this->assertTrue( $user->isAllowed( 'runtest' ) );
+		$this->assertTrue( MediaWikiServices::getInstance()
+			->getPermissionManager()
+			->userHasRight( $user, 'runtest' ) );
 
 		// try removing the group
 		$ugm->delete();
@@ -81,7 +87,9 @@ class UserGroupMembershipTest extends MediaWikiTestCase {
 			$this->logicalNot( $this->contains( 'unittesters' ) ) );
 		$this->assertThat( $user->getGroupMemberships(),
 			$this->logicalNot( $this->arrayHasKey( 'unittesters' ) ) );
-		$this->assertFalse( $user->isAllowed( 'runtest' ) );
+		$this->assertFalse( MediaWikiServices::getInstance()
+			->getPermissionManager()
+			->userHasRight( $user, 'runtest' ) );
 
 		// check that the user group is now in user_former_groups
 		$this->assertContains( 'unittesters', $user->getFormerGroups() );
@@ -150,4 +158,59 @@ class UserGroupMembershipTest extends MediaWikiTestCase {
 		$this->assertEquals( $ugm->getGroup(), 'unittesters' );
 		$this->assertNull( $ugm->getExpiry() );
 	}
+
+	/**
+	 * @covers UserGroupMembership::getLink
+	 */
+	public function testGetLink() {
+		$this->setMwGlobals( [
+			'wgMetaNamespace' => 'Project',
+			'wgScriptPath' => '/w',
+			'wgScript' => '/w/index.php'
+		] );
+		$user = $this->getMutableTestUser()->getUser();
+		$ugm = new UserGroupMembership( $user->getId(), 'unittesters' );
+		/** @var IContextSource $context */
+		$context = $this->getMockBuilder( ContextSource::class )
+						->disableOriginalConstructor()
+						->getMock();
+		$this->assertSame(
+			'unittesters',
+			UserGroupMembership::getLink( $ugm, $context, 'wiki' )
+		);
+		$this->assertSame(
+			'unittesters',
+			UserGroupMembership::getLink( $ugm, $context, 'html' )
+		);
+		$this->assertSame(
+			'unittesters',
+			UserGroupMembership::getLink( $ugm, $context, 'html', $user->getName() )
+		);
+		$this->assertSame(
+			'unittesters',
+			UserGroupMembership::getLink( $ugm, $context, 'wiki', $user->getName() )
+		);
+		$ugm = new UserGroupMembership( $user->getId(), 'sysop' );
+		$this->assertSame(
+			'[[Project:Administrators|Administrators]]',
+			UserGroupMembership::getLink( $ugm, $context, 'wiki' )
+		);
+		$this->assertSame(
+			'<a href="/w/index.php?title=Project:Administrators&amp;action=edit&amp;' .
+			'redlink=1" class="new" title="Project:Administrators (page does not exist)">' .
+			'Administrators</a>',
+			UserGroupMembership::getLink( $ugm, $context, 'html' )
+		);
+		$this->assertSame(
+			'[[Project:Administrators|administrator]]',
+			UserGroupMembership::getLink( $ugm, $context, 'wiki', $user->getName() )
+		);
+		$this->assertSame(
+			'<a href="/w/index.php?title=Project:Administrators&amp;action=edit&amp;' .
+			'redlink=1" class="new" title="Project:Administrators (page does not exist)">' .
+			'administrator</a>',
+			UserGroupMembership::getLink( $ugm, $context, 'html', $user->getName() )
+		);
+	}
+
 }

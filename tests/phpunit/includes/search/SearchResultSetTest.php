@@ -3,8 +3,8 @@
 class SearchResultSetTest extends MediaWikiTestCase {
 	/**
 	 * @covers SearchResultSet::getIterator
-	 * @covers SearchResultSet::next
-	 * @covers SearchResultSet::rewind
+	 * @covers BaseSearchResultSet::next
+	 * @covers BaseSearchResultSet::rewind
 	 */
 	public function testIterate() {
 		$result = SearchResult::newFromTitle( Title::newMainPage() );
@@ -17,8 +17,8 @@ class SearchResultSetTest extends MediaWikiTestCase {
 		}
 		$this->assertEquals( 1, $count );
 
-		$this->hideDeprecated( 'SearchResultSet::rewind' );
-		$this->hideDeprecated( 'SearchResultSet::next' );
+		$this->hideDeprecated( 'BaseSearchResultSet::rewind' );
+		$this->hideDeprecated( 'BaseSearchResultSet::next' );
 		$resultSet->rewind();
 		$count = 0;
 		while ( ( $iterResult = $resultSet->next() ) !== false ) {
@@ -29,8 +29,8 @@ class SearchResultSetTest extends MediaWikiTestCase {
 	}
 
 	/**
-	 * @covers SearchResultSet::augmentResult
-	 * @covers SearchResultSet::setAugmentedData
+	 * @covers SearchResultSetTrait::augmentResult
+	 * @covers SearchResultSetTrait::setAugmentedData
 	 */
 	public function testDelayedResultAugment() {
 		$result = SearchResult::newFromTitle( Title::newMainPage() );
@@ -57,5 +57,18 @@ class SearchResultSetTest extends MediaWikiTestCase {
 		$this->assertFalse( $resultSet->hasMoreResults() );
 		$resultSet->shrink( 2 );
 		$this->assertTrue( $resultSet->hasMoreResults() );
+	}
+
+	/**
+	 * @covers SearchResultSet::shrink
+	 */
+	public function testShrink() {
+		$results = array_fill( 0, 3, SearchResult::newFromTitle( Title::newMainPage() ) );
+		$resultSet = new MockSearchResultSet( $results );
+		$this->assertCount( 3, $resultSet->extractResults() );
+		$this->assertCount( 3, $resultSet->extractTitles() );
+		$resultSet->shrink( 1 );
+		$this->assertCount( 1, $resultSet->extractResults() );
+		$this->assertCount( 1, $resultSet->extractTitles() );
 	}
 }

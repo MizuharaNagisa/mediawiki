@@ -182,9 +182,10 @@ just a test"
 	 */
 	public function testReplaceSection( $text, $section, $with, $sectionTitle, $expected ) {
 		$content = $this->newContent( $text );
+		/** @var WikitextContent $c */
 		$c = $content->replaceSection( $section, $this->newContent( $with ), $sectionTitle );
 
-		$this->assertEquals( $expected, is_null( $c ) ? null : $c->getText() );
+		$this->assertEquals( $expected, $c ? $c->getText() : null );
 	}
 
 	/**
@@ -372,7 +373,7 @@ just a test"
 		$redirectTarget = null;
 		$this->mergeMwGlobalArrayValue( 'wgHooks', [
 			'InternalParseBeforeLinks' => [
-				function ( &$parser, &$text, &$stripState ) use ( &$wikitext, &$redirectTarget ) {
+				function ( Parser $parser, $text, $stripState ) use ( &$wikitext, &$redirectTarget ) {
 					$wikitext = $text;
 					$redirectTarget = $parser->getOptions()->getRedirectTarget();
 				}
@@ -389,7 +390,7 @@ just a test"
 		$this->assertEquals( 'hello world.', $wikitext,
 			'Wikitext passed to hook was not as expected'
 		);
-		$this->assertEquals( null, $redirectTarget, 'Redirect seen in hook was not null' );
+		$this->assertNull( $redirectTarget, 'Redirect seen in hook was not null' );
 		$this->assertEquals( $title, $options->getRedirectTarget(),
 			'ParserOptions\' redirectTarget was changed'
 		);
@@ -416,8 +417,7 @@ just a test"
 			$redirectTarget->getFullText(),
 			'Redirect seen in hook was not the expected title'
 		);
-		$this->assertEquals(
-			null,
+		$this->assertNull(
 			$options->getRedirectTarget(),
 			'ParserOptions\' redirectTarget was changed'
 		);

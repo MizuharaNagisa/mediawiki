@@ -27,6 +27,12 @@ class EnhancedChangesListTest extends MediaWikiLangTestCase {
 		$styleModules = $enhancedChangesList->getOutput()->getModuleStyles();
 
 		$this->assertContains(
+			'mediawiki.icon',
+			$styleModules,
+			'has mediawiki.icon'
+		);
+
+		$this->assertContains(
 			'mediawiki.special.changeslist',
 			$styleModules,
 			'has mediawiki.special.changeslist'
@@ -46,7 +52,6 @@ class EnhancedChangesListTest extends MediaWikiLangTestCase {
 		$modules = $enhancedChangesList->getOutput()->getModules();
 
 		$this->assertContains( 'jquery.makeCollapsible', $modules, 'has jquery.makeCollapsible' );
-		$this->assertContains( 'mediawiki.icon', $modules, 'has mediawiki.icon' );
 	}
 
 	public function testBeginRecentChangesList_html() {
@@ -66,12 +71,12 @@ class EnhancedChangesListTest extends MediaWikiLangTestCase {
 		$recentChange = $this->getEditChange( '20131103092153' );
 		$html = $enhancedChangesList->recentChangesLine( $recentChange, false );
 
-		$this->assertInternalType( 'string', $html );
+		$this->assertIsString( $html );
 
 		$recentChange2 = $this->getEditChange( '20131103092253' );
 		$html = $enhancedChangesList->recentChangesLine( $recentChange2, false );
 
-		$this->assertEquals( '', $html );
+		$this->assertSame( '', $html );
 	}
 
 	public function testRecentChangesPrefix() {
@@ -119,14 +124,14 @@ class EnhancedChangesListTest extends MediaWikiLangTestCase {
 		$html = $this->createCategorizationLine(
 			$this->getCategorizationChange( '20150629191735', 0, 0 )
 		);
-		$this->assertNotContains( '(diff | hist)', strip_tags( $html ) );
+		$this->assertStringNotContainsString( 'diffhist', strip_tags( $html ) );
 	}
 
 	public function testCategorizationLineFormattingWithRevision() {
 		$html = $this->createCategorizationLine(
 			$this->getCategorizationChange( '20150629191735', 1025, 1024 )
 		);
-		$this->assertContains( '(diff | hist)', strip_tags( $html ) );
+		$this->assertStringContainsString( 'diffhist', strip_tags( $html ) );
 	}
 
 	/**
@@ -160,9 +165,9 @@ class EnhancedChangesListTest extends MediaWikiLangTestCase {
 		$enhancedChangesList->recentChangesLine( $recentChange3, false );
 
 		$html = $enhancedChangesList->endRecentChangesList();
-		$this->assertContains( 'data-mw-logaction="foo/bar"', $html );
-		$this->assertContains( 'data-mw-logid="25"', $html );
-		$this->assertContains( 'data-target-page="Title"', $html );
+		$this->assertStringContainsString( 'data-mw-logaction="foo/bar"', $html );
+		$this->assertStringContainsString( 'data-mw-logid="25"', $html );
+		$this->assertStringContainsString( 'data-target-page="Title"', $html );
 	}
 
 	/**

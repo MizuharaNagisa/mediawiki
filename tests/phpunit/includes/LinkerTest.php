@@ -1,11 +1,9 @@
 <?php
 
-
 /**
  * @group Database
  */
 class LinkerTest extends MediaWikiLangTestCase {
-
 	/**
 	 * @dataProvider provideCasesForUserLink
 	 * @covers Linker::userLink
@@ -15,11 +13,16 @@ class LinkerTest extends MediaWikiLangTestCase {
 			'wgArticlePath' => '/wiki/$1',
 		] );
 
-		$this->assertEquals(
-			$expected,
-			Linker::userLink( $userId, $userName, $altUserName ),
-			$msg
-		);
+		// We'd also test the warning, but injecting a mock logger into a static method is tricky.
+		if ( !$userName ) {
+			Wikimedia\suppressWarnings();
+		}
+		$actual = Linker::userLink( $userId, $userName, $altUserName );
+		if ( !$userName ) {
+			Wikimedia\restoreWarnings();
+		}
+
+		$this->assertEquals( $expected, $actual, $msg );
 	}
 
 	public static function provideCasesForUserLink() {
@@ -30,6 +33,12 @@ class LinkerTest extends MediaWikiLangTestCase {
 		# - optional altUserName
 		# - optional message
 		return [
+			# Empty name (T222529)
+			'Empty username, userid 0' => [ '(no username available)', 0, '' ],
+			'Empty username, userid > 0' => [ '(no username available)', 73, '' ],
+
+			'false instead of username' => [ '(no username available)', 73, false ],
+			'null instead of username' => [ '(no username available)', 0, null ],
 
 			# ## ANONYMOUS USER ########################################
 			[
@@ -89,6 +98,118 @@ class LinkerTest extends MediaWikiLangTestCase {
 	}
 
 	/**
+	 * @dataProvider provideUserToolLinks
+	 * @covers Linker::userToolLinks
+	 * @param string $expected
+	 * @param int $userId
+	 * @param string $userText
+	 */
+	public function testUserToolLinks( $expected, $userId, $userText ) {
+		// We'd also test the warning, but injecting a mock logger into a static method is tricky.
+		if ( $userText === '' ) {
+			Wikimedia\suppressWarnings();
+		}
+		$actual = Linker::userToolLinks( $userId, $userText );
+		if ( $userText === '' ) {
+			Wikimedia\restoreWarnings();
+		}
+
+		$this->assertSame( $expected, $actual );
+	}
+
+	public static function provideUserToolLinks() {
+		return [
+			// Empty name (T222529)
+			'Empty username, userid 0' => [ ' (no username available)', 0, '' ],
+			'Empty username, userid > 0' => [ ' (no username available)', 73, '' ],
+		];
+	}
+
+	/**
+	 * @dataProvider provideUserTalkLink
+	 * @covers Linker::userTalkLink
+	 * @param string $expected
+	 * @param int $userId
+	 * @param string $userText
+	 */
+	public function testUserTalkLink( $expected, $userId, $userText ) {
+		// We'd also test the warning, but injecting a mock logger into a static method is tricky.
+		if ( $userText === '' ) {
+			Wikimedia\suppressWarnings();
+		}
+		$actual = Linker::userTalkLink( $userId, $userText );
+		if ( $userText === '' ) {
+			Wikimedia\restoreWarnings();
+		}
+
+		$this->assertSame( $expected, $actual );
+	}
+
+	public static function provideUserTalkLink() {
+		return [
+			// Empty name (T222529)
+			'Empty username, userid 0' => [ '(no username available)', 0, '' ],
+			'Empty username, userid > 0' => [ '(no username available)', 73, '' ],
+		];
+	}
+
+	/**
+	 * @dataProvider provideBlockLink
+	 * @covers Linker::blockLink
+	 * @param string $expected
+	 * @param int $userId
+	 * @param string $userText
+	 */
+	public function testBlockLink( $expected, $userId, $userText ) {
+		// We'd also test the warning, but injecting a mock logger into a static method is tricky.
+		if ( $userText === '' ) {
+			Wikimedia\suppressWarnings();
+		}
+		$actual = Linker::blockLink( $userId, $userText );
+		if ( $userText === '' ) {
+			Wikimedia\restoreWarnings();
+		}
+
+		$this->assertSame( $expected, $actual );
+	}
+
+	public static function provideBlockLink() {
+		return [
+			// Empty name (T222529)
+			'Empty username, userid 0' => [ '(no username available)', 0, '' ],
+			'Empty username, userid > 0' => [ '(no username available)', 73, '' ],
+		];
+	}
+
+	/**
+	 * @dataProvider provideEmailLink
+	 * @covers Linker::emailLink
+	 * @param string $expected
+	 * @param int $userId
+	 * @param string $userText
+	 */
+	public function testEmailLink( $expected, $userId, $userText ) {
+		// We'd also test the warning, but injecting a mock logger into a static method is tricky.
+		if ( $userText === '' ) {
+			Wikimedia\suppressWarnings();
+		}
+		$actual = Linker::emailLink( $userId, $userText );
+		if ( $userText === '' ) {
+			Wikimedia\restoreWarnings();
+		}
+
+		$this->assertSame( $expected, $actual );
+	}
+
+	public static function provideEmailLink() {
+		return [
+			// Empty name (T222529)
+			'Empty username, userid 0' => [ '(no username available)', 0, '' ],
+			'Empty username, userid > 0' => [ '(no username available)', 73, '' ],
+		];
+	}
+
+	/**
 	 * @dataProvider provideCasesForFormatComment
 	 * @covers Linker::formatComment
 	 * @covers Linker::formatAutocomments
@@ -115,6 +236,8 @@ class LinkerTest extends MediaWikiLangTestCase {
 			'wgArticlePath' => '/wiki/$1',
 			'wgCapitalLinks' => true,
 			'wgConf' => $conf,
+			// TODO: update tests when the default changes
+			'wgFragmentMode' => [ 'legacy' ],
 		] );
 
 		if ( $title === false ) {
@@ -160,6 +283,16 @@ class LinkerTest extends MediaWikiLangTestCase {
 				"/* [[linkie?]] */",
 			],
 			[
+				'<span dir="auto"><span class="autocomment">: </span> // Edit via via</span>',
+				// Regression test for T222857
+				"/*  */ // Edit via via",
+			],
+			[
+				'<span dir="auto"><span class="autocomment">: </span> foobar</span>',
+				// Regression test for T222857
+				"/**/ foobar",
+			],
+			[
 				'<span dir="auto"><span class="autocomment"><a href="/wiki/Special:BlankPage#autocomment" title="Special:BlankPage">→‎autocomment</a>: </span> post</span>',
 				"/* autocomment */ post",
 			],
@@ -195,6 +328,36 @@ class LinkerTest extends MediaWikiLangTestCase {
 			[
 				'<span dir="auto"><span class="autocomment">autocomment</span></span>',
 				"/* autocomment */",
+				null
+			],
+			[
+				'',
+				"/* */",
+				false, true
+			],
+			[
+				'',
+				"/* */",
+				null
+			],
+			[
+				'<span dir="auto"><span class="autocomment">[[</span></span>',
+				"/* [[ */",
+				false, true
+			],
+			[
+				'<span dir="auto"><span class="autocomment">[[</span></span>',
+				"/* [[ */",
+				null
+			],
+			[
+				"foo <span dir=\"auto\"><span class=\"autocomment\"><a href=\"#.23\">→‎&#91;[#_\t_]]</a></span></span>",
+				"foo /* [[#_\t_]] */",
+				false, true
+			],
+			[
+				"foo <span dir=\"auto\"><span class=\"autocomment\"><a href=\"#_.09\">#_\t_</a></span></span>",
+				"foo /* [[#_\t_]] */",
 				null
 			],
 			[
@@ -284,6 +447,66 @@ class LinkerTest extends MediaWikiLangTestCase {
 			$expected,
 			Linker::formatLinksInComment( $input, Title::newFromText( 'Special:BlankPage' ), false, $wiki )
 		);
+	}
+
+	/**
+	 * @covers Linker::generateRollback
+	 * @dataProvider provideCasesForRollbackGeneration
+	 */
+	public function testGenerateRollback( $rollbackEnabled, $expectedModules, $title ) {
+		$this->markTestSkippedIfDbType( 'postgres' );
+
+		$context = RequestContext::getMain();
+		$user = $context->getUser();
+		$user->setOption( 'showrollbackconfirmation', $rollbackEnabled );
+
+		$this->assertSame( 0, Title::newFromText( $title )->getArticleID() );
+		$pageData = $this->insertPage( $title );
+		$page = WikiPage::factory( $pageData['title'] );
+
+		$updater = $page->newPageUpdater( $user );
+		$updater->setContent( \MediaWiki\Revision\SlotRecord::MAIN,
+			new TextContent( 'Technical Wishes 123!' )
+		);
+		$summary = CommentStoreComment::newUnsavedComment( 'Some comment!' );
+		$updater->saveRevision( $summary );
+
+		$rollbackOutput = Linker::generateRollback( $page->getRevision(), $context );
+		$modules = $context->getOutput()->getModules();
+		$currentRev = $page->getRevision();
+		$oldestRev = $page->getOldestRevision();
+
+		$this->assertEquals( $expectedModules, $modules );
+		$this->assertEquals( $user->getName(), $currentRev->getUserText() );
+		$this->assertEquals(
+			static::getTestSysop()->getUser(),
+			$oldestRev->getUserText()
+		);
+
+		$ids = [];
+		$r = $oldestRev;
+		while ( $r ) {
+			$ids[] = $r->getId();
+			$r = $r->getNext();
+		}
+		$this->assertEquals( [ $oldestRev->getId(), $currentRev->getId() ], $ids );
+
+		$this->assertStringContainsString( 'rollback 1 edit', $rollbackOutput );
+	}
+
+	public static function provideCasesForRollbackGeneration() {
+		return [
+			[
+				true,
+				[ 'mediawiki.page.rollback.confirmation' ],
+				'Rollback_Test_Page'
+			],
+			[
+				false,
+				[],
+				'Rollback_Test_Page2'
+			]
+		];
 	}
 
 	public static function provideCasesForFormatLinksInComment() {

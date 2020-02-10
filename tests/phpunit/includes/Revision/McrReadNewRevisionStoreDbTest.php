@@ -1,4 +1,5 @@
 <?php
+
 namespace MediaWiki\Tests\Revision;
 
 use CommentStoreComment;
@@ -55,7 +56,7 @@ class McrReadNewRevisionStoreDbTest extends RevisionStoreDbTestBase {
 			[ 'rev_id' => $rev->getId(), 'rev_text_id > 0' ],
 			[ [ 1 ] ],
 			[],
-			[ 'text' => [ 'INNER JOIN', [ 'rev_text_id = old_id' ] ] ]
+			[ 'text' => [ 'JOIN', [ 'rev_text_id = old_id' ] ] ]
 		);
 
 		parent::assertRevisionExistsInDatabase( $rev );
@@ -141,6 +142,16 @@ class McrReadNewRevisionStoreDbTest extends RevisionStoreDbTestBase {
 				]
 			]
 		];
+	}
+
+	/**
+	 * Conditions to use together with getSlotsQueryInfo() when selecting slot rows for a given
+	 * revision.
+	 *
+	 * @return array
+	 */
+	protected function getSlotRevisionConditions( $revId ) {
+		return [ 'slot_revision_id' => $revId ];
 	}
 
 }

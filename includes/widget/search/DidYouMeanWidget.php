@@ -2,8 +2,7 @@
 
 namespace MediaWiki\Widget\Search;
 
-use HtmlArmor;
-use SearchResultSet;
+use ISearchResultSet;
 use SpecialSearch;
 
 /**
@@ -20,10 +19,10 @@ class DidYouMeanWidget {
 
 	/**
 	 * @param string $term The user provided search term
-	 * @param SearchResultSet $resultSet
+	 * @param ISearchResultSet $resultSet
 	 * @return string HTML
 	 */
-	public function render( $term, SearchResultSet $resultSet ) {
+	public function render( $term, ISearchResultSet $resultSet ) {
 		if ( $resultSet->hasRewrittenQuery() ) {
 			$html = $this->rewrittenHtml( $term, $resultSet );
 		} elseif ( $resultSet->hasSuggestion() ) {
@@ -40,11 +39,11 @@ class DidYouMeanWidget {
 	 * rewritten, and the results of the rewritten query are being returned.
 	 *
 	 * @param string $term The users search input
-	 * @param SearchResultSet $resultSet The response to the search request
+	 * @param ISearchResultSet $resultSet The response to the search request
 	 * @return string HTML Links the user to their original $term query, and the
 	 *  one suggested by $resultSet
 	 */
-	protected function rewrittenHtml( $term, SearchResultSet $resultSet ) {
+	protected function rewrittenHtml( $term, ISearchResultSet $resultSet ) {
 		$params = [
 			'search' => $resultSet->getQueryAfterRewrite(),
 			// Don't magic this link into a 'go' link, it should always
@@ -55,9 +54,21 @@ class DidYouMeanWidget {
 
 		$linkRenderer = $this->specialSearch->getLinkRenderer();
 		$snippet = $resultSet->getQueryAfterRewriteSnippet();
+		if ( $snippet === '' || $snippet === null ) {
+			// This should never happen. But if it did happen we would render
+			// links as `Special:Search` which is even more useless. Since this
+			// was only documented but not enforced previously emit a
+			// deprecation warning and in the future we can simply fail on bad
+			// inputs
+			wfDeprecated(
+				get_class( $resultSet ) . '::getQueryAfterRewriteSnippet returning empty snippet',
+				'1.34'
+			);
+			$snippet = $resultSet->getQueryAfterRewrite();
+		}
 		$rewritten = $linkRenderer->makeKnownLink(
 			$this->specialSearch->getPageTitle(),
-			$snippet ? new HtmlArmor( $snippet ) : null,
+			$snippet,
 			[ 'id' => 'mw-search-DYM-rewritten' ],
 			$stParams
 		);
@@ -81,10 +92,10 @@ class DidYouMeanWidget {
 	 * a query that might give more/better results than their current
 	 * query.
 	 *
-	 * @param SearchResultSet $resultSet
+	 * @param ISearchResultSet $resultSet
 	 * @return string HTML
 	 */
-	protected function suggestionHtml( SearchResultSet $resultSet ) {
+	protected function suggestionHtml( ISearchResultSet $resultSet ) {
 		$params = [
 			'search' => $resultSet->getSuggestionQuery(),
 			'fulltext' => 1,
@@ -92,9 +103,21 @@ class DidYouMeanWidget {
 		$stParams = array_merge( $params, $this->specialSearch->powerSearchOptions() );
 
 		$snippet = $resultSet->getSuggestionSnippet();
+		if ( $snippet === '' || $snippet === null ) {
+			// This should never happen. But if it did happen we would render
+			// links as `Special:Search` which is even more useless. Since this
+			// was only documented but not enforced previously emit a
+			// deprecation warning and in the future we can simply fail on bad
+			// inputs
+			wfDeprecated(
+				get_class( $resultSet ) . '::getSuggestionSnippet returning empty snippet',
+				'1.34'
+			);
+			$snippet = $resultSet->getSuggestionSnippet();
+		}
 		$suggest = $this->specialSearch->getLinkRenderer()->makeKnownLink(
 			$this->specialSearch->getPageTitle(),
-			$snippet ? new HtmlArmor( $snippet ) : null,
+			$snippet,
 			[ 'id' => 'mw-search-DYM-suggestion' ],
 			$stParams
 		);

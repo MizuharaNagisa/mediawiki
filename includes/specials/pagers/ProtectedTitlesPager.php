@@ -24,8 +24,31 @@
  */
 class ProtectedTitlesPager extends AlphabeticPager {
 
-	public $mForm, $mConds;
+	/**
+	 * @var SpecialProtectedtitles
+	 */
+	public $mForm;
 
+	/**
+	 * @var array
+	 */
+	public $mConds;
+
+	/** @var string|null */
+	private $level;
+
+	/** @var int|null */
+	private $namespace;
+
+	/**
+	 * @param SpecialProtectedtitles $form
+	 * @param array $conds
+	 * @param string|null $type
+	 * @param string|null $level
+	 * @param int|null $namespace
+	 * @param string|null $sizetype
+	 * @param int|null $size
+	 */
 	public function __construct( $form, $conds, $type, $level, $namespace,
 		$sizetype = '', $size = 0
 	) {
@@ -33,7 +56,6 @@ class ProtectedTitlesPager extends AlphabeticPager {
 		$this->mConds = $conds;
 		$this->level = $level;
 		$this->namespace = $namespace;
-		$this->size = intval( $size );
 		parent::__construct( $form->getContext() );
 	}
 
@@ -55,7 +77,7 @@ class ProtectedTitlesPager extends AlphabeticPager {
 	 * @return Title
 	 */
 	function getTitle() {
-		return $this->mForm->getTitle();
+		return $this->mForm->getPageTitle();
 	}
 
 	function formatRow( $row ) {
@@ -73,7 +95,7 @@ class ProtectedTitlesPager extends AlphabeticPager {
 			$conds['pt_create_perm'] = $this->level;
 		}
 
-		if ( !is_null( $this->namespace ) ) {
+		if ( $this->namespace !== null ) {
 			$conds[] = 'pt_namespace=' . $this->mDb->addQuotes( $this->namespace );
 		}
 

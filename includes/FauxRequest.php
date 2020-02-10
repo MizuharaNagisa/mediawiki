@@ -89,13 +89,6 @@ class FauxRequest extends WebRequest {
 	/**
 	 * @return array
 	 */
-	public function getValues() {
-		return $this->data;
-	}
-
-	/**
-	 * @return array
-	 */
 	public function getQueryValues() {
 		if ( $this->wasPosted ) {
 			return [];
@@ -225,15 +218,6 @@ class FauxRequest extends WebRequest {
 	 */
 	public function getRawInput() {
 		return '';
-	}
-
-	/**
-	 * @codeCoverageIgnore
-	 * @param array $extWhitelist
-	 * @return bool
-	 */
-	public function checkUrlExtension( $extWhitelist = [] ) {
-		return true;
 	}
 
 	/**

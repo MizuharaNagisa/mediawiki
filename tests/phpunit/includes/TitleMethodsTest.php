@@ -12,7 +12,7 @@ use MediaWiki\MediaWikiServices;
  */
 class TitleMethodsTest extends MediaWikiLangTestCase {
 
-	protected function setUp() {
+	protected function setUp() : void {
 		parent::setUp();
 
 		$this->mergeMwGlobalArrayValue(
@@ -29,30 +29,6 @@ class TitleMethodsTest extends MediaWikiLangTestCase {
 				12302 => CONTENT_MODEL_JAVASCRIPT,
 			]
 		);
-	}
-
-	public static function provideEquals() {
-		return [
-			[ 'Main Page', 'Main Page', true ],
-			[ 'Main Page', 'Not The Main Page', false ],
-			[ 'Main Page', 'Project:Main Page', false ],
-			[ 'File:Example.png', 'Image:Example.png', true ],
-			[ 'Special:Version', 'Special:Version', true ],
-			[ 'Special:Version', 'Special:Recentchanges', false ],
-			[ 'Special:Version', 'Main Page', false ],
-		];
-	}
-
-	/**
-	 * @dataProvider provideEquals
-	 * @covers Title::equals
-	 */
-	public function testEquals( $titleA, $titleB, $expectedBool ) {
-		$titleA = Title::newFromText( $titleA );
-		$titleB = Title::newFromText( $titleB );
-
-		$this->assertEquals( $expectedBool, $titleA->equals( $titleB ) );
-		$this->assertEquals( $expectedBool, $titleB->equals( $titleA ) );
 	}
 
 	public static function provideInNamespace() {
@@ -331,7 +307,7 @@ class TitleMethodsTest extends MediaWikiLangTestCase {
 	 */
 	public function testGetOtherPage( $text, $expected ) {
 		if ( $expected === null ) {
-			$this->setExpectedException( MWException::class );
+			$this->expectException( MWException::class );
 		}
 
 		$title = Title::newFromText( $text );
@@ -351,7 +327,7 @@ class TitleMethodsTest extends MediaWikiLangTestCase {
 
 		$title2 = Title::newFromText( 'Foo' );
 		$this->assertNotSame( $title1, $title2, 'title cache should be empty' );
-		$this->assertEquals( 0, $linkCache->getGoodLinkID( 'Foo' ), 'link cache should be empty' );
+		$this->assertSame( 0, $linkCache->getGoodLinkID( 'Foo' ), 'link cache should be empty' );
 	}
 
 	public function provideGetLinkURL() {
@@ -430,7 +406,7 @@ class TitleMethodsTest extends MediaWikiLangTestCase {
 			'wgFragmentMode' => [ 'html5', 'legacy' ]
 		] );
 
-		$interwikiLookup = $this->getMock( InterwikiLookup::class );
+		$interwikiLookup = $this->createMock( InterwikiLookup::class );
 
 		$interwikiLookup->method( 'fetch' )
 			->willReturnCallback( function ( $interwiki ) {
@@ -461,7 +437,32 @@ class TitleMethodsTest extends MediaWikiLangTestCase {
 		$this->assertSame( $expected, $title->getLinkURL( $query, $query2, $proto ) );
 	}
 
-	function tearDown() {
+	/**
+	 * Integration test to catch regressions like T74870. Taken and modified
+	 * from SemanticMediaWiki
+	 *
+	 * @covers Title::moveTo
+	 */
+	public function testTitleMoveCompleteIntegrationTest() {
+		$this->hideDeprecated( 'Title::moveTo' );
+
+		$oldTitle = Title::newFromText( 'Help:Some title' );
+		WikiPage::factory( $oldTitle )->doEditContent( new WikitextContent( 'foo' ), 'bar' );
+		$newTitle = Title::newFromText( 'Help:Some other title' );
+		$this->assertNull(
+			WikiPage::factory( $newTitle )->getRevision()
+		);
+
+		$this->assertTrue( $oldTitle->moveTo( $newTitle, false, 'test1', true ) );
+		$this->assertNotNull(
+			WikiPage::factory( $oldTitle )->getRevision()
+		);
+		$this->assertNotNull(
+			WikiPage::factory( $newTitle )->getRevision()
+		);
+	}
+
+	public function tearDown() : void {
 		Title::clearCaches();
 		parent::tearDown();
 	}

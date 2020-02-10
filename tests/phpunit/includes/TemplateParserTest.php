@@ -8,7 +8,7 @@ class TemplateParserTest extends MediaWikiTestCase {
 
 	protected $templateDir;
 
-	protected function setUp() {
+	protected function setUp() : void {
 		parent::setUp();
 
 		$this->setMwGlobals( [
@@ -23,7 +23,7 @@ class TemplateParserTest extends MediaWikiTestCase {
 	 */
 	public function testProcessTemplate( $name, $args, $result, $exception = false ) {
 		if ( $exception ) {
-			$this->setExpectedException( $exception );
+			$this->expectException( $exception );
 		}
 		$tp = new TemplateParser( $this->templateDir );
 		$this->assertEquals( $result, $tp->processTemplate( $name, $args ) );
@@ -106,6 +106,12 @@ class TemplateParserTest extends MediaWikiTestCase {
 				'Exception',
 			],
 			[
+				'invalid_syntax',
+				[],
+				false,
+				'Exception'
+			],
+			[
 				'parentvars',
 				[
 					'foo' => 'f',
@@ -114,7 +120,7 @@ class TemplateParserTest extends MediaWikiTestCase {
 						[ 'baz' => 'y' ]
 					]
 				],
-				"f\n\n\tf x\n\n\tf y\n\n"
+				"f\n\tf x\n\tf y\n"
 			]
 		];
 	}
@@ -127,7 +133,7 @@ class TemplateParserTest extends MediaWikiTestCase {
 		$this->assertEquals( 'rrr', $tp->processTemplate( 'recurse', $data ) );
 
 		$tp->enableRecursivePartials( false );
-		$this->setExpectedException( Exception::class );
+		$this->expectException( Exception::class );
 		$tp->processTemplate( 'recurse', $data );
 	}
 

@@ -42,7 +42,7 @@ class OldLocalFile extends LocalFile {
 	 * @param Title $title
 	 * @param FileRepo $repo
 	 * @param string|int|null $time
-	 * @return self
+	 * @return static
 	 * @throws MWException
 	 */
 	static function newFromTitle( $title, $repo, $time = null ) {
@@ -51,27 +51,27 @@ class OldLocalFile extends LocalFile {
 			throw new MWException( __METHOD__ . ' got null for $time parameter' );
 		}
 
-		return new self( $title, $repo, $time, null );
+		return new static( $title, $repo, $time, null );
 	}
 
 	/**
 	 * @param Title $title
 	 * @param FileRepo $repo
 	 * @param string $archiveName
-	 * @return self
+	 * @return static
 	 */
 	static function newFromArchiveName( $title, $repo, $archiveName ) {
-		return new self( $title, $repo, null, $archiveName );
+		return new static( $title, $repo, null, $archiveName );
 	}
 
 	/**
 	 * @param stdClass $row
 	 * @param FileRepo $repo
-	 * @return self
+	 * @return static
 	 */
 	static function newFromRow( $row, $repo ) {
 		$title = Title::makeTitle( NS_FILE, $row->oi_name );
-		$file = new self( $title, $repo, null, $row->oi_archive_name );
+		$file = new static( $title, $repo, null, $row->oi_archive_name );
 		$file->loadFromRow( $row, 'oi_' );
 
 		return $file;
@@ -95,55 +95,15 @@ class OldLocalFile extends LocalFile {
 			$conds['oi_timestamp'] = $dbr->timestamp( $timestamp );
 		}
 
-		$fileQuery = self::getQueryInfo();
+		$fileQuery = static::getQueryInfo();
 		$row = $dbr->selectRow(
 			$fileQuery['tables'], $fileQuery['fields'], $conds, __METHOD__, [], $fileQuery['joins']
 		);
 		if ( $row ) {
-			return self::newFromRow( $row, $repo );
+			return static::newFromRow( $row, $repo );
 		} else {
 			return false;
 		}
-	}
-
-	/**
-	 * Fields in the oldimage table
-	 * @deprecated since 1.31, use self::getQueryInfo() instead.
-	 * @return string[]
-	 */
-	static function selectFields() {
-		global $wgActorTableSchemaMigrationStage;
-
-		wfDeprecated( __METHOD__, '1.31' );
-		if ( $wgActorTableSchemaMigrationStage & SCHEMA_COMPAT_READ_NEW ) {
-			// If code is using this instead of self::getQueryInfo(), there's a
-			// decent chance it's going to try to directly access
-			// $row->oi_user or $row->oi_user_text and we can't give it
-			// useful values here once those aren't being used anymore.
-			throw new BadMethodCallException(
-				'Cannot use ' . __METHOD__
-					. ' when $wgActorTableSchemaMigrationStage has SCHEMA_COMPAT_READ_NEW'
-			);
-		}
-
-		return [
-			'oi_name',
-			'oi_archive_name',
-			'oi_size',
-			'oi_width',
-			'oi_height',
-			'oi_metadata',
-			'oi_bits',
-			'oi_media_type',
-			'oi_major_mime',
-			'oi_minor_mime',
-			'oi_user',
-			'oi_user_text',
-			'oi_actor' => 'NULL',
-			'oi_timestamp',
-			'oi_deleted',
-			'oi_sha1',
-		] + MediaWikiServices::getInstance()->getCommentStore()->getFields( 'oi_description' );
 	}
 
 	/**
@@ -202,7 +162,7 @@ class OldLocalFile extends LocalFile {
 		parent::__construct( $title, $repo );
 		$this->requestedTime = $time;
 		$this->archive_name = $archiveName;
-		if ( is_null( $time ) && is_null( $archiveName ) ) {
+		if ( $time === null && $archiveName === null ) {
 			throw new MWException( __METHOD__ . ': must specify at least one of $time or $archiveName' );
 		}
 	}
@@ -247,7 +207,7 @@ class OldLocalFile extends LocalFile {
 			: $this->repo->getReplicaDB();
 
 		$conds = [ 'oi_name' => $this->getName() ];
-		if ( is_null( $this->requestedTime ) ) {
+		if ( $this->requestedTime === null ) {
 			$conds['oi_archive_name'] = $this->archive_name;
 		} else {
 			$conds['oi_timestamp'] = $dbr->timestamp( $this->requestedTime );
@@ -275,7 +235,7 @@ class OldLocalFile extends LocalFile {
 		$this->extraDataLoaded = true;
 		$dbr = $this->repo->getReplicaDB();
 		$conds = [ 'oi_name' => $this->getName() ];
-		if ( is_null( $this->requestedTime ) ) {
+		if ( $this->requestedTime === null ) {
 			$conds['oi_archive_name'] = $this->archive_name;
 		} else {
 			$conds['oi_timestamp'] = $dbr->timestamp( $this->requestedTime );
@@ -418,10 +378,10 @@ class OldLocalFile extends LocalFile {
 		$dstRel = $this->getArchiveRel( $archiveName );
 		$status = $this->publishTo( $srcPath, $dstRel );
 
-		if ( $status->isGood() ) {
-			if ( !$this->recordOldUpload( $srcPath, $archiveName, $timestamp, $comment, $user ) ) {
-				$status->fatal( 'filenotfound', $srcPath );
-			}
+		if ( $status->isGood() &&
+			!$this->recordOldUpload( $srcPath, $archiveName, $timestamp, $comment, $user )
+		) {
+			$status->fatal( 'filenotfound', $srcPath );
 		}
 
 		$this->unlock();

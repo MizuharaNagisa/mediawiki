@@ -1,5 +1,7 @@
 <?php
 
+use MediaWiki\MediaWikiServices;
+
 /**
  * @covers PageProps
  *
@@ -12,21 +14,21 @@
 class PagePropsTest extends MediaWikiLangTestCase {
 
 	/**
-	 * @var Title $title1
+	 * @var Title
 	 */
 	private $title1;
 
 	/**
-	 * @var Title $title2
+	 * @var Title
 	 */
 	private $title2;
 
 	/**
-	 * @var array $the_properties
+	 * @var array
 	 */
 	private $the_properties;
 
-	protected function setUp() {
+	protected function setUp() : void {
 		parent::setUp();
 
 		$this->setMwGlobals( [
@@ -234,7 +236,8 @@ class PagePropsTest extends MediaWikiLangTestCase {
 				( $model === null || $model === CONTENT_MODEL_WIKITEXT )
 			) {
 				$ns = $this->getDefaultWikitextNS();
-				$page = MWNamespace::getCanonicalName( $ns ) . ':' . $page;
+				$page = MediaWikiServices::getInstance()->getNamespaceInfo()->
+					getCanonicalName( $ns ) . ':' . $page;
 			}
 
 			$page = Title::newFromText( $page );

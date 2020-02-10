@@ -24,6 +24,7 @@
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Storage\NameTableAccessException;
 use Wikimedia\Rdbms\Database;
+use Wikimedia\Rdbms\IDatabase;
 
 class ChangeTags {
 	/**
@@ -32,6 +33,11 @@ class ChangeTags {
 	 * @todo Use the job queue for tag deletion to avoid this restriction
 	 */
 	const MAX_DELETE_USES = 5000;
+
+	/**
+	 * Flag for canDeleteTag().
+	 */
+	public const BYPASS_MAX_USAGE_CHECK = 1;
 
 	/**
 	 * A list of tags defined and used by MediaWiki itself.
@@ -125,11 +131,45 @@ class ChangeTags {
 
 		$markers = $context->msg( 'tag-list-wrapper' )
 			->numParams( count( $displayTags ) )
-			->rawParams( $context->getLanguage()->commaList( $displayTags ) )
+			->rawParams( implode( ' ',  $displayTags ) )
 			->parse();
 		$markers = Xml::tags( 'span', [ 'class' => 'mw-tag-markers' ], $markers );
 
 		return [ $markers, $classes ];
+	}
+
+	/**
+	 * Get the message object for the tag's short description.
+	 *
+	 * Checks if message key "mediawiki:tag-$tag" exists. If it does not,
+	 * returns the tag name in a RawMessage. If the message exists, it is
+	 * used, provided it is not disabled. If the message is disabled, we
+	 * consider the tag hidden, and return false.
+	 *
+	 * @since 1.34
+	 * @param string $tag
+	 * @param MessageLocalizer $context
+	 * @return Message|bool Tag description, or false if tag is to be hidden.
+	 */
+	public static function tagShortDescriptionMessage( $tag, MessageLocalizer $context ) {
+		$msg = $context->msg( "tag-$tag" );
+		if ( !$msg->exists() ) {
+			// No such message
+			return ( new RawMessage( '$1', [ Message::plaintextParam( $tag ) ] ) )
+				// HACK MessageLocalizer doesn't have a way to set the right language on a RawMessage,
+				// so extract the language from $msg and use that.
+				// The language doesn't really matter, but we need to set it to avoid requesting
+				// the user's language from session-less entry points (T227233)
+				->inLanguage( $msg->getLanguage() );
+
+		}
+		if ( $msg->isDisabled() ) {
+			// The message exists but is disabled, hide the tag.
+			return false;
+		}
+
+		// Message exists and isn't disabled, use it.
+		return $msg;
 	}
 
 	/**
@@ -141,23 +181,13 @@ class ChangeTags {
 	 * we consider the tag hidden, and return false.
 	 *
 	 * @param string $tag
-	 * @param IContextSource $context
+	 * @param MessageLocalizer $context
 	 * @return string|bool Tag description or false if tag is to be hidden.
 	 * @since 1.25 Returns false if tag is to be hidden.
 	 */
-	public static function tagDescription( $tag, IContextSource $context ) {
-		$msg = $context->msg( "tag-$tag" );
-		if ( !$msg->exists() ) {
-			// No such message, so return the HTML-escaped tag name.
-			return htmlspecialchars( $tag );
-		}
-		if ( $msg->isDisabled() ) {
-			// The message exists but is disabled, hide the tag.
-			return false;
-		}
-
-		// Message exists and isn't disabled, use it.
-		return $msg->parse();
+	public static function tagDescription( $tag, MessageLocalizer $context ) {
+		$msg = self::tagShortDescriptionMessage( $tag, $context );
+		return $msg ? $msg->parse() : false;
 	}
 
 	/**
@@ -168,11 +198,11 @@ class ChangeTags {
 	 * for the long description.
 	 *
 	 * @param string $tag
-	 * @param IContextSource $context
+	 * @param MessageLocalizer $context
 	 * @return Message|bool Message object of the tag long description or false if
 	 *  there is no description.
 	 */
-	public static function tagLongDescriptionMessage( $tag, IContextSource $context ) {
+	public static function tagLongDescriptionMessage( $tag, MessageLocalizer $context ) {
 		$msg = $context->msg( "tag-$tag-description" );
 		if ( !$msg->exists() ) {
 			return false;
@@ -196,6 +226,8 @@ class ChangeTags {
 	 * @return string Truncated long tag description.
 	 */
 	public static function truncateTagDescription( $tag, $length, IContextSource $context ) {
+		// FIXME: Make this accept MessageLocalizer and Language instead of IContextSource
+
 		$originalDesc = self::tagLongDescriptionMessage( $tag, $context );
 		// If there is no tag description, return empty string
 		if ( !$originalDesc ) {
@@ -294,7 +326,6 @@ class ChangeTags {
 					'rc_id',
 					[
 						'rev_id' => $rev_id,
-						'rc_timestamp = rev_timestamp',
 						'rc_this_oldid = rev_id'
 					],
 					__METHOD__
@@ -327,12 +358,12 @@ class ChangeTags {
 			$log_id = $dbw->selectField(
 				'log_search',
 				'ls_log_id',
-				[ 'ls_field' => 'associated_rev_id', 'ls_value' => $rev_id ],
+				[ 'ls_field' => 'associated_rev_id', 'ls_value' => (string)$rev_id ],
 				__METHOD__
 			);
 		}
 
-		$prevTags = self::getPrevTags( $rc_id, $log_id, $rev_id );
+		$prevTags = self::getTags( $dbw, $rc_id, $rev_id, $log_id );
 
 		// add tags
 		$tagsToAdd = array_values( array_diff( $tagsToAdd, $prevTags ) );
@@ -420,29 +451,42 @@ class ChangeTags {
 			}
 		}
 
-		self::purgeTagUsageCache();
-
 		Hooks::run( 'ChangeTagsAfterUpdateTags', [ $tagsToAdd, $tagsToRemove, $prevTags,
 			$rc_id, $rev_id, $log_id, $params, $rc, $user ] );
 
 		return [ $tagsToAdd, $tagsToRemove, $prevTags ];
 	}
 
-	private static function getPrevTags( $rc_id = null, $log_id = null, $rev_id = null ) {
+	/**
+	 * Return all the tags associated with the given recent change ID,
+	 * revision ID, and/or log entry ID.
+	 *
+	 * @param IDatabase $db the database to query
+	 * @param int|null $rc_id
+	 * @param int|null $rev_id
+	 * @param int|null $log_id
+	 * @return string[]
+	 */
+	public static function getTags( IDatabase $db, $rc_id = null, $rev_id = null, $log_id = null ) {
 		$conds = array_filter(
 			[
 				'ct_rc_id' => $rc_id,
-				'ct_log_id' => $log_id,
 				'ct_rev_id' => $rev_id,
+				'ct_log_id' => $log_id,
 			]
 		);
 
-		$dbw = wfGetDB( DB_MASTER );
-		$tagIds = $dbw->selectFieldValues( 'change_tag', 'ct_tag_id', $conds, __METHOD__ );
+		$tagIds = $db->selectFieldValues(
+			'change_tag',
+			'ct_tag_id',
+			$conds,
+			__METHOD__
+		);
 
 		$tags = [];
+		$changeTagDefStore = MediaWikiServices::getInstance()->getChangeTagDefStore();
 		foreach ( $tagIds as $tagId ) {
-			$tags[] = MediaWikiServices::getInstance()->getChangeTagDefStore()->getName( (int)$tagId );
+			$tags[] = $changeTagDefStore->getName( (int)$tagId );
 		}
 
 		return $tags;
@@ -460,9 +504,12 @@ class ChangeTags {
 	 */
 	protected static function restrictedTagError( $msgOne, $msgMulti, $tags ) {
 		$lang = RequestContext::getMain()->getLanguage();
+		$tags = array_values( $tags );
 		$count = count( $tags );
-		return Status::newFatal( ( $count > 1 ) ? $msgMulti : $msgOne,
+		$status = Status::newFatal( ( $count > 1 ) ? $msgMulti : $msgOne,
 			$lang->commaList( $tags ), $count );
+		$status->value = $tags;
+		return $status;
 	}
 
 	/**
@@ -479,10 +526,12 @@ class ChangeTags {
 	 * @since 1.25
 	 */
 	public static function canAddTagsAccompanyingChange( array $tags, User $user = null ) {
-		if ( !is_null( $user ) ) {
-			if ( !$user->isAllowed( 'applychangetags' ) ) {
+		if ( $user !== null ) {
+			if ( !MediaWikiServices::getInstance()->getPermissionManager()
+					->userHasRight( $user, 'applychangetags' )
+			) {
 				return Status::newFatal( 'tags-apply-no-permission' );
-			} elseif ( $user->isBlocked() ) {
+			} elseif ( $user->getBlock() && $user->getBlock()->isSitewide() ) {
 				return Status::newFatal( 'tags-apply-blocked', $user->getName() );
 			}
 		}
@@ -552,10 +601,12 @@ class ChangeTags {
 	public static function canUpdateTags( array $tagsToAdd, array $tagsToRemove,
 		User $user = null
 	) {
-		if ( !is_null( $user ) ) {
-			if ( !$user->isAllowed( 'changetags' ) ) {
+		if ( $user !== null ) {
+			if ( !MediaWikiServices::getInstance()->getPermissionManager()
+					->userHasRight( $user, 'changetags' )
+			) {
 				return Status::newFatal( 'tags-update-no-permission' );
-			} elseif ( $user->isBlocked() ) {
+			} elseif ( $user->getBlock() && $user->getBlock()->isSitewide() ) {
 				return Status::newFatal( 'tags-update-blocked', $user->getName() );
 			}
 		}
@@ -599,12 +650,12 @@ class ChangeTags {
 	 * ChangeTags::updateTags() instead, unless directly handling a user request
 	 * to add or remove tags from an existing revision or log entry.
 	 *
-	 * @param array|null $tagsToAdd If none, pass array() or null
-	 * @param array|null $tagsToRemove If none, pass array() or null
+	 * @param array|null $tagsToAdd If none, pass [] or null
+	 * @param array|null $tagsToRemove If none, pass [] or null
 	 * @param int|null $rc_id The rc_id of the change to add the tags to
 	 * @param int|null $rev_id The rev_id of the change to add the tags to
 	 * @param int|null $log_id The log_id of the change to add the tags to
-	 * @param string $params Params to put in the ct_params field of table
+	 * @param string|null $params Params to put in the ct_params field of table
 	 * 'change_tag' when adding tags
 	 * @param string $reason Comment for the log
 	 * @param User $user Who to give credit for the action
@@ -619,10 +670,10 @@ class ChangeTags {
 	public static function updateTagsWithChecks( $tagsToAdd, $tagsToRemove,
 		$rc_id, $rev_id, $log_id, $params, $reason, User $user
 	) {
-		if ( is_null( $tagsToAdd ) ) {
+		if ( $tagsToAdd === null ) {
 			$tagsToAdd = [];
 		}
-		if ( is_null( $tagsToRemove ) ) {
+		if ( $tagsToRemove === null ) {
 			$tagsToRemove = [];
 		}
 		if ( !$tagsToAdd && !$tagsToRemove ) {
@@ -756,7 +807,7 @@ class ChangeTags {
 			// Add an INNER JOIN on change_tag
 
 			$tables[] = 'change_tag';
-			$join_conds['change_tag'] = [ 'INNER JOIN', $join_cond ];
+			$join_conds['change_tag'] = [ 'JOIN', $join_cond ];
 			$filterTagIds = [];
 			$changeTagDefStore = MediaWikiServices::getInstance()->getChangeTagDefStore();
 			foreach ( (array)$filter_tag as $filterTagName ) {
@@ -764,9 +815,9 @@ class ChangeTags {
 					$filterTagIds[] = $changeTagDefStore->getId( $filterTagName );
 				} catch ( NameTableAccessException $exception ) {
 					// Return nothing.
-					$conds[] = '0';
+					$conds[] = '0=1';
 					break;
-				};
+				}
 			}
 
 			if ( $filterTagIds !== [] ) {
@@ -808,7 +859,7 @@ class ChangeTags {
 		}
 
 		$tagTables = [ 'change_tag', 'change_tag_def' ];
-		$join_cond_ts_tags = [ 'change_tag_def' => [ 'INNER JOIN', 'ct_tag_id=ctd_id' ] ];
+		$join_cond_ts_tags = [ 'change_tag_def' => [ 'JOIN', 'ct_tag_id=ctd_id' ] ];
 		$field = 'ctd_name';
 
 		return wfGetDB( DB_REPLICA )->buildGroupConcatField(
@@ -948,12 +999,12 @@ class ChangeTags {
 		$logEntry->setComment( $reason );
 
 		$params = [ '4::tag' => $tag ];
-		if ( !is_null( $tagCount ) ) {
+		if ( $tagCount !== null ) {
 			$params['5:number:count'] = $tagCount;
 		}
 		$logEntry->setParameters( $params );
 		$logEntry->setRelations( [ 'Tag' => $tag ] );
-		$logEntry->setTags( $logEntryTags );
+		$logEntry->addTags( $logEntryTags );
 
 		$logId = $logEntry->insert( $dbw );
 		$logEntry->publish( $logId );
@@ -970,10 +1021,12 @@ class ChangeTags {
 	 * @since 1.25
 	 */
 	public static function canActivateTag( $tag, User $user = null ) {
-		if ( !is_null( $user ) ) {
-			if ( !$user->isAllowed( 'managechangetags' ) ) {
+		if ( $user !== null ) {
+			if ( !MediaWikiServices::getInstance()->getPermissionManager()
+					->userHasRight( $user, 'managechangetags' )
+			) {
 				return Status::newFatal( 'tags-manage-no-permission' );
-			} elseif ( $user->isBlocked() ) {
+			} elseif ( $user->getBlock() && $user->getBlock()->isSitewide() ) {
 				return Status::newFatal( 'tags-manage-blocked', $user->getName() );
 			}
 		}
@@ -1042,10 +1095,12 @@ class ChangeTags {
 	 * @since 1.25
 	 */
 	public static function canDeactivateTag( $tag, User $user = null ) {
-		if ( !is_null( $user ) ) {
-			if ( !$user->isAllowed( 'managechangetags' ) ) {
+		if ( $user !== null ) {
+			if ( !MediaWikiServices::getInstance()->getPermissionManager()
+					->userHasRight( $user, 'managechangetags' )
+			) {
 				return Status::newFatal( 'tags-manage-no-permission' );
-			} elseif ( $user->isBlocked() ) {
+			} elseif ( $user->getBlock() && $user->getBlock()->isSitewide() ) {
 				return Status::newFatal( 'tags-manage-blocked', $user->getName() );
 			}
 		}
@@ -1119,7 +1174,7 @@ class ChangeTags {
 
 		// could the MediaWiki namespace description messages be created?
 		$title = Title::makeTitleSafe( NS_MEDIAWIKI, "Tag-$tag-description" );
-		if ( is_null( $title ) ) {
+		if ( $title === null ) {
 			return Status::newFatal( 'tags-create-invalid-title-chars' );
 		}
 
@@ -1139,10 +1194,12 @@ class ChangeTags {
 	 * @since 1.25
 	 */
 	public static function canCreateTag( $tag, User $user = null ) {
-		if ( !is_null( $user ) ) {
-			if ( !$user->isAllowed( 'managechangetags' ) ) {
+		if ( $user !== null ) {
+			if ( !MediaWikiServices::getInstance()->getPermissionManager()
+					->userHasRight( $user, 'managechangetags' )
+			) {
 				return Status::newFatal( 'tags-manage-no-permission' );
-			} elseif ( $user->isBlocked() ) {
+			} elseif ( $user->getBlock() && $user->getBlock()->isSitewide() ) {
 				return Status::newFatal( 'tags-manage-blocked', $user->getName() );
 			}
 		}
@@ -1219,11 +1276,13 @@ class ChangeTags {
 		$dbw = wfGetDB( DB_MASTER );
 		$dbw->startAtomic( __METHOD__ );
 
+		// fetch tag id, this must be done before calling undefineTag(), see T225564
+		$tagId = MediaWikiServices::getInstance()->getChangeTagDefStore()->getId( $tag );
+
 		// set ctd_user_defined = 0
 		self::undefineTag( $tag );
 
 		// delete from change_tag
-		$tagId = MediaWikiServices::getInstance()->getChangeTagDefStore()->getId( $tag );
 		$dbw->delete( 'change_tag', [ 'ct_tag_id' => $tagId ], __METHOD__ );
 		$dbw->delete( 'change_tag_def', [ 'ctd_name' => $tag ], __METHOD__ );
 		$dbw->endAtomic( __METHOD__ );
@@ -1249,16 +1308,21 @@ class ChangeTags {
 	 * @param string $tag Tag that you are interested in deleting
 	 * @param User|null $user User whose permission you wish to check, or null if
 	 * you don't care (e.g. maintenance scripts)
+	 * @param int $flags Use ChangeTags::BYPASS_MAX_USAGE_CHECK to ignore whether
+	 *  there are more uses than we would normally allow to be deleted through the
+	 *  user interface.
 	 * @return Status
 	 * @since 1.25
 	 */
-	public static function canDeleteTag( $tag, User $user = null ) {
+	public static function canDeleteTag( $tag, User $user = null, int $flags = 0 ) {
 		$tagUsage = self::tagUsageStatistics();
 
-		if ( !is_null( $user ) ) {
-			if ( !$user->isAllowed( 'deletechangetags' ) ) {
+		if ( $user !== null ) {
+			if ( !MediaWikiServices::getInstance()->getPermissionManager()
+					->userHasRight( $user, 'deletechangetags' )
+			) {
 				return Status::newFatal( 'tags-delete-no-permission' );
-			} elseif ( $user->isBlocked() ) {
+			} elseif ( $user->getBlock() && $user->getBlock()->isSitewide() ) {
 				return Status::newFatal( 'tags-manage-blocked', $user->getName() );
 			}
 		}
@@ -1267,7 +1331,10 @@ class ChangeTags {
 			return Status::newFatal( 'tags-delete-not-found', $tag );
 		}
 
-		if ( isset( $tagUsage[$tag] ) && $tagUsage[$tag] > self::MAX_DELETE_USES ) {
+		if ( $flags !== self::BYPASS_MAX_USAGE_CHECK &&
+			isset( $tagUsage[$tag] ) &&
+			$tagUsage[$tag] > self::MAX_DELETE_USES
+		) {
 			return Status::newFatal( 'tags-delete-too-many-uses', $tag, self::MAX_DELETE_USES );
 		}
 
@@ -1454,20 +1521,9 @@ class ChangeTags {
 		$cache->touchCheckKey( $cache->makeKey( 'active-tags' ) );
 		$cache->touchCheckKey( $cache->makeKey( 'valid-tags-db' ) );
 		$cache->touchCheckKey( $cache->makeKey( 'valid-tags-hook' ) );
+		$cache->touchCheckKey( $cache->makeKey( 'tags-usage-statistics' ) );
 
 		MediaWikiServices::getInstance()->getChangeTagDefStore()->reloadMap();
-
-		self::purgeTagUsageCache();
-	}
-
-	/**
-	 * Invalidates the tag statistics cache only.
-	 * @since 1.25
-	 */
-	public static function purgeTagUsageCache() {
-		$cache = MediaWikiServices::getInstance()->getMainWANObjectCache();
-
-		$cache->touchCheckKey( $cache->makeKey( 'change-tag-statistics' ) );
 	}
 
 	/**
@@ -1477,21 +1533,35 @@ class ChangeTags {
 	 * @return array Array of string => int
 	 */
 	public static function tagUsageStatistics() {
-		$dbr = wfGetDB( DB_REPLICA );
-		$res = $dbr->select(
-			'change_tag_def',
-			[ 'ctd_name', 'ctd_count' ],
-			[],
-			__METHOD__,
-			[ 'ORDER BY' => 'ctd_count DESC' ]
+		$fname = __METHOD__;
+
+		$cache = MediaWikiServices::getInstance()->getMainWANObjectCache();
+		return $cache->getWithSetCallback(
+			$cache->makeKey( 'tags-usage-statistics' ),
+			WANObjectCache::TTL_MINUTE * 5,
+			function ( $oldValue, &$ttl, array &$setOpts ) use ( $fname ) {
+				$dbr = wfGetDB( DB_REPLICA );
+				$res = $dbr->select(
+					'change_tag_def',
+					[ 'ctd_name', 'ctd_count' ],
+					[],
+					$fname,
+					[ 'ORDER BY' => 'ctd_count DESC' ]
+				);
+
+				$out = [];
+				foreach ( $res as $row ) {
+					$out[$row->ctd_name] = $row->ctd_count;
+				}
+
+				return $out;
+			},
+			[
+				'checkKeys' => [ $cache->makeKey( 'tags-usage-statistics' ) ],
+				'lockTSE' => WANObjectCache::TTL_MINUTE * 5,
+				'pcTTL' => WANObjectCache::TTL_PROC_LONG
+			]
 		);
-
-		$out = [];
-		foreach ( $res as $row ) {
-			$out[$row->ctd_name] = $row->ctd_count;
-		}
-
-		return $out;
 	}
 
 	/**
@@ -1509,6 +1579,8 @@ class ChangeTags {
 	 * @return bool
 	 */
 	public static function showTagEditingUI( User $user ) {
-		return $user->isAllowed( 'changetags' ) && (bool)self::listExplicitlyDefinedTags();
+		return MediaWikiServices::getInstance()->getPermissionManager()
+				   ->userHasRight( $user, 'changetags' ) &&
+			   (bool)self::listExplicitlyDefinedTags();
 	}
 }

@@ -18,18 +18,19 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup Deployment
+ * @ingroup Installer
  */
 
 /**
  * Class for generating LocalSettings.php file.
  *
- * @ingroup Deployment
+ * @ingroup Installer
  * @since 1.17
  */
 class LocalSettingsGenerator {
 
 	protected $extensions = [];
+	protected $skins = [];
 	protected $values = [];
 	protected $groupPermissions = [];
 	protected $dbSettings = '';
@@ -151,7 +152,7 @@ class LocalSettingsGenerator {
 		if ( count( $this->extensions ) ) {
 			$localSettings .= "
 # Enabled extensions. Most of the extensions are enabled by adding
-# wfLoadExtensions('ExtensionName');
+# wfLoadExtension( 'ExtensionName' );
 # to LocalSettings.php. Check specific extension documentation for more details.
 # The following extensions were automatically enabled:\n";
 
@@ -390,7 +391,7 @@ ${serverSetting}
 
 ## Set \$wgCacheDirectory to a writable directory on the web server
 ## to make your wiki go slightly faster. The directory should not
-## be publically accessible from the web.
+## be publicly accessible from the web.
 #\$wgCacheDirectory = \"\$IP/cache\";
 
 # Site language code, should be one of the list in ./languages/data/Names.php

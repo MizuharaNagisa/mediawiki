@@ -31,7 +31,8 @@ use MediaWiki\MediaWikiServices;
  */
 abstract class ImageGalleryBase extends ContextSource {
 	/**
-	 * @var array Gallery images
+	 * @var array[] Gallery images
+	 * @phan-var array<int,array{0:Title,1:string,2:string,3:string,4:array}>
 	 */
 	protected $mImages;
 
@@ -75,21 +76,30 @@ abstract class ImageGalleryBase extends ContextSource {
 	protected $mHideBadImages;
 
 	/**
-	 * @var Parser Registered parser object for output callbacks
+	 * @var Parser|false Registered parser object for output callbacks
 	 */
 	public $mParser;
 
 	/**
-	 * @var Title Contextual title, used when images are being screened against
+	 * @var Title|null Contextual title, used when images are being screened against
 	 *   the bad image list
 	 */
-	protected $contextTitle = false;
+	protected $contextTitle = null;
 
 	/** @var array */
 	protected $mAttribs = [];
 
-	/** @var bool */
-	private static $modeMapping = false;
+	/** @var int */
+	protected $mPerRow;
+
+	/** @var int */
+	protected $mWidths;
+
+	/** @var int */
+	protected $mHeights;
+
+	/** @var array */
+	private static $modeMapping;
 
 	/**
 	 * Get a new image gallery. This is the method other callers
@@ -121,7 +131,7 @@ abstract class ImageGalleryBase extends ContextSource {
 	}
 
 	private static function loadModes() {
-		if ( self::$modeMapping === false ) {
+		if ( self::$modeMapping === null ) {
 			self::$modeMapping = [
 				'traditional' => TraditionalImageGallery::class,
 				'nolines' => NolinesImageGallery::class,
@@ -143,7 +153,7 @@ abstract class ImageGalleryBase extends ContextSource {
 	 * @param string $mode
 	 * @param IContextSource|null $context
 	 */
-	function __construct( $mode = 'traditional', IContextSource $context = null ) {
+	public function __construct( $mode = 'traditional', IContextSource $context = null ) {
 		if ( $context ) {
 			$this->setContext( $context );
 		}
@@ -289,7 +299,8 @@ abstract class ImageGalleryBase extends ContextSource {
 
 	/**
 	 * Returns the list of images this gallery contains
-	 * @return array
+	 * @return array[]
+	 * @phan-return array<int,array{0:Title,1:string,2:string,3:string,4:array}>
 	 */
 	public function getImages() {
 		return $this->mImages;
@@ -363,7 +374,7 @@ abstract class ImageGalleryBase extends ContextSource {
 	/**
 	 * Set the contextual title
 	 *
-	 * @param Title $title Contextual title
+	 * @param Title|null $title Contextual title
 	 */
 	public function setContextTitle( $title ) {
 		$this->contextTitle = $title;
@@ -372,12 +383,10 @@ abstract class ImageGalleryBase extends ContextSource {
 	/**
 	 * Get the contextual title, if applicable
 	 *
-	 * @return Title|bool Title or false
+	 * @return Title|null
 	 */
 	public function getContextTitle() {
-		return is_object( $this->contextTitle ) && $this->contextTitle instanceof Title
-			? $this->contextTitle
-			: false;
+		return $this->contextTitle;
 	}
 
 	/**

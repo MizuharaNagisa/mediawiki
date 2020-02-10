@@ -38,6 +38,7 @@ class SpecialProtectedpages extends SpecialPage {
 		$this->setHeaders();
 		$this->outputHeader();
 		$this->getOutput()->addModuleStyles( 'mediawiki.special' );
+		$this->addHelpLink( 'Help:Protected_pages' );
 
 		$request = $this->getRequest();
 		$type = $request->getVal( $this->IdType );
@@ -46,8 +47,7 @@ class SpecialProtectedpages extends SpecialPage {
 		$size = $request->getIntOrNull( 'size' );
 		$ns = $request->getIntOrNull( 'namespace' );
 
-		$filters = $request->getArray( 'wpfilters' );
-		$filters = is_null( $filters ) ? [] : $filters;
+		$filters = $request->getArray( 'wpfilters', [] );
 		$indefOnly = in_array( 'indefonly', $filters );
 		$cascadeOnly = in_array( 'cascadeonly', $filters );
 		$noRedirect = in_array( 'noredirect', $filters );
@@ -110,10 +110,10 @@ class SpecialProtectedpages extends SpecialPage {
 				'class' => 'HTMLMultiSelectField',
 				'label' => $this->msg( 'protectedpages-filters' )->text(),
 				'flatlist' => true,
-				'options' => [
-					$this->msg( 'protectedpages-indef' )->text() => 'indefonly',
-					$this->msg( 'protectedpages-cascade' )->text() => 'cascadeonly',
-					$this->msg( 'protectedpages-noredirect' )->text() => 'noredirect',
+				'options-messages' => [
+					'protectedpages-indef' => 'indefonly',
+					'protectedpages-cascade' => 'cascadeonly',
+					'protectedpages-noredirect' => 'noredirect',
 				],
 				'default' => $filters,
 			],

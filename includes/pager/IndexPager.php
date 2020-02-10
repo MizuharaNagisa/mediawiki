@@ -21,8 +21,11 @@
  * @ingroup Pager
  */
 
-use Wikimedia\Rdbms\IResultWrapper;
+use MediaWiki\Linker\LinkRenderer;
+use MediaWiki\MediaWikiServices;
+use MediaWiki\Navigation\PrevNextNavigationRenderer;
 use Wikimedia\Rdbms\IDatabase;
+use Wikimedia\Rdbms\IResultWrapper;
 
 /**
  * IndexPager is an efficient pager which uses a (roughly unique) index in the
@@ -67,58 +70,85 @@ use Wikimedia\Rdbms\IDatabase;
  * @ingroup Pager
  */
 abstract class IndexPager extends ContextSource implements Pager {
-	/**
-	 * Constants for the $mDefaultDirection field.
-	 *
-	 * These are boolean for historical reasons and should stay boolean for backwards-compatibility.
-	 */
+	/** Backwards-compatible constant for $mDefaultDirection field (do not change) */
 	const DIR_ASCENDING = false;
+	/** Backwards-compatible constant for $mDefaultDirection field (do not change) */
 	const DIR_DESCENDING = true;
 
+	/** Backwards-compatible constant for reallyDoQuery() (do not change) */
+	const QUERY_ASCENDING = true;
+	/** Backwards-compatible constant for reallyDoQuery() (do not change) */
+	const QUERY_DESCENDING = false;
+
+	/** @var WebRequest */
 	public $mRequest;
+	/** @var int[] List of default entry limit options to be presented to clients */
 	public $mLimitsShown = [ 20, 50, 100, 250, 500 ];
+	/** @var int The default entry limit choosen for clients */
 	public $mDefaultLimit = 50;
-	public $mOffset, $mLimit;
+	/** @var mixed The starting point to enumerate entries */
+	public $mOffset;
+	/** @var int The maximum number of entries to show */
+	public $mLimit;
+	/** @var bool Whether the listing query completed */
 	public $mQueryDone = false;
 	/** @var IDatabase */
 	public $mDb;
+	/** @var stdClass|bool|null Extra row fetched at the end to see if the end was reached */
 	public $mPastTheEndRow;
 
 	/**
-	 * The index to actually be used for ordering. This is a single column,
-	 * for one ordering, even if multiple orderings are supported.
+	 * The index to actually be used for ordering. This can be a single column,
+	 * an array of single columns, or an array of arrays of columns. See getIndexField
+	 * for more details.
+	 * @var string|string[]
 	 */
 	protected $mIndexField;
 	/**
 	 * An array of secondary columns to order by. These fields are not part of the offset.
 	 * This is a column list for one ordering, even if multiple orderings are supported.
+	 * @var string[]
 	 */
 	protected $mExtraSortFields;
 	/** For pages that support multiple types of ordering, which one to use.
+	 * @var string|null
 	 */
 	protected $mOrderType;
 	/**
 	 * $mDefaultDirection gives the direction to use when sorting results:
-	 * DIR_ASCENDING or DIR_DESCENDING.  If $mIsBackwards is set, we
-	 * start from the opposite end, but we still sort the page itself according
-	 * to $mDefaultDirection.  E.g., if $mDefaultDirection is false but we're
-	 * going backwards, we'll display the last page of results, but the last
-	 * result will be at the bottom, not the top.
+	 * DIR_ASCENDING or DIR_DESCENDING. If $mIsBackwards is set, we start from
+	 * the opposite end, but we still sort the page itself according to
+	 * $mDefaultDirection. For example, if $mDefaultDirection is DIR_ASCENDING
+	 * but we're going backwards, we'll display the last page of results, but
+	 * the last result will be at the bottom, not the top.
 	 *
 	 * Like $mIndexField, $mDefaultDirection will be a single value even if the
 	 * class supports multiple default directions for different order types.
+	 * @var bool
 	 */
 	public $mDefaultDirection;
+	/** @var bool */
 	public $mIsBackwards;
 
-	/** True if the current result set is the first one */
+	/** @var bool True if the current result set is the first one */
 	public $mIsFirst;
+	/** @var bool */
 	public $mIsLast;
 
-	protected $mLastShown, $mFirstShown, $mPastTheEndIndex, $mDefaultQuery, $mNavigationBar;
+	/** @var mixed */
+	protected $mLastShown;
+	/** @var mixed */
+	protected $mFirstShown;
+	/** @var mixed */
+	protected $mPastTheEndIndex;
+	/** @var array */
+	protected $mDefaultQuery;
+	/** @var string */
+	protected $mNavigationBar;
 
 	/**
 	 * Whether to include the offset in the query
+	 * @var bool
 	 */
 	protected $mIncludeOffset = false;
 
@@ -129,7 +159,10 @@ abstract class IndexPager extends ContextSource implements Pager {
 	 */
 	public $mResult;
 
-	public function __construct( IContextSource $context = null ) {
+	/** @var LinkRenderer */
+	private $linkRenderer;
+
+	public function __construct( IContextSource $context = null, LinkRenderer $linkRenderer = null ) {
 		if ( $context ) {
 			$this->setContext( $context );
 		}
@@ -155,6 +188,7 @@ abstract class IndexPager extends ContextSource implements Pager {
 		$index = $this->getIndexField(); // column to sort on
 		$extraSort = $this->getExtraSortFields(); // extra columns to sort on for query planning
 		$order = $this->mRequest->getVal( 'order' );
+
 		if ( is_array( $index ) && isset( $index[$order] ) ) {
 			$this->mOrderType = $order;
 			$this->mIndexField = $index[$order];
@@ -172,7 +206,14 @@ abstract class IndexPager extends ContextSource implements Pager {
 			# $index is not an array
 			$this->mOrderType = null;
 			$this->mIndexField = $index;
-			$this->mExtraSortFields = (array)$extraSort;
+			$isSortAssociative = array_values( $extraSort ) !== $extraSort;
+			if ( $isSortAssociative ) {
+				$this->mExtraSortFields = isset( $extraSort[$index] )
+					? (array)$extraSort[$index]
+					: [];
+			} else {
+				$this->mExtraSortFields = (array)$extraSort;
+			}
 		}
 
 		if ( !isset( $this->mDefaultDirection ) ) {
@@ -181,6 +222,7 @@ abstract class IndexPager extends ContextSource implements Pager {
 				? $dir[$this->mOrderType]
 				: $dir;
 		}
+		$this->linkRenderer = $linkRenderer;
 	}
 
 	/**
@@ -198,12 +240,11 @@ abstract class IndexPager extends ContextSource implements Pager {
 	 * result sets formed from multiple DB queries.
 	 */
 	public function doQuery() {
-		# Use the child class name for profiling
-		$fname = __METHOD__ . ' (' . static::class . ')';
-		$section = Profiler::instance()->scopedProfileIn( $fname );
+		$defaultOrder = ( $this->mDefaultDirection === self::DIR_ASCENDING )
+			? self::QUERY_ASCENDING
+			: self::QUERY_DESCENDING;
+		$order = $this->mIsBackwards ? self::oppositeOrder( $defaultOrder ) : $defaultOrder;
 
-		// @todo This should probably compare to DIR_DESCENDING and DIR_ASCENDING constants
-		$descending = ( $this->mIsBackwards == $this->mDefaultDirection );
 		# Plus an extra row so that we can tell the "next" link should be shown
 		$queryLimit = $this->mLimit + 1;
 
@@ -215,14 +256,15 @@ abstract class IndexPager extends ContextSource implements Pager {
 			// direction see if we get a row.
 			$oldIncludeOffset = $this->mIncludeOffset;
 			$this->mIncludeOffset = !$this->mIncludeOffset;
-			$isFirst = !$this->reallyDoQuery( $this->mOffset, 1, !$descending )->numRows();
+			$oppositeOrder = self::oppositeOrder( $order );
+			$isFirst = !$this->reallyDoQuery( $this->mOffset, 1, $oppositeOrder )->numRows();
 			$this->mIncludeOffset = $oldIncludeOffset;
 		}
 
 		$this->mResult = $this->reallyDoQuery(
 			$this->mOffset,
 			$queryLimit,
-			$descending
+			$order
 		);
 
 		$this->extractResultInfo( $isFirst, $queryLimit, $this->mResult );
@@ -230,6 +272,16 @@ abstract class IndexPager extends ContextSource implements Pager {
 
 		$this->preprocessResults( $this->mResult );
 		$this->mResult->rewind(); // Paranoia
+	}
+
+	/**
+	 * @param bool $order One of the IndexPager::QUERY_* class constants
+	 * @return bool The opposite query order as an IndexPager::QUERY_ constant
+	 */
+	final protected static function oppositeOrder( $order ) {
+		return ( $order === self::QUERY_ASCENDING )
+			? self::QUERY_DESCENDING
+			: self::QUERY_ASCENDING;
 	}
 
 	/**
@@ -297,38 +349,44 @@ abstract class IndexPager extends ContextSource implements Pager {
 	 */
 	function extractResultInfo( $isFirst, $limit, IResultWrapper $res ) {
 		$numRows = $res->numRows();
+
+		$firstIndex = [];
+		$lastIndex = [];
+		$this->mPastTheEndIndex = [];
+		$this->mPastTheEndRow = null;
+
 		if ( $numRows ) {
-			# Remove any table prefix from index field
-			$parts = explode( '.', $this->mIndexField );
-			$indexColumn = end( $parts );
+			$indexColumns = array_map( function ( $v ) {
+				// Remove any table prefix from index field
+				$parts = explode( '.', $v );
+				return end( $parts );
+			}, (array)$this->mIndexField );
 
 			$row = $res->fetchRow();
-			$firstIndex = $row[$indexColumn];
+			foreach ( $indexColumns as $indexColumn ) {
+				$firstIndex[] = $row[$indexColumn];
+			}
 
 			# Discard the extra result row if there is one
 			if ( $numRows > $this->mLimit && $numRows > 1 ) {
 				$res->seek( $numRows - 1 );
 				$this->mPastTheEndRow = $res->fetchObject();
-				$this->mPastTheEndIndex = $this->mPastTheEndRow->$indexColumn;
+				foreach ( $indexColumns as $indexColumn ) {
+					$this->mPastTheEndIndex[] = $this->mPastTheEndRow->$indexColumn;
+				}
 				$res->seek( $numRows - 2 );
 				$row = $res->fetchRow();
-				$lastIndex = $row[$indexColumn];
+				foreach ( $indexColumns as $indexColumn ) {
+					$lastIndex[] = $row[$indexColumn];
+				}
 			} else {
 				$this->mPastTheEndRow = null;
-				# Setting indexes to an empty string means that they will be
-				# omitted if they would otherwise appear in URLs. It just so
-				# happens that this  is the right thing to do in the standard
-				# UI, in all the relevant cases.
-				$this->mPastTheEndIndex = '';
 				$res->seek( $numRows - 1 );
 				$row = $res->fetchRow();
-				$lastIndex = $row[$indexColumn];
+				foreach ( $indexColumns as $indexColumn ) {
+					$lastIndex[] = $row[$indexColumn];
+				}
 			}
-		} else {
-			$firstIndex = '';
-			$lastIndex = '';
-			$this->mPastTheEndRow = null;
-			$this->mPastTheEndIndex = '';
 		}
 
 		if ( $this->mIsBackwards ) {
@@ -354,17 +412,18 @@ abstract class IndexPager extends ContextSource implements Pager {
 	}
 
 	/**
-	 * Do a query with specified parameters, rather than using the object
-	 * context
+	 * Do a query with specified parameters, rather than using the object context
+	 *
+	 * @note For b/c, query direction is true for ascending and false for descending
 	 *
 	 * @param string $offset Index offset, inclusive
 	 * @param int $limit Exact query limit
-	 * @param bool $descending Query direction, false for ascending, true for descending
+	 * @param bool $order IndexPager::QUERY_ASCENDING or IndexPager::QUERY_DESCENDING
 	 * @return IResultWrapper
 	 */
-	public function reallyDoQuery( $offset, $limit, $descending ) {
+	public function reallyDoQuery( $offset, $limit, $order ) {
 		list( $tables, $fields, $conds, $fname, $options, $join_conds ) =
-			$this->buildQueryInfo( $offset, $limit, $descending );
+			$this->buildQueryInfo( $offset, $limit, $order );
 
 		return $this->mDb->select( $tables, $fields, $conds, $fname, $options, $join_conds );
 	}
@@ -372,12 +431,14 @@ abstract class IndexPager extends ContextSource implements Pager {
 	/**
 	 * Build variables to use by the database wrapper.
 	 *
-	 * @param string $offset Index offset, inclusive
+	 * @note For b/c, query direction is true for ascending and false for descending
+	 *
+	 * @param int|string $offset Index offset, inclusive
 	 * @param int $limit Exact query limit
-	 * @param bool $descending Query direction, false for ascending, true for descending
+	 * @param bool $order IndexPager::QUERY_ASCENDING or IndexPager::QUERY_DESCENDING
 	 * @return array
 	 */
-	protected function buildQueryInfo( $offset, $limit, $descending ) {
+	protected function buildQueryInfo( $offset, $limit, $order ) {
 		$fname = __METHOD__ . ' (' . $this->getSqlComment() . ')';
 		$info = $this->getQueryInfo();
 		$tables = $info['tables'];
@@ -385,8 +446,10 @@ abstract class IndexPager extends ContextSource implements Pager {
 		$conds = $info['conds'] ?? [];
 		$options = $info['options'] ?? [];
 		$join_conds = $info['join_conds'] ?? [];
-		$sortColumns = array_merge( [ $this->mIndexField ], $this->mExtraSortFields );
-		if ( $descending ) {
+		$indexColumns = (array)$this->mIndexField;
+		$sortColumns = array_merge( $indexColumns, $this->mExtraSortFields );
+
+		if ( $order === self::QUERY_ASCENDING ) {
 			$options['ORDER BY'] = $sortColumns;
 			$operator = $this->mIncludeOffset ? '>=' : '>';
 		} else {
@@ -398,10 +461,84 @@ abstract class IndexPager extends ContextSource implements Pager {
 			$operator = $this->mIncludeOffset ? '<=' : '<';
 		}
 		if ( $offset != '' ) {
-			$conds[] = $this->mIndexField . $operator . $this->mDb->addQuotes( $offset );
+			$offsets = explode( '|', $offset );
+			$conds[] = $this->buildOffsetConds(
+				$offsets,
+				$indexColumns,
+				$operator
+			);
 		}
 		$options['LIMIT'] = intval( $limit );
 		return [ $tables, $fields, $conds, $fname, $options, $join_conds ];
+	}
+
+	/**
+	 * Build the conditions for the offset, given that we may be paginating on a
+	 * single column or multiple columns. Where we paginate on multiple columns,
+	 * the sort order is defined by the order of the columns in $mIndexField.
+	 *
+	 * Some examples, with up to three columns. Each condition consists of inner
+	 * conditions, at least one of which must be true (joined by OR):
+	 *
+	 * - column X, with offset value 'x':
+	 *     WHERE X>'x'
+	 *
+	 * - columns X and Y, with offsets 'x' and 'y':
+	 *     WHERE X>'x'
+	 *     OR ( X='x' AND Y>'y' )
+	 *
+	 * - columns X, Y and Z, with offsets 'x', 'y' and 'z':
+	 *     WHERE X>'x'
+	 *     OR ( X='x' AND Y>'y' )
+	 *     OR ( X='x' AND Y='y' AND Z>'z' )
+	 *
+	 * - and so on...
+	 *
+	 * (The examples assume we want the next page and do not want to include the
+	 * offset in the results; otherwise the operators will be slightly different,
+	 * as handled in buildQueryInfo.)
+	 *
+	 * Note that the above performs better than: WHERE (X,Y,Z)>('x','y','z').
+	 *
+	 * @param string[] $offsets The offset for each index field
+	 * @param string[] $columns The name of each index field
+	 * @param string $operator Operator for the final part of each inner
+	 *  condition. This will be '>' if the query order is ascending, or '<' if
+	 *  the query order is descending. If the offset should be included, it will
+	 *  also have '=' appended.
+	 * @return string The conditions for getting results from the offset
+	 */
+	private function buildOffsetConds( $offsets, $columns, $operator ) {
+		$innerConds = [];
+		// $offsets and $columns are the same length
+		for ( $i = 1; $i <= count( $offsets ); $i++ ) {
+			$innerConds[] = $this->buildOffsetInnerConds(
+				array_slice( $offsets, 0, $i ),
+				array_slice( $columns, 0, $i ),
+				$operator
+			);
+		}
+		return $this->mDb->makeList( $innerConds, IDatabase::LIST_OR );
+	}
+
+	/**
+	 * Build an inner part of an offset condition, consisting of inequalities
+	 * joined by AND, as described in buildOffsetConds.
+	 *
+	 * @param string[] $offsets
+	 * @param string[] $columns
+	 * @param string $operator
+	 * @return string The inner condition; to be concatenated in buildOffsetConds
+	 */
+	private function buildOffsetInnerConds( $offsets, $columns, $operator ) {
+		$conds = [];
+		while ( count( $offsets ) > 1 ) {
+			$conds[] = $columns[0] . '=' . $this->mDb->addQuotes( $offsets[0] );
+			array_shift( $columns );
+			array_shift( $offsets );
+		}
+		$conds[] = $columns[0] . $operator . $this->mDb->addQuotes( $offsets[0] );
+		return $this->mDb->makeList( $conds, IDatabase::LIST_AND );
 	}
 
 	/**
@@ -480,9 +617,9 @@ abstract class IndexPager extends ContextSource implements Pager {
 			$attrs['class'] = "mw-{$type}link";
 		}
 
-		return Linker::linkKnown(
+		return $this->getLinkRenderer()->makeKnownLink(
 			$this->getTitle(),
-			$text,
+			new HtmlArmor( $text ),
 			$attrs,
 			$query + $this->getDefaultQuery()
 		);
@@ -579,7 +716,7 @@ abstract class IndexPager extends ContextSource implements Pager {
 		} else {
 			$prev = [
 				'dir' => 'prev',
-				'offset' => $this->mFirstShown,
+				'offset' => implode( '|', $this->mFirstShown ),
 				'limit' => $urlLimit
 			];
 			$first = [ 'limit' => $urlLimit ];
@@ -588,9 +725,10 @@ abstract class IndexPager extends ContextSource implements Pager {
 			$next = false;
 			$last = false;
 		} else {
-			$next = [ 'offset' => $this->mLastShown, 'limit' => $urlLimit ];
+			$next = [ 'offset' => implode( '|', $this->mLastShown ), 'limit' => $urlLimit ];
 			$last = [ 'dir' => 'prev', 'limit' => $urlLimit ];
 		}
+
 		return [
 			'prev' => $prev,
 			'next' => $next,
@@ -630,7 +768,7 @@ abstract class IndexPager extends ContextSource implements Pager {
 			if ( $query !== false ) {
 				$links[$type] = $this->makeLink(
 					$linkTexts[$type],
-					$queries[$type],
+					$query,
 					$type
 				);
 			} elseif ( isset( $disabledTexts[$type] ) ) {
@@ -646,7 +784,7 @@ abstract class IndexPager extends ContextSource implements Pager {
 	function getLimitLinks() {
 		$links = [];
 		if ( $this->mIsBackwards ) {
-			$offset = $this->mPastTheEndIndex;
+			$offset = implode( '|', $this->mPastTheEndIndex );
 		} else {
 			$offset = $this->mOffset;
 		}
@@ -687,14 +825,39 @@ abstract class IndexPager extends ContextSource implements Pager {
 	/**
 	 * This function should be overridden to return the name of the index fi-
 	 * eld.  If the pager supports multiple orders, it may return an array of
-	 * 'querykey' => 'indexfield' pairs, so that a request with &count=querykey
+	 * 'querykey' => 'indexfield' pairs, so that a request with &order=querykey
 	 * will use indexfield to sort.  In this case, the first returned key is
 	 * the default.
 	 *
 	 * Needless to say, it's really not a good idea to use a non-unique index
 	 * for this!  That won't page right.
 	 *
-	 * @return string|string[]
+	 * The pager may paginate on multiple fields in combination. If paginating
+	 * on multiple fields, they should be unique in combination (e.g. when
+	 * paginating on user and timestamp, rows may have the same user, rows may
+	 * have the same timestamp, but rows should all have a different combination
+	 * of user and timestamp).
+	 *
+	 * Examples:
+	 * - Always paginate on the user field:
+	 *   'user'
+	 * - Paginate on either the user or the timestamp field (default to user):
+	 *   [
+	 *       'name' => 'user',
+	 *       'time' => 'timestamp',
+	 *   ]
+	 * - Always paginate on the combination of user and timestamp:
+	 *   [
+	 *       [ 'user', 'timestamp' ]
+	 *   ]
+	 * - Paginate on the user then timestamp, or the timestamp then user:
+	 *   [
+	 *       'nametime' => [ 'user', 'timestamp' ],
+	 *       'timename' => [ 'timestamp', 'user' ],
+	 *   ]
+	 *
+	 *
+	 * @return string|string[]|array[]
 	 */
 	abstract function getIndexField();
 
@@ -705,7 +868,12 @@ abstract class IndexPager extends ContextSource implements Pager {
 	 *
 	 * If getIndexField() returns an array of 'querykey' => 'indexfield' pairs then
 	 * this must return a corresponding array of 'querykey' => [ fields... ] pairs
-	 * in order for a request with &count=querykey to use [ fields... ] to sort.
+	 * in order for a request with &order=querykey to use [ fields... ] to sort.
+	 *
+	 * If getIndexField() returns a string with the field to sort by, this must either:
+	 * 1 - return an associative array like above, but only the elements for the current
+	 *   field will be used.
+	 * 2 - return a non-associative array, for secondary keys to use always.
 	 *
 	 * This is useful for pagers that GROUP BY a unique column (say page_id)
 	 * and ORDER BY another (say page_len). Using GROUP BY and ORDER BY both on
@@ -739,5 +907,30 @@ abstract class IndexPager extends ContextSource implements Pager {
 	 */
 	protected function getDefaultDirections() {
 		return self::DIR_ASCENDING;
+	}
+
+	/**
+	 * Generate (prev x| next x) (20|50|100...) type links for paging
+	 *
+	 * @param Title $title
+	 * @param int $offset
+	 * @param int $limit
+	 * @param array $query Optional URL query parameter string
+	 * @param bool $atend Optional param for specified if this is the last page
+	 * @return string
+	 */
+	protected function buildPrevNextNavigation( Title $title, $offset, $limit,
+												array $query = [], $atend = false
+	) {
+		$prevNext = new PrevNextNavigationRenderer( $this );
+
+		return $prevNext->buildPrevNextNavigation( $title, $offset, $limit, $query,  $atend );
+	}
+
+	protected function getLinkRenderer() {
+		if ( $this->linkRenderer === null ) {
+			 $this->linkRenderer = MediaWikiServices::getInstance()->getLinkRenderer();
+		}
+		return $this->linkRenderer;
 	}
 }

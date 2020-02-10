@@ -20,8 +20,9 @@
  * @file
  */
 
-use Psr\Log\LoggerInterface;
 use MediaWiki\Logger\LoggerFactory;
+use MediaWiki\MediaWikiServices;
+use Psr\Log\LoggerInterface;
 
 /**
  * Send information about this MediaWiki instance to MediaWiki.org.
@@ -92,6 +93,7 @@ class Pingback {
 	/**
 	 * Record the fact that we have sent a pingback for this MediaWiki version,
 	 * to ensure we don't submit data multiple times.
+	 * @return bool
 	 */
 	private function markSent() {
 		$dbw = wfGetDB( DB_MASTER );
@@ -195,7 +197,7 @@ class Pingback {
 					'updatelog',
 					[ 'ul_key' => 'PingBack', 'ul_value' => $id ],
 					__METHOD__,
-					'IGNORE'
+					[ 'IGNORE' ]
 				);
 
 				if ( !$dbw->affectedRows() ) {
@@ -229,7 +231,7 @@ class Pingback {
 		$json = FormatJson::encode( $data );
 		$queryString = rawurlencode( str_replace( ' ', '\u0020', $json ) ) . ';';
 		$url = 'https://www.mediawiki.org/beacon/event?' . $queryString;
-		return Http::post( $url ) !== false;
+		return MediaWikiServices::getInstance()->getHttpRequestFactory()->post( $url ) !== null;
 	}
 
 	/**

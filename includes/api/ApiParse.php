@@ -20,20 +20,22 @@
  * @file
  */
 
+use MediaWiki\Content\IContentHandlerFactory;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Revision\RevisionRecord;
 
 /**
  * @ingroup API
  */
 class ApiParse extends ApiBase {
 
-	/** @var string $section */
+	/** @var string|false|null */
 	private $section = null;
 
-	/** @var Content $content */
+	/** @var Content */
 	private $content = null;
 
-	/** @var Content $pstContent */
+	/** @var Content */
 	private $pstContent = null;
 
 	/** @var bool */
@@ -83,7 +85,7 @@ class ApiParse extends ApiBase {
 		// The parser needs $wgTitle to be set, apparently the
 		// $title parameter in Parser::parse isn't enough *sigh*
 		// TODO: Does this still need $wgTitle?
-		global $wgParser, $wgTitle;
+		global $wgTitle;
 
 		$redirValues = null;
 
@@ -93,11 +95,11 @@ class ApiParse extends ApiBase {
 		// Return result
 		$result = $this->getResult();
 
-		if ( !is_null( $oldid ) || !is_null( $pageid ) || !is_null( $page ) ) {
+		if ( $oldid !== null || $pageid !== null || $page !== null ) {
 			if ( $this->section === 'new' ) {
 				$this->dieWithError( 'apierror-invalidparammix-parse-new-section', 'invalidparammix' );
 			}
-			if ( !is_null( $oldid ) ) {
+			if ( $oldid !== null ) {
 				// Don't use the parser cache
 				$rev = Revision::newFromId( $oldid );
 				if ( !$rev ) {
@@ -105,7 +107,7 @@ class ApiParse extends ApiBase {
 				}
 
 				$this->checkTitleUserPermissions( $rev->getTitle(), 'read' );
-				if ( !$rev->userCan( Revision::DELETED_TEXT, $this->getUser() ) ) {
+				if ( !$rev->userCan( RevisionRecord::DELETED_TEXT, $this->getUser() ) ) {
 					$this->dieWithError(
 						[ 'apierror-permissiondenied', $this->msg( 'action-deletedtext' ) ]
 					);
@@ -123,10 +125,13 @@ class ApiParse extends ApiBase {
 					$reqParams = [
 						'redirects' => '',
 					];
-					if ( !is_null( $pageid ) ) {
+					$pageParams = [];
+					if ( $pageid !== null ) {
 						$reqParams['pageids'] = $pageid;
+						$pageParams['pageid'] = $pageid;
 					} else { // $page
 						$reqParams['titles'] = $page;
+						$pageParams['title'] = $page;
 					}
 					$req = new FauxRequest( $reqParams );
 					$main = new ApiMain( $req );
@@ -134,12 +139,10 @@ class ApiParse extends ApiBase {
 					$pageSet->execute();
 					$redirValues = $pageSet->getRedirectTitlesAsResult( $this->getResult() );
 
-					$to = $page;
 					foreach ( $pageSet->getRedirectTitles() as $title ) {
-						$to = $title->getFullText();
+						$pageParams = [ 'title' => $title->getFullText() ];
 					}
-					$pageParams = [ 'title' => $to ];
-				} elseif ( !is_null( $pageid ) ) {
+				} elseif ( $pageid !== null ) {
 					$pageParams = [ 'pageid' => $pageid ];
 				} else { // $page
 					$pageParams = [ 'title' => $page ];
@@ -197,7 +200,7 @@ class ApiParse extends ApiBase {
 			}
 
 			list( $popts, $reset ) = $this->makeParserOptions( $pageObj, $params );
-			$textProvided = !is_null( $text );
+			$textProvided = $text !== null;
 
 			if ( !$textProvided ) {
 				if ( $titleProvided && ( $prop || $params['generatexml'] ) ) {
@@ -213,7 +216,7 @@ class ApiParse extends ApiBase {
 
 			// If we are parsing text, do not use the content model of the default
 			// API title, but default to wikitext to keep BC.
-			if ( $textProvided && !$titleProvided && is_null( $model ) ) {
+			if ( $textProvided && !$titleProvided && $model === null ) {
 				$model = CONTENT_MODEL_WIKITEXT;
 				$this->addWarning( [ 'apiwarn-parse-nocontentmodel', $model ] );
 			}
@@ -229,7 +232,7 @@ class ApiParse extends ApiBase {
 			if ( $this->section !== false ) {
 				if ( $this->section === 'new' ) {
 					// Insert the section title above the content.
-					if ( !is_null( $params['sectiontitle'] ) && $params['sectiontitle'] !== '' ) {
+					if ( $params['sectiontitle'] !== null && $params['sectiontitle'] !== '' ) {
 						$this->content = $this->content->addSectionHeader( $params['sectiontitle'] );
 					}
 				} else {
@@ -249,8 +252,8 @@ class ApiParse extends ApiBase {
 					$result_array['wikitext'] = $this->content->serialize( $format );
 					$result_array[ApiResult::META_BC_SUBELEMENTS][] = 'wikitext';
 				}
-				if ( !is_null( $params['summary'] ) ||
-					( !is_null( $params['sectiontitle'] ) && $this->section === 'new' )
+				if ( $params['summary'] !== null ||
+					( $params['sectiontitle'] !== null && $this->section === 'new' )
 				) {
 					$result_array['parsedsummary'] = $this->formatSummary( $titleObj, $params );
 					$result_array[ApiResult::META_BC_SUBELEMENTS][] = 'parsedsummary';
@@ -288,6 +291,7 @@ class ApiParse extends ApiBase {
 		}
 
 		$outputPage = null;
+		$context = null;
 		if ( $skin || isset( $prop['headhtml'] ) || isset( $prop['categorieshtml'] ) ) {
 			// Enabling the skin via 'useskin', 'headhtml', or 'categorieshtml'
 			// gets OutputPage and Skin involved, which (among others) applies
@@ -329,11 +333,11 @@ class ApiParse extends ApiBase {
 			Hooks::run( 'ApiParseMakeOutputPage', [ $this, $outputPage ] );
 		}
 
-		if ( !is_null( $oldid ) ) {
-			$result_array['revid'] = intval( $oldid );
+		if ( $oldid !== null ) {
+			$result_array['revid'] = (int)$oldid;
 		}
 
-		if ( $params['redirects'] && !is_null( $redirValues ) ) {
+		if ( $params['redirects'] && $redirValues !== null ) {
 			$result_array['redirects'] = $redirValues;
 		}
 
@@ -343,12 +347,13 @@ class ApiParse extends ApiBase {
 				'enableSectionEditLinks' => !$params['disableeditsection'],
 				'wrapperDivClass' => $params['wrapoutputclass'],
 				'deduplicateStyles' => !$params['disablestylededuplication'],
+				'skin' => $context ? $context->getSkin() : null,
 			] );
 			$result_array[ApiResult::META_BC_SUBELEMENTS][] = 'text';
 		}
 
-		if ( !is_null( $params['summary'] ) ||
-			( !is_null( $params['sectiontitle'] ) && $this->section === 'new' )
+		if ( $params['summary'] !== null ||
+			( $params['sectiontitle'] !== null && $this->section === 'new' )
 		) {
 			$result_array['parsedsummary'] = $this->formatSummary( $titleObj, $params );
 			$result_array[ApiResult::META_BC_SUBELEMENTS][] = 'parsedsummary';
@@ -417,11 +422,13 @@ class ApiParse extends ApiBase {
 		if ( isset( $prop['modules'] ) ) {
 			if ( $skin ) {
 				$result_array['modules'] = $outputPage->getModules();
-				$result_array['modulescripts'] = $outputPage->getModuleScripts();
+				// Deprecated since 1.32 (T188689)
+				$result_array['modulescripts'] = [];
 				$result_array['modulestyles'] = $outputPage->getModuleStyles();
 			} else {
 				$result_array['modules'] = array_values( array_unique( $p_result->getModules() ) );
-				$result_array['modulescripts'] = array_values( array_unique( $p_result->getModuleScripts() ) );
+				// Deprecated since 1.32 (T188689)
+				$result_array['modulescripts'] = [];
 				$result_array['modulestyles'] = array_values( array_unique( $p_result->getModuleStyles() ) );
 			}
 		}
@@ -462,7 +469,7 @@ class ApiParse extends ApiBase {
 		if ( isset( $prop['wikitext'] ) ) {
 			$result_array['wikitext'] = $this->content->serialize( $format );
 			$result_array[ApiResult::META_BC_SUBELEMENTS][] = 'wikitext';
-			if ( !is_null( $this->pstContent ) ) {
+			if ( $this->pstContent !== null ) {
 				$result_array['psttext'] = $this->pstContent->serialize( $format );
 				$result_array[ApiResult::META_BC_SUBELEMENTS][] = 'psttext';
 			}
@@ -486,8 +493,10 @@ class ApiParse extends ApiBase {
 				$this->dieWithError( 'apierror-parsetree-notwikitext', 'notwikitext' );
 			}
 
-			$wgParser->startExternalParse( $titleObj, $popts, Parser::OT_PREPROCESS );
-			$xml = $wgParser->preprocessToDom( $this->content->getNativeData() )->__toString();
+			$parser = MediaWikiServices::getInstance()->getParser();
+			$parser->startExternalParse( $titleObj, $popts, Parser::OT_PREPROCESS );
+			// @phan-suppress-next-line PhanUndeclaredMethod
+			$xml = $parser->preprocessToDom( $this->content->getText() )->__toString();
 			$result_array['parsetree'] = $xml;
 			$result_array[ApiResult::META_BC_SUBELEMENTS][] = 'parsetree';
 		}
@@ -559,23 +568,23 @@ class ApiParse extends ApiBase {
 		WikiPage $page, $popts, $suppressCache, $pageId, $rev, $getContent
 	) {
 		$revId = $rev ? $rev->getId() : null;
-		$isDeleted = $rev && $rev->isDeleted( Revision::DELETED_TEXT );
+		$isDeleted = $rev && $rev->isDeleted( RevisionRecord::DELETED_TEXT );
 
 		if ( $getContent || $this->section !== false || $isDeleted ) {
 			if ( $rev ) {
-				$this->content = $rev->getContent( Revision::FOR_THIS_USER, $this->getUser() );
+				$this->content = $rev->getContent( RevisionRecord::FOR_THIS_USER, $this->getUser() );
 				if ( !$this->content ) {
 					$this->dieWithError( [ 'apierror-missingcontent-revid', $revId ] );
 				}
 			} else {
-				$this->content = $page->getContent( Revision::FOR_THIS_USER, $this->getUser() );
+				$this->content = $page->getContent( RevisionRecord::FOR_THIS_USER, $this->getUser() );
 				if ( !$this->content ) {
 					$this->dieWithError( [ 'apierror-missingcontent-pageid', $page->getId() ] );
 				}
 			}
 			$this->contentIsDeleted = $isDeleted;
 			$this->contentIsSuppressed = $rev &&
-				$rev->isDeleted( Revision::DELETED_TEXT | Revision::DELETED_RESTRICTED );
+				$rev->isDeleted( RevisionRecord::DELETED_TEXT | RevisionRecord::DELETED_RESTRICTED );
 		}
 
 		if ( $this->section !== false ) {
@@ -594,7 +603,9 @@ class ApiParse extends ApiBase {
 			$pout = $page->getParserOutput( $popts, $revId, $suppressCache );
 		}
 		if ( !$pout ) {
-			$this->dieWithError( [ 'apierror-nosuchrevid', $revId ?: $page->getLatest() ] ); // @codeCoverageIgnore
+			// @codeCoverageIgnoreStart
+			$this->dieWithError( [ 'apierror-nosuchrevid', $revId ?: $page->getLatest() ] );
+			// @codeCoverageIgnoreEnd
 		}
 
 		return $pout;
@@ -626,12 +637,11 @@ class ApiParse extends ApiBase {
 	 *
 	 * @param Title $title of the page being parsed
 	 * @param array $params The API parameters of the request
-	 * @return Content|bool
+	 * @return string HTML
 	 */
 	private function formatSummary( $title, $params ) {
-		global $wgParser;
-		$summary = !is_null( $params['summary'] ) ? $params['summary'] : '';
-		$sectionTitle = !is_null( $params['sectiontitle'] ) ? $params['sectiontitle'] : '';
+		$summary = $params['summary'] ?? '';
+		$sectionTitle = $params['sectiontitle'] ?? '';
 
 		if ( $this->section === 'new' && ( $sectionTitle === '' || $summary === '' ) ) {
 			if ( $sectionTitle !== '' ) {
@@ -639,8 +649,9 @@ class ApiParse extends ApiBase {
 			}
 			if ( $summary !== '' ) {
 				$summary = wfMessage( 'newsectionsummary' )
-					->rawParams( $wgParser->stripSectionName( $summary ) )
-						->inContentLanguage()->text();
+					->rawParams( MediaWikiServices::getInstance()->getParser()
+						->stripSectionName( $summary ) )
+					->inContentLanguage()->text();
 			}
 		}
 		return Linker::formatComment( $summary, $title, $this->section === 'new' );
@@ -887,11 +898,11 @@ class ApiParse extends ApiBase {
 				ApiBase::PARAM_TYPE => array_keys( Skin::getAllowedSkins() ),
 			],
 			'contentformat' => [
-				ApiBase::PARAM_TYPE => ContentHandler::getAllContentFormats(),
+				ApiBase::PARAM_TYPE => $this->getContentHandlerFactory()->getAllContentFormats(),
 			],
 			'contentmodel' => [
-				ApiBase::PARAM_TYPE => ContentHandler::getContentModels(),
-			]
+				ApiBase::PARAM_TYPE => $this->getContentHandlerFactory()->getContentModels(),
+			],
 		];
 	}
 
@@ -910,5 +921,9 @@ class ApiParse extends ApiBase {
 
 	public function getHelpUrls() {
 		return 'https://www.mediawiki.org/wiki/Special:MyLanguage/API:Parsing_wikitext#parse';
+	}
+
+	private function getContentHandlerFactory(): IContentHandlerFactory {
+		return MediaWikiServices::getInstance()->getContentHandlerFactory();
 	}
 }

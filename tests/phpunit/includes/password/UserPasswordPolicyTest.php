@@ -35,8 +35,16 @@ class UserPasswordPolicyTest extends MediaWikiTestCase {
 			'PasswordCannotMatchUsername' => true,
 		],
 		'sysop' => [
-			'MinimalPasswordLength' => 8,
+			'MinimalPasswordLength' => [ 'value' => 8, 'suggestChangeOnLogin' => true ],
 			'MinimumPasswordLengthToLogin' => 1,
+			'PasswordCannotMatchUsername' => true,
+		],
+		'bureaucrat' => [
+			'MinimalPasswordLength' => [
+				'value' => 6,
+				'suggestChangeOnLogin' => false,
+				'forceChange' => true,
+			],
 			'PasswordCannotMatchUsername' => true,
 		],
 		'default' => [
@@ -46,6 +54,7 @@ class UserPasswordPolicyTest extends MediaWikiTestCase {
 			'MaximalPasswordLength' => 4096,
 			// test null handling
 			'PasswordCannotMatchUsername' => null,
+			'PasswordCannotBeSubstringInUsername' => true,
 		],
 	];
 
@@ -53,6 +62,8 @@ class UserPasswordPolicyTest extends MediaWikiTestCase {
 		'MinimalPasswordLength' => 'PasswordPolicyChecks::checkMinimalPasswordLength',
 		'MinimumPasswordLengthToLogin' => 'PasswordPolicyChecks::checkMinimumPasswordLengthToLogin',
 		'PasswordCannotMatchUsername' => 'PasswordPolicyChecks::checkPasswordCannotMatchUsername',
+		'PasswordCannotBeSubstringInUsername' =>
+			'PasswordPolicyChecks::checkPasswordCannotBeSubstringInUsername',
 		'PasswordCannotMatchBlacklist' => 'PasswordPolicyChecks::checkPasswordCannotMatchBlacklist',
 		'MaximalPasswordLength' => 'PasswordPolicyChecks::checkMaximalPasswordLength',
 	];
@@ -67,9 +78,10 @@ class UserPasswordPolicyTest extends MediaWikiTestCase {
 		$user = $this->getTestUser( [ 'sysop' ] )->getUser();
 		$this->assertArrayEquals(
 			[
-				'MinimalPasswordLength' => 8,
+				'MinimalPasswordLength' => [ 'value' => 8, 'suggestChangeOnLogin' => true ],
 				'MinimumPasswordLengthToLogin' => 1,
 				'PasswordCannotMatchUsername' => true,
+				'PasswordCannotBeSubstringInUsername' => true,
 				'PasswordCannotMatchBlacklist' => true,
 				'MaximalPasswordLength' => 4096,
 			],
@@ -79,9 +91,14 @@ class UserPasswordPolicyTest extends MediaWikiTestCase {
 		$user = $this->getTestUser( [ 'sysop', 'checkuser' ] )->getUser();
 		$this->assertArrayEquals(
 			[
-				'MinimalPasswordLength' => [ 'value' => 10, 'forceChange' => true ],
+				'MinimalPasswordLength' => [
+					'value' => 10,
+					'forceChange' => true,
+					'suggestChangeOnLogin' => true
+				],
 				'MinimumPasswordLengthToLogin' => 6,
 				'PasswordCannotMatchUsername' => true,
+				'PasswordCannotBeSubstringInUsername' => true,
 				'PasswordCannotMatchBlacklist' => true,
 				'MaximalPasswordLength' => 4096,
 			],
@@ -92,15 +109,20 @@ class UserPasswordPolicyTest extends MediaWikiTestCase {
 	public function testGetPoliciesForGroups() {
 		$effective = UserPasswordPolicy::getPoliciesForGroups(
 			$this->policies,
-			[ 'user', 'checkuser' ],
+			[ 'user', 'checkuser', 'sysop' ],
 			$this->policies['default']
 		);
 
 		$this->assertArrayEquals(
 			[
-				'MinimalPasswordLength' => [ 'value' => 10, 'forceChange' => true ],
+				'MinimalPasswordLength' => [
+					'value' => 10,
+					'forceChange' => true,
+					'suggestChangeOnLogin' => true
+				],
 				'MinimumPasswordLengthToLogin' => 6,
 				'PasswordCannotMatchUsername' => true,
+				'PasswordCannotBeSubstringInUsername' => true,
 				'PasswordCannotMatchBlacklist' => true,
 				'MaximalPasswordLength' => 4096,
 			],
@@ -125,12 +147,16 @@ class UserPasswordPolicyTest extends MediaWikiTestCase {
 		$success = Status::newGood( [] );
 		$warning = Status::newGood( [] );
 		$forceChange = Status::newGood( [ 'forceChange' => true ] );
+		$suggestChangeOnLogin = Status::newGood( [ 'suggestChangeOnLogin' => true ] );
 		$fatal = Status::newGood( [] );
+
 		// the message does not matter, we only test for state and value
 		$warning->warning( 'invalid-password' );
 		$forceChange->warning( 'invalid-password' );
+		$suggestChangeOnLogin->warning( 'invalid-password' );
 		$warning->warning( 'invalid-password' );
 		$fatal->fatal( 'invalid-password' );
+
 		return [
 			'No groups, default policy, password too short to login' => [
 				[],
@@ -147,14 +173,19 @@ class UserPasswordPolicyTest extends MediaWikiTestCase {
 				'abcdabcdabcd',
 				$success,
 			],
-			'Sysop with short password' => [
+			'Sysop with short password and suggestChangeOnLogin set to true' => [
 				[ 'sysop' ],
 				'abcd',
-				$warning,
+				$suggestChangeOnLogin,
 			],
 			'Checkuser with short password' => [
-				[ 'sysop', 'checkuser' ],
+				[ 'checkuser' ],
 				'abcdabcd',
+				$forceChange,
+			],
+			'Bureaucrat bad password with forceChange true, suggestChangeOnLogin false' => [
+				[ 'bureaucrat' ],
+				'short',
 				$forceChange,
 			],
 			'Checkuser with too short password to login' => [
@@ -204,16 +235,19 @@ class UserPasswordPolicyTest extends MediaWikiTestCase {
 				[
 					'MinimalPasswordLength' => 2,
 					'PasswordCannotMatchUsername' => 1,
+					'PasswordCannotBeSubstringInUsername' => 1,
 				], // p2
 				[
 					'MinimalPasswordLength' => 8,
 					'PasswordCannotMatchUsername' => 1,
+					'PasswordCannotBeSubstringInUsername' => 1,
 				], // max
 			],
 			'Missing items in p2' => [
 				[
 					'MinimalPasswordLength' => 8,
 					'PasswordCannotMatchUsername' => 1,
+					'PasswordCannotBeSubstringInUsername' => 1,
 				], // p1
 				[
 					'MinimalPasswordLength' => 2,
@@ -221,6 +255,7 @@ class UserPasswordPolicyTest extends MediaWikiTestCase {
 				[
 					'MinimalPasswordLength' => 8,
 					'PasswordCannotMatchUsername' => 1,
+					'PasswordCannotBeSubstringInUsername' => 1,
 				], // max
 			],
 			'complex value in p1' => [
@@ -278,6 +313,29 @@ class UserPasswordPolicyTest extends MediaWikiTestCase {
 						'foo' => 1,
 						'bar' => 2,
 						'baz' => true,
+					],
+				], // max
+			],
+			'complex value in both p1 and p2 #2' => [
+				[
+					'MinimalPasswordLength' => [
+						'value' => 8,
+						'foo' => 1,
+						'baz' => false,
+					],
+				], // p1
+				[
+					'MinimalPasswordLength' => [
+						'value' => 2,
+						'bar' => true
+					],
+				], // p2
+				[
+					'MinimalPasswordLength' => [
+						'value' => 8,
+						'foo' => 1,
+						'bar' => true,
+						'baz' => false,
 					],
 				], // max
 			],

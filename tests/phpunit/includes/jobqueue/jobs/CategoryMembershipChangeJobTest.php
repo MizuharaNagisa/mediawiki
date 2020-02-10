@@ -1,5 +1,7 @@
 <?php
 
+use MediaWiki\MediaWikiServices;
+
 /**
  * @covers CategoryMembershipChangeJob
  *
@@ -18,14 +20,14 @@ class CategoryMembershipChangeJobTest extends MediaWikiTestCase {
 	 */
 	private $title;
 
-	public function setUp() {
+	public function setUp() : void {
 		parent::setUp();
 		$this->setMwGlobals( 'wgRCWatchCategoryMembership', true );
 		$this->setContentLang( 'qqx' );
 	}
 
-	public function addDBDataOnce() {
-		parent::addDBDataOnce();
+	public function addDBData() {
+		parent::addDBData();
 		$insertResult = $this->insertPage( self::TITLE_STRING, 'UT Content' );
 		$this->title = $insertResult['title'];
 	}
@@ -87,4 +89,21 @@ class CategoryMembershipChangeJobTest extends MediaWikiTestCase {
 		);
 	}
 
+	public function testJobSpecRemovesDuplicates() {
+		$jobSpec = CategoryMembershipChangeJob::newSpec( $this->title, MWTimestamp::now() );
+		$job = new CategoryMembershipChangeJob(
+			MediaWikiServices::getInstance()->getParserCache(),
+			$this->title,
+			$jobSpec->getParams()
+		);
+		$this->assertTrue( $job->ignoreDuplicates() );
+		$this->assertTrue( $jobSpec->ignoreDuplicates() );
+		$this->assertEquals( $job->getDeduplicationInfo(), $jobSpec->getDeduplicationInfo() );
+	}
+
+	public function testJobSpecDeduplicationIgnoresRevTimestamp() {
+		$jobSpec1 = CategoryMembershipChangeJob::newSpec( $this->title, '20191008204617' );
+		$jobSpec2 = CategoryMembershipChangeJob::newSpec( $this->title, '20201008204617' );
+		$this->assertArrayEquals( $jobSpec1->getDeduplicationInfo(), $jobSpec2->getDeduplicationInfo() );
+	}
 }

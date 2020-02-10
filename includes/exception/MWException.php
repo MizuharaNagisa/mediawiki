@@ -69,23 +69,22 @@ class MWException extends Exception {
 	 * @param string $key Message name
 	 * @param string $fallback Default message if the message cache can't be
 	 *                  called by the exception
-	 * The function also has other parameters that are arguments for the message
+	 * @param mixed ...$params To pass to wfMessage()
 	 * @return string Message with arguments replaced
 	 */
-	public function msg( $key, $fallback /*[, params...] */ ) {
+	public function msg( $key, $fallback, ...$params ) {
 		global $wgSitename;
-		$args = array_slice( func_get_args(), 2 );
 
 		// FIXME: Keep logic in sync with MWExceptionRenderer::msg.
 		$res = false;
 		if ( $this->useMessageCache() ) {
 			try {
-				$res = wfMessage( $key, $args )->text();
+				$res = wfMessage( $key, ...$params )->text();
 			} catch ( Exception $e ) {
 			}
 		}
 		if ( $res === false ) {
-			$res = wfMsgReplaceArgs( $fallback, $args );
+			$res = wfMsgReplaceArgs( $fallback, $params );
 			// If an exception happens inside message rendering,
 			// {{SITENAME}} sometimes won't be replaced.
 			$res = strtr( $res, [
@@ -209,17 +208,27 @@ class MWException extends Exception {
 			wfHttpError( 500, 'Internal Server Error', $this->getText() );
 		} elseif ( self::isCommandLine() ) {
 			$message = $this->getText();
-			// T17602: STDERR may not be available
-			if ( !defined( 'MW_PHPUNIT_TEST' ) && defined( 'STDERR' ) ) {
-				fwrite( STDERR, $message );
-			} else {
-				echo $message;
-			}
+			$this->writeToCommandLine( $message );
 		} else {
 			self::statusHeader( 500 );
 			self::header( "Content-Type: $wgMimeType; charset=utf-8" );
 
 			$this->reportHTML();
+		}
+	}
+
+	/**
+	 * Write a message to stderr falling back to stdout if stderr unavailable
+	 *
+	 * @param string $message
+	 * @suppress SecurityCheck-XSS
+	 */
+	private function writeToCommandLine( $message ) {
+		// T17602: STDERR may not be available
+		if ( !defined( 'MW_PHPUNIT_TEST' ) && defined( 'STDERR' ) ) {
+			fwrite( STDERR, $message );
+		} else {
+			echo $message;
 		}
 	}
 
@@ -243,6 +252,7 @@ class MWException extends Exception {
 			header( $header );
 		}
 	}
+
 	private static function statusHeader( $code ) {
 		if ( !headers_sent() ) {
 			HttpStatus::header( $code );

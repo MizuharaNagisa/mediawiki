@@ -54,7 +54,7 @@ class FileBackendDBRepoWrapper extends FileBackend {
 		/** @var FileBackend $backend */
 		$backend = $config['backend'];
 		$config['name'] = $backend->getName();
-		$config['wikiId'] = $backend->getWikiId();
+		$config['domainId'] = $backend->getDomainId();
 		parent::__construct( $config );
 		$this->backend = $config['backend'];
 		$this->repoName = $config['repoName'];
@@ -150,8 +150,8 @@ class FileBackendDBRepoWrapper extends FileBackend {
 		return $this->backend->doOperationsInternal( $this->mungeOpPaths( $ops ), $opts );
 	}
 
-	protected function doQuickOperationsInternal( array $ops ) {
-		return $this->backend->doQuickOperationsInternal( $this->mungeOpPaths( $ops ) );
+	protected function doQuickOperationsInternal( array $ops, array $opts ) {
+		return $this->backend->doQuickOperationsInternal( $this->mungeOpPaths( $ops ), $opts );
 	}
 
 	protected function doPrepare( array $params ) {

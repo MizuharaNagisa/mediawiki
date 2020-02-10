@@ -115,22 +115,62 @@ class PasswordPolicyChecksTest extends MediaWikiTestCase {
 	}
 
 	/**
-	 * @covers PasswordPolicyChecks::checkPasswordCannotMatchBlacklist
+	 * @covers PasswordPolicyChecks::checkPasswordCannotBeSubstringInUsername
 	 */
-	public function testCheckPasswordCannotMatchBlacklist() {
-		$statusOK = PasswordPolicyChecks::checkPasswordCannotMatchBlacklist(
-			true, // policy value
-			User::newFromName( 'Username' ), // User
-			'AUniquePassword'  // password
+	public function testCheckPasswordCannotBeSubstringInUsername() {
+		$statusOK = PasswordPolicyChecks::checkPasswordCannotBeSubstringInUsername(
+			1, // policy value
+			User::newFromName( 'user' ), // User
+			'password'  // password
 		);
-		$this->assertTrue( $statusOK->isGood(), 'Password is not on blacklist' );
-		$statusLong = PasswordPolicyChecks::checkPasswordCannotMatchBlacklist(
-			true, // policy value
-			User::newFromName( 'Useruser1' ), // User
-			'Passpass1'  // password
+		$this->assertTrue( $statusOK->isGood(), 'Password is not a substring of username' );
+		$statusLong = PasswordPolicyChecks::checkPasswordCannotBeSubstringInUsername(
+			1, // policy value
+			User::newFromName( '123user123' ), // User
+			'user'  // password
 		);
-		$this->assertFalse( $statusLong->isGood(), 'Password matches blacklist' );
-		$this->assertTrue( $statusLong->isOK(), 'Password matches blacklist, not fatal' );
+		$this->assertFalse( $statusLong->isGood(), 'Password is a substring of username' );
+		$this->assertTrue( $statusLong->isOK(), 'Password is a substring of username, not fatal' );
+	}
+
+	/**
+	 * @covers PasswordPolicyChecks::checkPasswordCannotMatchBlacklist
+	 * @dataProvider provideCheckPasswordCannotMatchBlacklist
+	 */
+	public function testCheckPasswordCannotMatchBlacklist(
+		bool $failureExpected,
+		bool $policyValue,
+		string $username,
+		string $password
+	) {
+		$user = $this->createMock( User::class );
+		$user->method( 'getName' )->willReturn( $username );
+		/** @var User $user */
+
+		$status = PasswordPolicyChecks::checkPasswordCannotMatchBlacklist(
+			$policyValue,
+			$user,
+			$password
+		);
+
+		if ( $failureExpected ) {
+			$this->assertFalse( $status->isGood(), 'Password matches blacklist' );
+			$this->assertTrue( $status->isOK(), 'Password matches blacklist, not fatal' );
+			$this->assertTrue( $status->hasMessage( 'password-login-forbidden' ) );
+		} else {
+			$this->assertTrue( $status->isGood(), 'Password is not on blacklist' );
+		}
+	}
+
+	public function provideCheckPasswordCannotMatchBlacklist() {
+		return [
+			'Unique username and password' => [ false, true, 'Unique username', 'AUniquePassword' ],
+			'Blacklisted combination' => [ true, true, 'Useruser1', 'Passpass1' ],
+			'Blacklisted password' => [ true, true, 'Whatever username', 'ExamplePassword' ],
+			'Uniques but no policy' => [ false, false, 'Unique username', 'AUniquePassword' ],
+			'Blacklisted combination but no policy' => [ false, false, 'Useruser1', 'Passpass1' ],
+			'Blacklisted password but no policy' => [ false, false, 'Whatever username', 'ExamplePassword' ],
+		];
 	}
 
 	public static function providePopularBlacklist() {
@@ -148,7 +188,6 @@ class PasswordPolicyChecksTest extends MediaWikiTestCase {
 	 */
 	public function testCheckPopularPasswordBlacklist( $expected, $password ) {
 		global $IP;
-		$this->hideDeprecated( 'PasswordPolicyChecks::checkPopularPasswordBlacklist' );
 		$this->setMwGlobals( [
 			'wgSitename' => 'sitename',
 			'wgPopularPasswordFile' => "$IP/includes/password/commonpasswords.cdb"
@@ -185,12 +224,11 @@ class PasswordPolicyChecksTest extends MediaWikiTestCase {
 	 */
 	public function testPasswordPolicyDescriptionsExist() {
 		global $wgPasswordPolicy;
-		$lang = Language::factory( 'en' );
 
 		foreach ( array_keys( $wgPasswordPolicy['checks'] ) as $check ) {
 			$msgKey = 'passwordpolicies-policy-' . strtolower( $check );
 			$this->assertTrue(
-				wfMessage( $msgKey )->useDatabase( false )->inLanguage( $lang )->exists(),
+				wfMessage( $msgKey )->useDatabase( false )->inLanguage( 'en' )->exists(),
 				"Message '$msgKey' required by '$check' must exist"
 			);
 		}

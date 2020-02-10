@@ -24,6 +24,7 @@
 use MediaWiki\Auth\AuthManager;
 use MediaWiki\Linker\LinkRenderer;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Navigation\PrevNextNavigationRenderer;
 
 /**
  * Parent class for all special pages.
@@ -162,6 +163,7 @@ class SpecialPage implements MessageLocalizer {
 	}
 
 	// @todo FIXME: Decide which syntax to use for this, and stick to it
+
 	/**
 	 * Whether this special page is listed in Special:SpecialPages
 	 * @since 1.3 (r3583)
@@ -276,7 +278,9 @@ class SpecialPage implements MessageLocalizer {
 	 */
 	public function isRestricted() {
 		// DWIM: If anons can do something, then it is not restricted
-		return $this->mRestriction != '' && !User::groupHasPermission( '*', $this->mRestriction );
+		return $this->mRestriction != '' && !MediaWikiServices::getInstance()
+				->getPermissionManager()
+				->groupHasPermission( '*', $this->mRestriction );
 	}
 
 	/**
@@ -288,7 +292,9 @@ class SpecialPage implements MessageLocalizer {
 	 * @return bool Does the user have permission to view the page?
 	 */
 	public function userCanExecute( User $user ) {
-		return $user->isAllowed( $this->mRestriction );
+		return MediaWikiServices::getInstance()
+			->getPermissionManager()
+			->userHasRight( $user, $this->mRestriction );
 	}
 
 	/**
@@ -406,7 +412,7 @@ class SpecialPage implements MessageLocalizer {
 		if ( $securityStatus === AuthManager::SEC_OK ) {
 			$uniqueId = $request->getVal( 'postUniqueId' );
 			if ( $uniqueId ) {
-				$key = $key . ':' . $uniqueId;
+				$key .= ':' . $uniqueId;
 				$session = $request->getSession();
 				$data = $session->getSecret( $key );
 				if ( $data ) {
@@ -424,7 +430,7 @@ class SpecialPage implements MessageLocalizer {
 				if ( $data ) {
 					// unique ID in case the same special page is open in multiple browser tabs
 					$uniqueId = MWCryptRand::generateHex( 6 );
-					$key = $key . ':' . $uniqueId;
+					$key .= ':' . $uniqueId;
 					$queryParams['postUniqueId'] = $uniqueId;
 					$session = $request->getSession();
 					$session->persist(); // Just in case
@@ -454,10 +460,10 @@ class SpecialPage implements MessageLocalizer {
 	 * For example, if a page supports subpages "foo", "bar" and "baz" (as in Special:PageName/foo,
 	 * etc.):
 	 *
-	 *   - `prefixSearchSubpages( "ba" )` should return `array( "bar", "baz" )`
-	 *   - `prefixSearchSubpages( "f" )` should return `array( "foo" )`
-	 *   - `prefixSearchSubpages( "z" )` should return `array()`
-	 *   - `prefixSearchSubpages( "" )` should return `array( foo", "bar", "baz" )`
+	 *   - `prefixSearchSubpages( "ba" )` should return `[ "bar", "baz" ]`
+	 *   - `prefixSearchSubpages( "f" )` should return `[ "foo" ]`
+	 *   - `prefixSearchSubpages( "z" )` should return `[]`
+	 *   - `prefixSearchSubpages( "" )` should return `[ foo", "bar", "baz" ]`
 	 *
 	 * @param string $search Prefix to search for
 	 * @param int $limit Maximum number of results to return (usually 10)
@@ -661,18 +667,6 @@ class SpecialPage implements MessageLocalizer {
 	 *
 	 * @param string|bool $subpage
 	 * @return Title
-	 * @deprecated since 1.23, use SpecialPage::getPageTitle
-	 */
-	function getTitle( $subpage = false ) {
-		wfDeprecated( __METHOD__, '1.23' );
-		return $this->getPageTitle( $subpage );
-	}
-
-	/**
-	 * Get a self-referential title object
-	 *
-	 * @param string|bool $subpage
-	 * @return Title
 	 * @since 1.23
 	 */
 	function getPageTitle( $subpage = false ) {
@@ -790,11 +784,13 @@ class SpecialPage implements MessageLocalizer {
 	 * Wrapper around wfMessage that sets the current context.
 	 *
 	 * @since 1.16
+	 * @param string|string[]|MessageSpecifier $key
+	 * @param mixed ...$params
 	 * @return Message
 	 * @see wfMessage
 	 */
-	public function msg( $key /* $args */ ) {
-		$message = $this->getContext()->msg( ...func_get_args() );
+	public function msg( $key, ...$params ) {
+		$message = $this->getContext()->msg( $key, ...$params );
 		// RequestContext passes context to wfMessage, and the language is set from
 		// the context, but setting the language for Message class removes the
 		// interface message status, which breaks for example usernameless gender
@@ -919,5 +915,24 @@ class SpecialPage implements MessageLocalizer {
 	 */
 	public function setLinkRenderer( LinkRenderer $linkRenderer ) {
 		$this->linkRenderer = $linkRenderer;
+	}
+
+	/**
+	 * Generate (prev x| next x) (20|50|100...) type links for paging
+	 *
+	 * @param int $offset
+	 * @param int $limit
+	 * @param array $query Optional URL query parameter string
+	 * @param bool $atend Optional param for specified if this is the last page
+	 * @param string|bool $subpage Optional param for specifying subpage
+	 * @return string
+	 */
+	protected function buildPrevNextNavigation( $offset, $limit,
+											 array $query = [], $atend = false, $subpage = false
+	) {
+		$title = $this->getPageTitle( $subpage );
+		$prevNext = new PrevNextNavigationRenderer( $this );
+
+		return $prevNext->buildPrevNextNavigation( $title, $offset, $limit, $query,  $atend );
 	}
 }

@@ -44,7 +44,7 @@ class ApiQueryDuplicateFiles extends ApiQueryGeneratorBase {
 	}
 
 	/**
-	 * @param ApiPageSet $resultPageSet
+	 * @param ApiPageSet|null $resultPageSet
 	 */
 	private function run( $resultPageSet = null ) {
 		$params = $this->extractRequestParams();
@@ -127,7 +127,7 @@ class ApiQueryDuplicateFiles extends ApiQueryGeneratorBase {
 					$this->setContinueEnumParameter( 'continue', $image . '|' . $dupName );
 					break;
 				}
-				if ( !is_null( $resultPageSet ) ) {
+				if ( $resultPageSet !== null ) {
 					$titles[] = $dupFile->getTitle();
 				} else {
 					$r = [
@@ -147,7 +147,7 @@ class ApiQueryDuplicateFiles extends ApiQueryGeneratorBase {
 				break;
 			}
 		}
-		if ( !is_null( $resultPageSet ) ) {
+		if ( $resultPageSet !== null ) {
 			$resultPageSet->populateFromTitles( $titles );
 		}
 	}

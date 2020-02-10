@@ -7,7 +7,7 @@
  * @covers ApiQuery
  */
 class ApiQueryTest extends ApiTestCase {
-	protected function setUp() {
+	protected function setUp() : void {
 		parent::setUp();
 
 		// Setup apiquerytestiw: as interwiki prefix
@@ -102,7 +102,7 @@ class ApiQueryTest extends ApiTestCase {
 	 * @param string $expectException
 	 * @dataProvider provideTestTitlePartToKey
 	 */
-	function testTitlePartToKey( $titlePart, $namespace, $expected, $expectException ) {
+	public function testTitlePartToKey( $titlePart, $namespace, $expected, $expectException ) {
 		$this->setMwGlobals( [
 			'wgCapitalLinks' => true,
 		] );
@@ -118,7 +118,7 @@ class ApiQueryTest extends ApiTestCase {
 			'ApiUsageException thrown by titlePartToKey' );
 	}
 
-	function provideTestTitlePartToKey() {
+	public function provideTestTitlePartToKey() {
 		return [
 			[ 'a  b  c', NS_MAIN, 'A_b_c', false ],
 			[ 'x', NS_MAIN, 'X', false ],
@@ -147,5 +147,29 @@ class ApiQueryTest extends ApiTestCase {
 				'Class ' . $class . ' for api module ' . $name . ' does not exist (with exact case)'
 			);
 		}
+	}
+
+	public function testShouldNotExportPagesThatUserCanNotRead() {
+		$title = Title::makeTitle( NS_MAIN, 'Test article' );
+		$this->insertPage( $title );
+
+		$this->setTemporaryHook( 'getUserPermissionsErrors',
+			function ( Title $page, &$user, $action, &$result ) use ( $title ) {
+				if ( $page->equals( $title ) && $action === 'read' ) {
+					$result = false;
+					return false;
+				}
+			} );
+
+		$data = $this->doApiRequest( [
+			'action' => 'query',
+			'titles' => $title->getPrefixedText(),
+			'export' => 1,
+		] );
+
+		$this->assertArrayHasKey( 'query', $data[0] );
+		$this->assertArrayHasKey( 'export', $data[0]['query'] );
+		// This response field contains an XML document even if no pages were exported
+		$this->assertStringNotContainsString( $title->getPrefixedText(), $data[0]['query']['export'] );
 	}
 }

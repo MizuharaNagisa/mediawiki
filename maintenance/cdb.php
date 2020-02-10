@@ -1,6 +1,6 @@
 <?php
 /**
- * cdb inspector tool
+ * CDB inspector tool
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,108 +25,189 @@
 use Cdb\Exception as CdbException;
 use Cdb\Reader as CdbReader;
 
-require_once __DIR__ . '/commandLine.inc';
+require_once __DIR__ . '/Maintenance.php';
 
-function cdbShowHelp( $command ) {
-	$commandList = [
-		'load' => 'load a cdb file for reading',
-		'get' => 'get a value for a key',
-		'exit' => 'exit cdb',
-		'quit' => 'exit cdb',
-		'help' => 'help about a command',
-	];
-	if ( !$command ) {
-		$command = 'fullhelp';
+// phpcs:disable MediaWiki.Files.ClassMatchesFilename.NotMatch
+class CdbInspector extends Maintenance {
+	public function __construct() {
+		parent::__construct();
+		$this->addDescription( 'Inspects a CDB file' );
+		$this->addArg( 'filename', 'File to open (optional)', false );
 	}
-	if ( $command === 'fullhelp' ) {
-		$max_cmd_len = max( array_map( 'strlen', array_keys( $commandList ) ) );
-		foreach ( $commandList as $cmd => $desc ) {
-			printf( "%-{$max_cmd_len}s: %s\n", $cmd, $desc );
+
+	private function showInternalHelp( ?string $command ) : void {
+		$commandList = [
+			'load' => 'Load a CDB file for reading',
+			'get' => 'Get a value for a key',
+			'list' => 'List all keys in the file. Optional parameter specifies the maximum number '
+				. 'of keys returned.',
+			'find' => 'Find keys matching a regular expression',
+			'exit' => 'Exit',
+			'quit' => 'Exit',
+			'help' => 'Help about a command',
+		];
+		if ( !$command ) {
+			$command = 'fullhelp';
 		}
-	} elseif ( isset( $commandList[$command] ) ) {
-		print "$command: $commandList[$command]\n";
-	} else {
-		print "$command: command does not exist or no help for it\n";
+		if ( $command === 'fullhelp' ) {
+			$max_cmd_len = max( array_map( 'strlen', array_keys( $commandList ) ) );
+			foreach ( $commandList as $cmd => $desc ) {
+				printf( "%-{$max_cmd_len}s: %s\n", $cmd, $desc );
+			}
+		} elseif ( isset( $commandList[$command] ) ) {
+			print "$command: $commandList[$command]\n";
+		} else {
+			print "$command: command does not exist or no help for it\n";
+		}
+	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public function execute() {
+		if ( $this->isQuiet() ) {
+			$this->fatalError( "This is an interactive script, can't use it with --quiet" );
+		}
+
+		$fileName = $this->getArg( 0, null );
+		/** @var CdbReader|null $fileHandle */
+		$fileHandle = $fileName ? $this->loadFile( $fileName ) : null;
+		do {
+			$bad = false;
+			$quit = false;
+			$line = Maintenance::readconsole();
+			if ( $line === false ) {
+				exit;
+			}
+
+			$args = explode( ' ', $line, 2 );
+			$command = array_shift( $args );
+
+			// process command
+			switch ( $command ) {
+				case 'help':
+					// show an help message
+					$this->showInternalHelp( array_shift( $args ) );
+					break;
+				case 'load':
+					$fileHandle = $this->loadFile( array_shift( $args ) );
+					break;
+				case 'get':
+					if ( !$fileHandle ) {
+						print "Need to load a CDB file first\n";
+						break;
+					}
+					if ( !isset( $args[0] ) ) {
+						print "Need to specify a key, Luke\n";
+						break;
+					}
+					try {
+						$res = $fileHandle->get( $args[0] );
+					} catch ( CdbException $e ) {
+						print "Unable to read key from file\n";
+						break;
+					}
+					if ( $res === false ) {
+						print "No such key/value pair\n";
+					} elseif ( is_string( $res ) ) {
+						print "$res\n";
+					} else {
+						var_dump( $res );
+					}
+					break;
+				case 'list':
+					$this->listKeys( $fileHandle, (int)array_shift( $args ) );
+					break;
+				case 'find':
+					$this->findKeys( $fileHandle, array_shift( $args ) );
+					break;
+				case 'quit':
+				case 'exit':
+					$quit = true;
+					break;
+
+				default:
+					$bad = true;
+			} // switch() end
+
+			if ( $bad ) {
+				if ( $command ) {
+					print "Bad command\n";
+				}
+			} else {
+				if ( function_exists( 'readline_add_history' ) ) {
+					readline_add_history( $line );
+				}
+			}
+		} while ( !$quit );
+	}
+
+	private function loadFile( ?string $fileName ) : ?CdbReader {
+		if ( !$fileName ) {
+			print "Need a filename there buddy\n";
+			return null;
+		}
+		print "Loading CDB file $fileName...";
+		$fileHandle = null;
+		try {
+			$fileHandle = CdbReader::open( $fileName );
+		} catch ( CdbException $e ) {
+		}
+
+		if ( !$fileHandle ) {
+			print "Not a CDB file or unable to read it\n";
+		} else {
+			print "ok\n";
+		}
+		return $fileHandle;
+	}
+
+	/**
+	 * @param CdbReader $cdb
+	 * @param int $maxKeys Maximum number of keys to output, or 0 for all
+	 */
+	private function listKeys( CdbReader $cdb, int $maxKeys ) : void {
+		$count = 0;
+		$key = $cdb->firstkey();
+		while ( $key !== false && ( !$maxKeys || $count < $maxKeys ) ) {
+			print "'$key'\n";
+			$count++;
+			$key = $cdb->nextkey();
+		}
+		print "$count keys found.\n";
+	}
+
+	/**
+	 * @param CdbReader $cdb
+	 * @param string|null $regexp
+	 */
+	private function findKeys( CdbReader $cdb, ?string $regexp ) : void {
+		if ( $regexp === null ) {
+			print "Regexp required\n";
+			return;
+		}
+		if ( !preg_match( '#^/.+/[imsxUXJ]*$#', $regexp ) ) {
+			$regexp = "/$regexp/";
+		}
+		// Test for invalid regexp
+		if ( preg_match( $regexp, $regexp ) === false ) {
+			print "Invalid regular expression\n";
+			return;
+		}
+
+		$count = 0;
+		$key = $cdb->firstkey();
+		while ( $key !== false ) {
+			if ( preg_match( $regexp, $key ) ) {
+				print "'$key'\n";
+				$count++;
+			}
+			$key = $cdb->nextkey();
+		}
+		print "$count keys found.\n";
 	}
 }
 
-do {
-	$bad = false;
-	$showhelp = false;
-	$quit = false;
-	static $fileHandle = false;
+$maintClass = CdbInspector::class;
 
-	$line = Maintenance::readconsole();
-	if ( $line === false ) {
-		exit;
-	}
-
-	$args = explode( ' ', $line, 2 );
-	$command = array_shift( $args );
-
-	// process command
-	switch ( $command ) {
-		case 'help':
-			// show an help message
-			cdbShowHelp( array_shift( $args ) );
-			break;
-		case 'load':
-			if ( !isset( $args[0] ) ) {
-				print "Need a filename there buddy\n";
-				break;
-			}
-			$file = $args[0];
-			print "Loading cdb file $file...";
-			try {
-				$fileHandle = CdbReader::open( $file );
-			} catch ( CdbException $e ) {
-			}
-
-			if ( !$fileHandle ) {
-				print "not a cdb file or unable to read it\n";
-			} else {
-				print "ok\n";
-			}
-			break;
-		case 'get':
-			if ( !$fileHandle ) {
-				print "Need to load a cdb file first\n";
-				break;
-			}
-			if ( !isset( $args[0] ) ) {
-				print "Need to specify a key, Luke\n";
-				break;
-			}
-			try {
-				$res = $fileHandle->get( $args[0] );
-			} catch ( CdbException $e ) {
-				print "Unable to read key from file\n";
-				break;
-			}
-			if ( $res === false ) {
-				print "No such key/value pair\n";
-			} elseif ( is_string( $res ) ) {
-				print "$res\n";
-			} else {
-				var_dump( $res );
-			}
-			break;
-		case 'quit':
-		case 'exit':
-			$quit = true;
-			break;
-
-		default:
-			$bad = true;
-	} // switch() end
-
-	if ( $bad ) {
-		if ( $command ) {
-			print "Bad command\n";
-		}
-	} else {
-		if ( function_exists( 'readline_add_history' ) ) {
-			readline_add_history( $line );
-		}
-	}
-} while ( !$quit );
+require RUN_MAINTENANCE_IF_MAIN;

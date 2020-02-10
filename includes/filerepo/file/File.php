@@ -6,6 +6,7 @@
  * Represents files in a repository.
  */
 use MediaWiki\MediaWikiServices;
+use Wikimedia\AtEase\AtEase;
 
 /**
  * Base code for files.
@@ -29,6 +30,7 @@ use MediaWiki\MediaWikiServices;
  * @ingroup FileAbstraction
  */
 
+// @phan-file-suppress PhanTypeMissingReturn false positives
 /**
  * Implements some public methods and some protected utility functions which
  * are required by multiple child classes. Contains stub functionality for
@@ -43,8 +45,16 @@ use MediaWiki\MediaWikiServices;
  *
  * RepoGroup::singleton()->getLocalRepo()->newFile( $title );
  *
- * The convenience functions wfLocalFile() and wfFindFile() should be sufficient
- * in most cases.
+ * Consider the services container below;
+ *
+ * $services = MediaWikiServices::getInstance();
+ *
+ * The convenience services $services->getRepoGroup()->getLocalRepo()->newFile()
+ * and $services->getRepoGroup()->findFile() should be sufficient in most cases.
+ *
+ * @TODO: DI - Instead of using MediaWikiServices::getInstance(), a service should
+ * ideally accept a RepoGroup in its constructor and then, use $this->repoGroup->findFile()
+ * and $this->repoGroup->getLocalRepo()->newFile().
  *
  * @ingroup FileAbstraction
  */
@@ -128,7 +138,7 @@ abstract class File implements IDBAccessObject {
 	/** @var string Relative path including trailing slash */
 	protected $hashPath;
 
-	/** @var string|false Number of pages of a multipage document, or false for
+	/** @var int|false Number of pages of a multipage document, or false for
 	 *    documents which aren't multipage documents
 	 */
 	protected $pageCount;
@@ -202,12 +212,12 @@ abstract class File implements IDBAccessObject {
 		return $ret;
 	}
 
-	function __get( $name ) {
+	public function __get( $name ) {
 		$function = [ $this, 'get' . ucfirst( $name ) ];
 		if ( !is_callable( $function ) ) {
 			return null;
 		} else {
-			$this->$name = call_user_func( $function );
+			$this->$name = $function();
 
 			return $this->$name;
 		}
@@ -295,7 +305,7 @@ abstract class File implements IDBAccessObject {
 	 * @return string
 	 */
 	public function getName() {
-		if ( !isset( $this->name ) ) {
+		if ( $this->name === null ) {
 			$this->assertRepoDefined();
 			$this->name = $this->repo->getNameFromTitle( $this->title );
 		}
@@ -523,6 +533,46 @@ abstract class File implements IDBAccessObject {
 	}
 
 	/**
+	 * Get the width and height to display image at.
+	 *
+	 * @param int $maxWidth Max width to display at
+	 * @param int $maxHeight Max height to display at
+	 * @param int $page
+	 * @throws MWException
+	 * @return array Array (width, height)
+	 * @since 1.35
+	 */
+	public function getDisplayWidthHeight( $maxWidth, $maxHeight, $page = 1 ) {
+		if ( !$maxWidth || !$maxHeight ) {
+			// should never happen
+			throw new MWException( 'Using a choice from $wgImageLimits that is 0x0' );
+		}
+
+		$width = $this->getWidth( $page );
+		$height = $this->getHeight( $page );
+		if ( !$width || !$height ) {
+			return [ 0, 0 ];
+		}
+
+		// Calculate the thumbnail size.
+		if ( $width <= $maxWidth && $height <= $maxHeight ) {
+			// Vectorized image, do nothing.
+		} elseif ( $width / $height >= $maxWidth / $maxHeight ) {
+			# The limiting factor is the width, not the height.
+			$height = round( $height * $maxWidth / $width );
+			$width = $maxWidth;
+			// Note that $height <= $maxHeight now.
+		} else {
+			$newwidth = floor( $width * $maxHeight / $height );
+			$height = round( $height * $newwidth / $width );
+			$width = $newwidth;
+			// Note that $height <= $maxHeight now, but might not be identical
+			// because of rounding.
+		}
+		return [ $width, $height ];
+	}
+
+	/**
 	 * Returns ID or name of user who uploaded the file
 	 * STUB
 	 *
@@ -633,27 +683,22 @@ abstract class File implements IDBAccessObject {
 			// one would not expect it to be animated
 			// so true.
 			return true;
-		} else {
-			if ( $this->allowInlineDisplay()
-				&& $handler->isAnimatedImage( $this )
-				&& !$handler->canAnimateThumbnail( $this )
-			) {
-				// Image is animated, but thumbnail isn't.
-				// This is unexpected to the user.
-				return false;
-			} else {
-				// Image is not animated, so one would
-				// not expect thumb to be
-				return true;
-			}
 		}
+
+		return !$this->allowInlineDisplay()
+			// Image is not animated, so one would
+			// not expect thumb to be
+			|| !$handler->isAnimatedImage( $this )
+			// Image is animated, but thumbnail isn't.
+			// This is unexpected to the user.
+			|| $handler->canAnimateThumbnail( $this );
 	}
 
 	/**
 	 * Get handler-specific metadata
 	 * Overridden by LocalFile, UnregisteredLocalFile
 	 * STUB
-	 * @return bool|array
+	 * @return string|false
 	 */
 	public function getMetadata() {
 		return false;
@@ -710,7 +755,7 @@ abstract class File implements IDBAccessObject {
 	 * Return the size of the image file, in bytes
 	 * Overridden by LocalFile, UnregisteredLocalFile
 	 * STUB
-	 * @return bool
+	 * @return int|false
 	 */
 	public function getSize() {
 		return false;
@@ -1167,6 +1212,7 @@ abstract class File implements IDBAccessObject {
 			$thumb = false;
 		} elseif ( $thumb->isError() ) { // transform error
 			/** @var MediaTransformError $thumb */
+			'@phan-var MediaTransformError $thumb';
 			$this->lastError = $thumb->toText();
 			// Ignore errors if requested
 			if ( $wgIgnoreImageErrors && !( $flags & self::RENDER_NOW ) ) {
@@ -1347,7 +1393,8 @@ abstract class File implements IDBAccessObject {
 	 */
 	protected function makeTransformTmpFile( $thumbPath ) {
 		$thumbExt = FileBackend::extensionFromPath( $thumbPath );
-		return TempFSFile::factory( 'transform_', $thumbExt, wfTempDir() );
+		return MediaWikiServices::getInstance()->getTempFSFileFactory()
+			->newTempFSFile( 'transform_', $thumbExt );
 	}
 
 	/**
@@ -1460,13 +1507,15 @@ abstract class File implements IDBAccessObject {
 		// Delete thumbnails and refresh file metadata cache
 		$this->purgeCache();
 		$this->purgeDescription();
-
 		// Purge cache of all pages using this file
 		$title = $this->getTitle();
 		if ( $title ) {
-			DeferredUpdates::addUpdate(
-				new HTMLCacheUpdate( $title, 'imagelinks', 'file-purge' )
+			$job = HTMLCacheUpdateJob::newForBacklinks(
+				$title,
+				'imagelinks',
+				[ 'causeAction' => 'file-purge' ]
 			);
+			JobQueueGroup::singleton()->lazyPush( $job );
 		}
 	}
 
@@ -1515,7 +1564,7 @@ abstract class File implements IDBAccessObject {
 	 * @return string
 	 */
 	function getHashPath() {
-		if ( !isset( $this->hashPath ) ) {
+		if ( $this->hashPath === null ) {
 			$this->assertRepoDefined();
 			$this->hashPath = $this->repo->getHashPath( $this->getName() );
 		}
@@ -1956,8 +2005,7 @@ abstract class File implements IDBAccessObject {
 	 * @param array $versions Set of record ids of deleted items to restore,
 	 *   or empty to restore all revisions.
 	 * @param bool $unsuppress Remove restrictions on content upon restoration?
-	 * @return int|bool The number of file revisions restored if successful,
-	 *   or false on failure
+	 * @return Status
 	 * STUB
 	 * Overridden by LocalFile
 	 */
@@ -1980,7 +2028,7 @@ abstract class File implements IDBAccessObject {
 	 * Returns the number of pages of a multipage document, or false for
 	 * documents which aren't multipage documents
 	 *
-	 * @return string|bool|int
+	 * @return int|false
 	 */
 	function pageCount() {
 		if ( !isset( $this->pageCount ) ) {
@@ -2034,7 +2082,7 @@ abstract class File implements IDBAccessObject {
 	 * Get the URL of the image description page. May return false if it is
 	 * unknown or not applicable.
 	 *
-	 * @return string
+	 * @return string|bool
 	 */
 	function getDescriptionUrl() {
 		if ( $this->repo ) {
@@ -2074,7 +2122,8 @@ abstract class File implements IDBAccessObject {
 				$this->repo->descriptionCacheExpiry ?: $cache::TTL_UNCACHEABLE,
 				function ( $oldValue, &$ttl, array &$setOpts ) use ( $renderUrl, $fname ) {
 					wfDebug( "Fetching shared description from $renderUrl\n" );
-					$res = Http::get( $renderUrl, [], $fname );
+					$res = MediaWikiServices::getInstance()->getHttpRequestFactory()->
+						get( $renderUrl, [], $fname );
 					if ( !$res ) {
 						$ttl = WANObjectCache::TTL_UNCACHEABLE;
 					}
@@ -2174,7 +2223,7 @@ abstract class File implements IDBAccessObject {
 			$metadata = $this->getMetadata();
 
 			if ( is_string( $metadata ) ) {
-				$metadata = Wikimedia\quietCall( 'unserialize', $metadata );
+				$metadata = AtEase::quietCall( 'unserialize', $metadata );
 			}
 
 			if ( !is_array( $metadata ) ) {

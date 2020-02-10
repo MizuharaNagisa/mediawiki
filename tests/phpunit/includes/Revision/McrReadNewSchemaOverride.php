@@ -1,8 +1,9 @@
 <?php
+
 namespace MediaWiki\Tests\Revision;
 
-use Wikimedia\Rdbms\IMaintainableDatabase;
 use MediaWiki\DB\PatchFileLocation;
+use Wikimedia\Rdbms\IMaintainableDatabase;
 
 /**
  * Trait providing schema overrides that allow tests to run against the intermediate MCR database
@@ -28,6 +29,7 @@ trait McrReadNewSchemaOverride {
 	}
 
 	/**
+	 * @param IMaintainableDatabase $db
 	 * @return array[]
 	 */
 	protected function getSchemaOverrides( IMaintainableDatabase $db ) {

@@ -15,15 +15,20 @@
 			};
 		},
 		teardown: function () {
+			mw.loader.maxQueryLength = 2000;
 			// Teardown for StringSet shim test
 			if ( this.nativeSet ) {
 				window.Set = this.nativeSet;
 				mw.redefineFallbacksForTest();
 			}
+			if ( this.resetStoreKey ) {
+				localStorage.removeItem( mw.loader.store.key );
+			}
 			// Remove any remaining temporary statics
 			// exposed for cross-file mocks.
 			delete mw.loader.testCallback;
 			delete mw.loader.testFail;
+			delete mw.getScriptExampleScriptLoaded;
 		}
 	} ) );
 
@@ -181,7 +186,7 @@
 			[ 'test.load.circleB', '0', [ 'test.load.circleC' ] ],
 			[ 'test.load.circleC', '0', [ 'test.load.circleA' ] ]
 		] );
-		this.sandbox.stub( mw, 'track', function ( topic, data ) {
+		this.sandbox.stub( mw, 'trackError', function ( topic, data ) {
 			capture.push( {
 				topic: topic,
 				error: data.exception && data.exception.message,
@@ -206,7 +211,7 @@
 		mw.loader.register( [
 			[ 'test.load.circleDirect', '0', [ 'test.load.circleDirect' ] ]
 		] );
-		this.sandbox.stub( mw, 'track', function ( topic, data ) {
+		this.sandbox.stub( mw, 'trackError', function ( topic, data ) {
 			capture.push( {
 				topic: topic,
 				error: data.exception && data.exception.message,
@@ -241,29 +246,18 @@
 
 	QUnit.test( '.load() - Error: Unregistered', function ( assert ) {
 		var capture = [];
-		this.sandbox.stub( mw, 'track', function ( topic, data ) {
-			capture.push( {
-				topic: topic,
-				error: data.exception && data.exception.message,
-				source: data.source
-			} );
+		this.sandbox.stub( mw.log, 'warn', function ( str ) {
+			capture.push( str );
 		} );
 
 		mw.loader.load( 'test.load.unreg' );
-		assert.deepEqual(
-			[ {
-				topic: 'resourceloader.exception',
-				error: 'Unknown dependency: test.load.unreg',
-				source: 'resolve'
-			} ],
-			capture
-		);
+		assert.deepEqual( capture, [ 'Skipped unresolvable module test.load.unreg' ] );
 	} );
 
 	// Regression test for T36853
 	QUnit.test( '.load() - Error: Missing dependency', function ( assert ) {
 		var capture = [];
-		this.sandbox.stub( mw, 'track', function ( topic, data ) {
+		this.sandbox.stub( mw, 'trackError', function ( topic, data ) {
 			capture.push( {
 				topic: topic,
 				error: data.exception && data.exception.message,
@@ -279,7 +273,7 @@
 		assert.deepEqual(
 			[ {
 				topic: 'resourceloader.exception',
-				error: 'Unknown dependency: test.load.missingdep2',
+				error: 'Unknown module: test.load.missingdep2',
 				source: 'resolve'
 			} ],
 			capture
@@ -560,7 +554,8 @@
 
 	QUnit.test( '.implement( package files )', function ( assert ) {
 		var done = assert.async(),
-			initJsRan = false;
+			initJsRan = false,
+			counter = 41;
 		mw.loader.implement(
 			'test.implement.packageFiles',
 			{
@@ -568,9 +563,8 @@
 				files: {
 					'resources/src/foo/data/hello.json': { hello: 'world' },
 					'resources/src/foo/foo.js': function ( require, module ) {
-						window.mwTestFooJsCounter = window.mwTestFooJsCounter || 41;
-						window.mwTestFooJsCounter++;
-						module.exports = { answer: window.mwTestFooJsCounter };
+						counter++;
+						module.exports = { answer: counter };
 					},
 					'resources/src/bar/bar.js': function ( require, module ) {
 						var core = require( './core.js' );
@@ -623,20 +617,18 @@
 			[ 'testUrlIncDump', 'dump', [], null, 'testloader' ]
 		] );
 
-		mw.config.set( 'wgResourceLoaderMaxQueryLength', 10 );
+		mw.loader.maxQueryLength = 10;
 
 		return mw.loader.using( [ 'testUrlIncDump', 'testUrlInc' ] ).then( function ( require ) {
 			assert.propEqual(
 				require( 'testUrlIncDump' ).query,
 				{
 					modules: 'testUrlIncDump',
-					// Expected: Wrapped hash just for this one module
-					//   $hash = hash( 'fnv132', 'dump');
-					//   base_convert( $hash, 16, 36 ); // "13e9zzn"
-					// Previously: Wrapped hash for both modules, despite being in separate requests
-					//   $hash = hash( 'fnv132', 'urldump' );
-					//   base_convert( $hash, 16, 36 ); // "18kz9ca"
-					version: '13e9zzn'
+					// Expected: Combine hashes only for the module in the specific HTTP request
+					//   hash fnv132 => "13e9zzn"
+					// Wrong: Combine hashes for all requested modules, before request-splitting
+					//   hash fnv132 => "18kz9ca"
+					version: '13e9z'
 				},
 				'Query parameters'
 			);
@@ -666,13 +658,11 @@
 				require( 'testUrlOrderDump' ).query,
 				{
 					modules: 'testUrlOrder,testUrlOrderDump|testUrlOrder.a,b',
-					// Expected: Combined in order after string packing
-					//   $hash = hash( 'fnv132', 'urldump12' );
-					//   base_convert( $hash, 16, 36 ); // "1knqzan"
-					// Previously: Combined in order of before string packing
-					//   $hash = hash( 'fnv132', 'url12dump' );
-					//   base_convert( $hash, 16, 36 ); // "11eo3in"
-					version: '1knqzan'
+					// Expected: Combined by sorting names after string packing
+					//   hash fnv132 = "1knqzan"
+					// Wrong: Combined by sorting names before string packing
+					//   hash fnv132 => "11eo3in"
+					version: '1knqz'
 				},
 				'Query parameters'
 			);
@@ -683,7 +673,7 @@
 		this.useStubClock();
 
 		// Don't actually emit an error event
-		this.sandbox.stub( mw, 'track' );
+		this.sandbox.stub( mw, 'trackError' );
 
 		mw.loader.register( [
 			[ 'test.module1', '0' ],
@@ -695,11 +685,11 @@
 		}, {}, {} );
 		this.tick();
 
-		assert.strictEqual( mw.loader.getState( 'test.module1' ), 'error', 'Expected "error" state for test.module1' );
-		assert.strictEqual( mw.loader.getState( 'test.module2' ), 'error', 'Expected "error" state for test.module2' );
-		assert.strictEqual( mw.loader.getState( 'test.module3' ), 'error', 'Expected "error" state for test.module3' );
+		assert.strictEqual( mw.loader.getState( 'test.module1' ), 'error', 'State of test.module1' );
+		assert.strictEqual( mw.loader.getState( 'test.module2' ), 'error', 'State of test.module2' );
+		assert.strictEqual( mw.loader.getState( 'test.module3' ), 'error', 'State of test.module3' );
 
-		assert.strictEqual( mw.track.callCount, 1 );
+		assert.strictEqual( mw.trackError.callCount, 1 );
 	} );
 
 	QUnit.test( 'Out-of-order implementation', function ( assert ) {
@@ -713,21 +703,21 @@
 
 		mw.loader.implement( 'test.module4', function () {} );
 		this.tick();
-		assert.strictEqual( mw.loader.getState( 'test.module4' ), 'ready', 'Expected "ready" state for test.module4' );
-		assert.strictEqual( mw.loader.getState( 'test.module5' ), 'registered', 'Expected "registered" state for test.module5' );
-		assert.strictEqual( mw.loader.getState( 'test.module6' ), 'registered', 'Expected "registered" state for test.module6' );
+		assert.strictEqual( mw.loader.getState( 'test.module4' ), 'ready', 'State of test.module4' );
+		assert.strictEqual( mw.loader.getState( 'test.module5' ), 'registered', 'State of test.module5' );
+		assert.strictEqual( mw.loader.getState( 'test.module6' ), 'registered', 'State of test.module6' );
 
 		mw.loader.implement( 'test.module6', function () {} );
 		this.tick();
-		assert.strictEqual( mw.loader.getState( 'test.module4' ), 'ready', 'Expected "ready" state for test.module4' );
-		assert.strictEqual( mw.loader.getState( 'test.module5' ), 'registered', 'Expected "registered" state for test.module5' );
-		assert.strictEqual( mw.loader.getState( 'test.module6' ), 'loaded', 'Expected "loaded" state for test.module6' );
+		assert.strictEqual( mw.loader.getState( 'test.module4' ), 'ready', 'State of test.module4' );
+		assert.strictEqual( mw.loader.getState( 'test.module5' ), 'registered', 'State of test.module5' );
+		assert.strictEqual( mw.loader.getState( 'test.module6' ), 'loaded', 'State of test.module6' );
 
 		mw.loader.implement( 'test.module5', function () {} );
 		this.tick();
-		assert.strictEqual( mw.loader.getState( 'test.module4' ), 'ready', 'Expected "ready" state for test.module4' );
-		assert.strictEqual( mw.loader.getState( 'test.module5' ), 'ready', 'Expected "ready" state for test.module5' );
-		assert.strictEqual( mw.loader.getState( 'test.module6' ), 'ready', 'Expected "ready" state for test.module6' );
+		assert.strictEqual( mw.loader.getState( 'test.module4' ), 'ready', 'State of test.module4' );
+		assert.strictEqual( mw.loader.getState( 'test.module5' ), 'ready', 'State of test.module5' );
+		assert.strictEqual( mw.loader.getState( 'test.module6' ), 'ready', 'State of test.module6' );
 	} );
 
 	QUnit.test( 'Missing dependency', function ( assert ) {
@@ -1001,6 +991,124 @@
 			} );
 	} );
 
+	QUnit.test( 'No storing of group=private responses', function ( assert ) {
+		var name = 'test.group.priv';
+
+		// Enable store and stub timeout/idle scheduling
+		this.sandbox.stub( mw.loader.store, 'enabled', true );
+		this.sandbox.stub( window, 'setTimeout', function ( fn ) {
+			fn();
+		} );
+		this.sandbox.stub( mw, 'requestIdleCallback', function ( fn ) {
+			fn();
+		} );
+
+		// See ResourceLoaderStartUpModule::$groupIds
+		mw.loader.register( name, 'x', [], 1 );
+		assert.strictEqual( mw.loader.store.get( name ), false, 'Not in store' );
+
+		mw.loader.implement( name, function () {} );
+		return mw.loader.using( name ).then( function () {
+			assert.strictEqual( mw.loader.getState( name ), 'ready' );
+			assert.strictEqual( mw.loader.store.get( name ), false, 'Still not in store' );
+		} );
+	} );
+
+	QUnit.test( 'No storing of group=user responses', function ( assert ) {
+		var name = 'test.group.user';
+
+		// Enable store and stub timeout/idle scheduling
+		this.sandbox.stub( mw.loader.store, 'enabled', true );
+		this.sandbox.stub( window, 'setTimeout', function ( fn ) {
+			fn();
+		} );
+		this.sandbox.stub( mw, 'requestIdleCallback', function ( fn ) {
+			fn();
+		} );
+
+		// See ResourceLoaderStartUpModule::$groupIds
+		mw.loader.register( name, 'y', [], 0 );
+		assert.strictEqual( mw.loader.store.get( name ), false, 'Not in store' );
+
+		mw.loader.implement( name, function () {} );
+		return mw.loader.using( name ).then( function () {
+			assert.strictEqual( mw.loader.getState( name ), 'ready' );
+			assert.strictEqual( mw.loader.store.get( name ), false, 'Still not in store' );
+		} );
+	} );
+
+	QUnit.test( 'mw.loader.store.init - Invalid JSON', function ( assert ) {
+		// Reset
+		this.sandbox.stub( mw.loader.store, 'enabled', null );
+		this.sandbox.stub( mw.loader.store, 'items', {} );
+		this.resetStoreKey = true;
+		localStorage.setItem( mw.loader.store.key, 'invalid' );
+
+		mw.loader.store.init();
+		assert.strictEqual( mw.loader.store.enabled, true, 'Enabled' );
+		assert.strictEqual(
+			$.isEmptyObject( mw.loader.store.items ),
+			true,
+			'Items starts fresh'
+		);
+	} );
+
+	QUnit.test( 'mw.loader.store.init - Wrong JSON', function ( assert ) {
+		// Reset
+		this.sandbox.stub( mw.loader.store, 'enabled', null );
+		this.sandbox.stub( mw.loader.store, 'items', {} );
+		this.resetStoreKey = true;
+		localStorage.setItem( mw.loader.store.key, JSON.stringify( { wrong: true } ) );
+
+		mw.loader.store.init();
+		assert.strictEqual( mw.loader.store.enabled, true, 'Enabled' );
+		assert.strictEqual(
+			$.isEmptyObject( mw.loader.store.items ),
+			true,
+			'Items starts fresh'
+		);
+	} );
+
+	QUnit.test( 'mw.loader.store.init - Expired JSON', function ( assert ) {
+		// Reset
+		this.sandbox.stub( mw.loader.store, 'enabled', null );
+		this.sandbox.stub( mw.loader.store, 'items', {} );
+		this.resetStoreKey = true;
+		localStorage.setItem( mw.loader.store.key, JSON.stringify( {
+			items: { use: 'not me' },
+			vary: mw.loader.store.vary,
+			asOf: 130161 // 2011-04-01 12:00
+		} ) );
+
+		mw.loader.store.init();
+		assert.strictEqual( mw.loader.store.enabled, true, 'Enabled' );
+		assert.strictEqual(
+			$.isEmptyObject( mw.loader.store.items ),
+			true,
+			'Items starts fresh'
+		);
+	} );
+
+	QUnit.test( 'mw.loader.store.init - Good JSON', function ( assert ) {
+		// Reset
+		this.sandbox.stub( mw.loader.store, 'enabled', null );
+		this.sandbox.stub( mw.loader.store, 'items', {} );
+		this.resetStoreKey = true;
+		localStorage.setItem( mw.loader.store.key, JSON.stringify( {
+			items: { use: 'me' },
+			vary: mw.loader.store.vary,
+			asOf: Math.ceil( Date.now() / 1e7 ) - 5 // ~ 13 hours ago
+		} ) );
+
+		mw.loader.store.init();
+		assert.strictEqual( mw.loader.store.enabled, true, 'Enabled' );
+		assert.deepEqual(
+			mw.loader.store.items,
+			{ use: 'me' },
+			'Stored items are loaded'
+		);
+	} );
+
 	QUnit.test( 'require()', function ( assert ) {
 		mw.loader.register( [
 			[ 'test.require1', '0' ],
@@ -1095,6 +1203,26 @@
 			mw.loader.moduleRegistry.site.state = 'registered';
 			mw.loader.moduleRegistry.user.state = 'registered';
 		} );
+	} );
+
+	QUnit.test( '.getScript() - success', function ( assert ) {
+		var scriptUrl = QUnit.fixurl(
+			mw.config.get( 'wgScriptPath' ) + '/tests/qunit/data/mediawiki.loader.getScript.example.js'
+		);
+
+		return mw.loader.getScript( scriptUrl ).then(
+			function () {
+				assert.strictEqual( mw.getScriptExampleScriptLoaded, true, 'Data attached to a global object is available' );
+			}
+		);
+	} );
+
+	QUnit.test( '.getScript() - failure', function ( assert ) {
+		assert.rejects(
+			mw.loader.getScript( 'https://example.test/not-found' ),
+			/Failed to load script/,
+			'Descriptive error message'
+		);
 	} );
 
 }() );

@@ -66,7 +66,7 @@ class ApiQueryLinks extends ApiQueryGeneratorBase {
 	}
 
 	/**
-	 * @param ApiPageSet $resultPageSet
+	 * @param ApiPageSet|null $resultPageSet
 	 */
 	private function run( $resultPageSet = null ) {
 		if ( $this->getPageSet()->getGoodTitleCount() == 0 ) {
@@ -113,12 +113,12 @@ class ApiQueryLinks extends ApiQueryGeneratorBase {
 			$multiNS = $params['namespace'] === null || count( $params['namespace'] ) !== 1;
 		}
 
-		if ( !is_null( $params['continue'] ) ) {
+		if ( $params['continue'] !== null ) {
 			$cont = explode( '|', $params['continue'] );
 			$this->dieContinueUsageIf( count( $cont ) != 3 );
 			$op = $params['dir'] == 'descending' ? '<' : '>';
-			$plfrom = intval( $cont[0] );
-			$plns = intval( $cont[1] );
+			$plfrom = (int)$cont[0];
+			$plns = (int)$cont[1];
 			$pltitle = $this->getDB()->addQuotes( $cont[2] );
 			$this->addWhere(
 				"{$this->prefix}_from $op $plfrom OR " .
@@ -152,7 +152,9 @@ class ApiQueryLinks extends ApiQueryGeneratorBase {
 
 		$res = $this->select( __METHOD__ );
 
-		if ( is_null( $resultPageSet ) ) {
+		if ( $resultPageSet === null ) {
+			$this->executeGenderCacheFromResultWrapper( $res, __METHOD__, 'pl' );
+
 			$count = 0;
 			foreach ( $res as $row ) {
 				if ( ++$count > $params['limit'] ) {

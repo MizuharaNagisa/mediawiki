@@ -9,7 +9,7 @@
 class LinksUpdateTest extends MediaWikiLangTestCase {
 	protected static $testingPageId;
 
-	function __construct( $name = null, array $data = [], $dataName = '' ) {
+	public function __construct( $name = null, array $data = [], $dataName = '' ) {
 		parent::__construct( $name, $data, $dataName );
 
 		$this->tablesUsed = array_merge( $this->tablesUsed,
@@ -28,7 +28,7 @@ class LinksUpdateTest extends MediaWikiLangTestCase {
 		);
 	}
 
-	protected function setUp() {
+	protected function setUp() : void {
 		parent::setUp();
 		$dbw = wfGetDB( DB_MASTER );
 		$dbw->replace(
@@ -429,5 +429,19 @@ class LinksUpdateTest extends MediaWikiLangTestCase {
 			$job->run();
 			$queueGroup->ack( $job );
 		}
+	}
+
+	public function testIsRecursive() {
+		list( $title, $po ) = $this->makeTitleAndParserOutput( 'Test', 1 );
+		$linksUpdate = new LinksUpdate( $title, $po );
+		$this->assertTrue( $linksUpdate->isRecursive(), 'LinksUpdate is recursive by default' );
+
+		$linksUpdate = new LinksUpdate( $title, $po, true );
+		$this->assertTrue( $linksUpdate->isRecursive(),
+			'LinksUpdate is recursive when asked to be recursive' );
+
+		$linksUpdate = new LinksUpdate( $title, $po, false );
+		$this->assertFalse( $linksUpdate->isRecursive(),
+			'LinksUpdate is not recursive when asked to be not recursive' );
 	}
 }

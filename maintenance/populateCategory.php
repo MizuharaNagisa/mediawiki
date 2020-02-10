@@ -93,9 +93,9 @@ TEXT
 
 		$throttle = intval( $throttle );
 		if ( $begin !== '' ) {
-			$where = 'cl_to > ' . $dbw->addQuotes( $begin );
+			$where = [ 'cl_to > ' . $dbw->addQuotes( $begin ) ];
 		} else {
-			$where = null;
+			$where = [ '1 = 1' ];
 		}
 		$i = 0;
 
@@ -137,7 +137,7 @@ TEXT
 			'updatelog',
 			[ 'ul_key' => 'populate category' ],
 			__METHOD__,
-			'IGNORE'
+			[ 'IGNORE' ]
 		);
 
 		return true;

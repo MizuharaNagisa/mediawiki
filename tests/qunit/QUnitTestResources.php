@@ -6,6 +6,15 @@ return [
 
 	/* Utilities */
 
+	'jquery.qunit' => [
+		'scripts' => 'resources/lib/qunitjs/qunit.js',
+		'styles' => [
+			'resources/lib/qunitjs/qunit.css',
+			'resources/src/qunitjs/qunit-local.css',
+		],
+		'targets' => [ 'desktop', 'mobile' ],
+	],
+
 	'test.sinonjs' => [
 		'scripts' => [
 			'tests/qunit/suites/resources/test.sinonjs/index.js',
@@ -41,11 +50,9 @@ return [
 			'tests/qunit/suites/resources/jquery/jquery.color.test.js',
 			'tests/qunit/suites/resources/jquery/jquery.colorUtil.test.js',
 			'tests/qunit/suites/resources/jquery/jquery.getAttrs.test.js',
-			'tests/qunit/suites/resources/jquery/jquery.hidpi.test.js',
 			'tests/qunit/suites/resources/jquery/jquery.highlightText.test.js',
 			'tests/qunit/suites/resources/jquery/jquery.lengthLimit.test.js',
 			'tests/qunit/suites/resources/jquery/jquery.makeCollapsible.test.js',
-			'tests/qunit/suites/resources/jquery/jquery.tabIndex.test.js',
 			'tests/qunit/suites/resources/jquery/jquery.tablesorter.test.js',
 			'tests/qunit/suites/resources/jquery/jquery.tablesorter.parsers.test.js',
 			'tests/qunit/suites/resources/jquery/jquery.textSelection.test.js',
@@ -55,7 +62,6 @@ return [
 			'tests/qunit/suites/resources/mediawiki/mediawiki.jqueryMsg.test.js',
 			'tests/qunit/suites/resources/mediawiki/mediawiki.jscompat.test.js',
 			'tests/qunit/suites/resources/mediawiki/mediawiki.messagePoster.factory.test.js',
-			'tests/qunit/suites/resources/mediawiki/mediawiki.RegExp.test.js',
 			'tests/qunit/suites/resources/mediawiki/mediawiki.String.byteLength.test.js',
 			'tests/qunit/suites/resources/mediawiki/mediawiki.String.trimByteLength.test.js',
 			'tests/qunit/suites/resources/mediawiki/mediawiki.storage.test.js',
@@ -97,22 +103,17 @@ return [
 			'tests/qunit/suites/resources/mediawiki/mediawiki.visibleTimeout.test.js',
 		],
 		'dependencies' => [
-			'jquery.accessKeyLabel',
 			'jquery.color',
-			'jquery.colorUtil',
 			'jquery.getAttrs',
-			'jquery.hidpi',
 			'jquery.highlightText',
 			'jquery.lengthLimit',
 			'jquery.makeCollapsible',
-			'jquery.tabIndex',
 			'jquery.tablesorter',
 			'jquery.textSelection',
 			'mediawiki.api',
 			'mediawiki.ForeignApi.core',
 			'mediawiki.jqueryMsg',
 			'mediawiki.messagePoster',
-			'mediawiki.RegExp',
 			'mediawiki.String',
 			'mediawiki.storage',
 			'mediawiki.Title',

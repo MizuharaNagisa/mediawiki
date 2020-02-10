@@ -32,36 +32,60 @@ class ReleaseNotesTest extends MediaWikiTestCase {
 		foreach ( $notesFiles as $index => $fileName ) {
 			$this->assertFileLength( "Release Notes", $fileName );
 		}
+	}
 
-		// Also test the README and similar files
-		$otherFiles = [ "$IP/COPYING", "$IP/FAQ", "$IP/INSTALL", "$IP/README", "$IP/SECURITY" ];
+	public static function provideFilesAtRoot() {
+		global $IP;
 
-		foreach ( $otherFiles as $index => $fileName ) {
-			$this->assertFileLength( "Help", $fileName );
+		$rootFiles = [
+			"COPYING",
+			"FAQ",
+			"HISTORY",
+			"INSTALL",
+			"README",
+			"SECURITY",
+		];
+
+		foreach ( $rootFiles as $rootFile ) {
+			yield "$rootFile file" => [ "$IP/$rootFile" ];
 		}
 	}
 
 	/**
+	 * @dataProvider provideFilesAtRoot
+	 * @coversNothing
 	 */
-	private function assertFileLength( $type, $fileName ) {
-		$file = file( $fileName, FILE_IGNORE_NEW_LINES );
+	public function testRootFilesHaveProperLineLength( $fileName ) {
+		$this->assertFileLength( "Help", $fileName );
+	}
 
-		$this->assertFalse(
-			!$file,
+	private function assertFileLength( $type, $fileName ) {
+		$lines = file( $fileName, FILE_IGNORE_NEW_LINES );
+
+		$this->assertNotFalse(
+			$lines,
 			"$type file '$fileName' is inaccessible."
 		);
 
-		$lines = count( $file );
+		$errors = [];
+		foreach ( $lines as $i => $line ) {
+			$num = $i + 1;
 
-		for ( $i = 0; $i < $lines; $i++ ) {
-			$line = $file[$i];
+			// FILE_IGNORE_NEW_LINES drops the \n at the EOL, so max length is 80 not 81.
+			$max_length = 80;
 
-			$this->assertLessThanOrEqual(
-				// FILE_IGNORE_NEW_LINES drops the \n at the EOL, so max length is 80 not 81.
-				80,
-				mb_strlen( $line ),
-				"$type file '$fileName' line $i is longer than 80 chars:\n\t'$line'"
-			);
+			$length = mb_strlen( $line );
+			if ( $length <= $max_length ) {
+				continue;
+			}
+			$errors[] = "line $num: length $length > $max_length:\n$line";
 		}
+		# Use assertSame() instead of assertEqual(), to show the full line in the diff
+		$this->assertSame(
+			[],
+			$errors,
+			"$type file '$fileName' lines " .
+			"have at most $max_length characters"
+		);
 	}
 }

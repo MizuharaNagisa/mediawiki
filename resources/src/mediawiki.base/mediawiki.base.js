@@ -23,6 +23,13 @@
 		trackHandlers = [],
 		queue;
 
+	// Apply site-level config
+	mw.config.set( require( './config.json' ) );
+
+	// Load other files in the package
+	require( './mediawiki.errorLogger.js' );
+	require( './legacy.wikibits.js' );
+
 	/**
 	 * Object constructor for messages.
 	 *
@@ -103,11 +110,12 @@
 		 * @return {string} Parsed message
 		 */
 		parser: function () {
-			var text;
-			if ( mw.config.get( 'wgUserLanguage' ) === 'qqx' ) {
+			var text = this.map.get( this.key );
+			if (
+				mw.config.get( 'wgUserLanguage' ) === 'qqx' &&
+				( !text || text === '(' + this.key + ')' )
+			) {
 				text = '(' + this.key + '$*)';
-			} else {
-				text = this.map.get( this.key );
 			}
 			return mw.format.apply( null, [ text ].concat( this.parameters ) );
 		},
@@ -236,6 +244,18 @@
 	 */
 
 	/**
+	 * Empty object for third-party libraries, for cases where you don't
+	 * want to add a new global, or the global is bad and needs containment
+	 * or wrapping.
+	 *
+	 * @property
+	 */
+	mw.libs = {};
+
+	// OOUI widgets specific to MediaWiki
+	mw.widgets = {};
+
+	/**
 	 * @inheritdoc mw.inspect#runReports
 	 * @method
 	 */
@@ -335,7 +355,7 @@
 	 * bound.
 	 *
 	 * @param {string} topic Topic name
-	 * @param {Object} [data] Data describing the event, encoded as an object
+	 * @param {Object|number|string} [data] Data describing the event.
 	 */
 	mw.track = function ( topic, data ) {
 		mwLoaderTrack( topic, data );
@@ -346,8 +366,7 @@
 	 * Register a handler for subset of analytic events, specified by topic.
 	 *
 	 * Handlers will be called once for each tracked event, including any events that fired before the
-	 * handler was registered; 'this' is set to a plain object with a 'timeStamp' property indicating
-	 * the exact time at which the event fired, a string 'topic' property naming the event, and a
+	 * handler was registered; 'this' is set to a plain object with a topic' property naming the event, and a
 	 * 'data' property which is an object of event-specific data. The event topic and event data are
 	 * also passed to the callback as the first and second arguments, respectively.
 	 *
@@ -529,14 +548,11 @@
 			 *
 			 * @param {string} name The tag name.
 			 * @param {Object} [attrs] An object with members mapping element names to values
-			 * @param {string|mw.html.Raw|mw.html.Cdata|null} [contents=null] The contents of the element.
+			 * @param {string|mw.html.Raw|null} [contents=null] The contents of the element.
 			 *
 			 *  - string: Text to be escaped.
 			 *  - null: The element is treated as void with short closing form, e.g. `<br/>`.
 			 *  - this.Raw: The raw value is directly included.
-			 *  - this.Cdata: The raw value is directly included. An exception is
-			 *    thrown if it contains any illegal ETAGO delimiter.
-			 *    See <https://www.w3.org/TR/html401/appendix/notes.html#h-B.3.2>.
 			 * @return {string} HTML
 			 */
 			element: function ( name, attrs, contents ) {
@@ -562,29 +578,17 @@
 				}
 				// Regular open tag
 				s += '>';
-				switch ( typeof contents ) {
-					case 'string':
-						// Escaped
-						s += this.escape( contents );
-						break;
-					case 'number':
-					case 'boolean':
-						// Convert to string
-						s += String( contents );
-						break;
-					default:
-						if ( contents instanceof this.Raw ) {
-							// Raw HTML inclusion
-							s += contents.value;
-						} else if ( contents instanceof this.Cdata ) {
-							// CDATA
-							if ( /<\/[a-zA-z]/.test( contents.value ) ) {
-								throw new Error( 'Illegal end tag found in CDATA' );
-							}
-							s += contents.value;
-						} else {
-							throw new Error( 'Invalid type of contents' );
-						}
+				if ( typeof contents === 'string' ) {
+					// Escaped
+					s += this.escape( contents );
+				} else if ( typeof contents === 'number' || typeof contents === 'boolean' ) {
+					// Convert to string
+					s += String( contents );
+				} else if ( contents instanceof this.Raw ) {
+					// Raw HTML inclusion
+					s += contents.value;
+				} else {
+					throw new Error( 'Invalid content type' );
 				}
 				s += '</' + name + '>';
 				return s;
@@ -598,17 +602,6 @@
 			 * @param {string} value
 			 */
 			Raw: function ( value ) {
-				this.value = value;
-			},
-
-			/**
-			 * Wrapper object for CDATA element contents passed to mw.html.element()
-			 *
-			 * @class mw.html.Cdata
-			 * @constructor
-			 * @param {string} value
-			 */
-			Cdata: function ( value ) {
 				this.value = value;
 			}
 		};
@@ -644,7 +637,7 @@
 		var deferred = $.Deferred();
 
 		// Allow calling with a single dependency as a string
-		if ( typeof dependencies === 'string' ) {
+		if ( !Array.isArray( dependencies ) ) {
 			dependencies = [ dependencies ];
 		}
 
@@ -662,11 +655,56 @@
 			return deferred.reject( e ).promise();
 		}
 
-		mw.loader.enqueue( dependencies, function () {
-			deferred.resolve( mw.loader.require );
-		}, deferred.reject );
+		mw.loader.enqueue(
+			dependencies,
+			function () { deferred.resolve( mw.loader.require ); },
+			deferred.reject
+		);
 
 		return deferred.promise();
+	};
+
+	/**
+	 * Load a script by URL.
+	 *
+	 * Example:
+	 *
+	 *     mw.loader.getScript(
+	 *         'https://example.org/x-1.0.0.js'
+	 *     )
+	 *         .then( function () {
+	 *             // Script succeeded. You can use X now.
+	 *         }, function ( e ) {
+	 *             // Script failed. X is not avaiable
+	 *             mw.log.error( e.message ); // => "Failed to load script"
+	 *         } );
+	 *     } );
+	 *
+	 * @member mw.loader
+	 * @param {string} url Script URL
+	 * @return {jQuery.Promise} Resolved when the script is loaded
+	 */
+	mw.loader.getScript = function ( url ) {
+		return $.ajax( url, { dataType: 'script', cache: true } )
+			.catch( function () {
+				throw new Error( 'Failed to load script' );
+			} );
+	};
+
+	// Skeleton user object, extended by the 'mediawiki.user' module.
+	/**
+	 * @class mw.user
+	 * @singleton
+	 */
+	mw.user = {
+		/**
+		 * @property {mw.Map}
+		 */
+		options: new mw.Map(),
+		/**
+		 * @property {mw.Map}
+		 */
+		tokens: new mw.Map()
 	};
 
 	// Alias $j to jQuery for backwards compatibility

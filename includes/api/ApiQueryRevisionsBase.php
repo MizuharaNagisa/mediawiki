@@ -20,10 +20,14 @@
  * @file
  */
 
+use MediaWiki\Content\IContentHandlerFactory;
+use MediaWiki\Logger\LoggerFactory;
+use MediaWiki\MediaWikiServices;
 use MediaWiki\Revision\RevisionAccessException;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\SlotRecord;
-use MediaWiki\MediaWikiServices;
+use Wikimedia\ParamValidator\ParamValidator;
+use Wikimedia\ParamValidator\TypeDef\IntegerDef;
 
 /**
  * A base class for functions common to producing a list of revisions.
@@ -42,7 +46,7 @@ abstract class ApiQueryRevisionsBase extends ApiQueryGeneratorBase {
 	const IS_DELETED = 1; // Whether the field is revision-deleted
 	const CANNOT_VIEW = 2; // Whether the user cannot view the field due to revdel
 
-	/**@}*/
+	/** @} */
 
 	protected $limit, $diffto, $difftotext, $difftotextpst, $expandTemplates, $generateXML,
 		$section, $parseContent, $fetchContent, $contentFormat, $setParsedLimit = true,
@@ -123,10 +127,10 @@ abstract class ApiQueryRevisionsBase extends ApiQueryGeneratorBase {
 
 		$this->limit = $params['limit'];
 
-		if ( !is_null( $params['difftotext'] ) ) {
+		if ( $params['difftotext'] !== null ) {
 			$this->difftotext = $params['difftotext'];
 			$this->difftotextpst = $params['difftotextpst'];
-		} elseif ( !is_null( $params['diffto'] ) ) {
+		} elseif ( $params['diffto'] !== null ) {
 			if ( $params['diffto'] == 'cur' ) {
 				$params['diffto'] = 0;
 			}
@@ -154,8 +158,8 @@ abstract class ApiQueryRevisionsBase extends ApiQueryGeneratorBase {
 			$this->diffto = $params['diffto'];
 		}
 
-		$this->fetchContent = $this->fld_content || !is_null( $this->diffto )
-			|| !is_null( $this->difftotext ) || $this->fld_parsetree;
+		$this->fetchContent = $this->fld_content || $this->diffto !== null
+			|| $this->difftotext !== null || $this->fld_parsetree;
 
 		$smallLimit = false;
 		if ( $this->fetchContent ) {
@@ -165,7 +169,7 @@ abstract class ApiQueryRevisionsBase extends ApiQueryGeneratorBase {
 			$this->parseContent = $params['parse'];
 			if ( $this->parseContent ) {
 				// Must manually initialize unset limit
-				if ( is_null( $this->limit ) ) {
+				if ( $this->limit === null ) {
 					$this->limit = 1;
 				}
 			}
@@ -181,10 +185,15 @@ abstract class ApiQueryRevisionsBase extends ApiQueryGeneratorBase {
 			}
 		}
 
-		if ( is_null( $this->limit ) ) {
-			$this->limit = 10;
-		}
-		$this->validateLimit( 'limit', $this->limit, 1, $userMax, $botMax );
+		$this->limit = $this->getMain()->getParamValidator()->validateValue(
+			$this, 'limit', $this->limit ?? 10, [
+				ParamValidator::PARAM_TYPE => 'limit',
+				IntegerDef::PARAM_MIN => 1,
+				IntegerDef::PARAM_MAX => $userMax,
+				IntegerDef::PARAM_MAX2 => $botMax,
+				IntegerDef::PARAM_IGNORE_RANGE => true,
+			]
+		);
 
 		$this->needSlots = $this->fetchContent || $this->fld_contentmodel ||
 			$this->fld_slotsize || $this->fld_slotsha1;
@@ -229,9 +238,9 @@ abstract class ApiQueryRevisionsBase extends ApiQueryGeneratorBase {
 		$anyHidden = false;
 
 		if ( $this->fld_ids ) {
-			$vals['revid'] = intval( $revision->getId() );
-			if ( !is_null( $revision->getParentId() ) ) {
-				$vals['parentid'] = intval( $revision->getParentId() );
+			$vals['revid'] = (int)$revision->getId();
+			if ( $revision->getParentId() !== null ) {
+				$vals['parentid'] = (int)$revision->getParentId();
 			}
 		}
 
@@ -267,7 +276,7 @@ abstract class ApiQueryRevisionsBase extends ApiQueryGeneratorBase {
 
 		if ( $this->fld_size ) {
 			try {
-				$vals['size'] = intval( $revision->getSize() );
+				$vals['size'] = (int)$revision->getSize();
 			} catch ( RevisionAccessException $e ) {
 				// Back compat: If there's no size, return 0.
 				// @todo: Gergő says to mention T198099 as a "todo" here.
@@ -292,69 +301,27 @@ abstract class ApiQueryRevisionsBase extends ApiQueryGeneratorBase {
 			}
 		}
 
-		if ( $this->fld_roles ) {
-			$vals['roles'] = $revision->getSlotRoles();
-		}
-
-		if ( $this->needSlots ) {
-			$revDel = $this->checkRevDel( $revision, RevisionRecord::DELETED_TEXT );
-			if ( ( $this->fld_slotsha1 || $this->fetchContent ) && ( $revDel & self::IS_DELETED ) ) {
-				$anyHidden = true;
+		try {
+			if ( $this->fld_roles ) {
+				$vals['roles'] = $revision->getSlotRoles();
 			}
-			if ( $this->slotRoles === null ) {
-				try {
-					$slot = $revision->getSlot( SlotRecord::MAIN, RevisionRecord::RAW );
-				} catch ( RevisionAccessException $e ) {
-					// Back compat: If there's no slot, there's no content, so set 'textmissing'
-					// @todo: Gergő says to mention T198099 as a "todo" here.
-					$vals['textmissing'] = true;
-					$slot = null;
-				}
 
-				if ( $slot ) {
-					$content = null;
-					$vals += $this->extractSlotInfo( $slot, $revDel, $content );
-					if ( !empty( $vals['nosuchsection'] ) ) {
-						$this->dieWithError(
-							[
-								'apierror-nosuchsection-what',
-								wfEscapeWikiText( $this->section ),
-								$this->msg( 'revid', $revision->getId() )
-							],
-							'nosuchsection'
-						);
-					}
-					if ( $content ) {
-						$vals += $this->extractDeprecatedContent( $content, $revision );
-					}
+			if ( $this->needSlots ) {
+				$revDel = $this->checkRevDel( $revision, RevisionRecord::DELETED_TEXT );
+				if ( ( $this->fld_slotsha1 || $this->fetchContent ) && ( $revDel & self::IS_DELETED ) ) {
+					$anyHidden = true;
 				}
-			} else {
-				$roles = array_intersect( $this->slotRoles, $revision->getSlotRoles() );
-				$vals['slots'] = [
-					ApiResult::META_KVP_MERGE => true,
-				];
-				foreach ( $roles as $role ) {
-					try {
-						$slot = $revision->getSlot( $role, RevisionRecord::RAW );
-					} catch ( RevisionAccessException $e ) {
-						// Don't error out here so the client can still process other slots/revisions.
-						// @todo: Gergő says to mention T198099 as a "todo" here.
-						$vals['slots'][$role]['missing'] = true;
-						continue;
-					}
-					$content = null;
-					$vals['slots'][$role] = $this->extractSlotInfo( $slot, $revDel, $content );
-					// @todo Move this into extractSlotInfo() (and remove its $content parameter)
-					// when extractDeprecatedContent() is no more.
-					if ( $content ) {
-						$vals['slots'][$role]['contentmodel'] = $content->getModel();
-						$vals['slots'][$role]['contentformat'] = $content->getDefaultFormat();
-						ApiResult::setContentValue( $vals['slots'][$role], 'content', $content->serialize() );
-					}
-				}
-				ApiResult::setArrayType( $vals['slots'], 'kvp', 'role' );
-				ApiResult::setIndexedTagName( $vals['slots'], 'slot' );
+				$vals = array_merge( $vals, $this->extractAllSlotInfo( $revision, $revDel ) );
 			}
+		} catch ( RevisionAccessException $ex ) {
+			// This is here so T212428 doesn't spam the log.
+			// TODO: find out why T212428 happens in the first place!
+			$vals['slotsmissing'] = true;
+
+			LoggerFactory::getInstance( 'api-warning' )->error(
+				'Failed to access revision slots',
+				[ 'revision' => $revision->getId(), 'exception' => $ex, ]
+			);
 		}
 
 		if ( $this->fld_comment || $this->fld_parsedcomment ) {
@@ -397,6 +364,79 @@ abstract class ApiQueryRevisionsBase extends ApiQueryGeneratorBase {
 	}
 
 	/**
+	 * Extracts information about all relevant slots.
+	 *
+	 * @param RevisionRecord $revision
+	 * @param int $revDel
+	 *
+	 * @return array
+	 * @throws ApiUsageException
+	 */
+	private function extractAllSlotInfo( RevisionRecord $revision, $revDel ): array {
+		$vals = [];
+
+		if ( $this->slotRoles === null ) {
+			try {
+				$slot = $revision->getSlot( SlotRecord::MAIN, RevisionRecord::RAW );
+			} catch ( RevisionAccessException $e ) {
+				// Back compat: If there's no slot, there's no content, so set 'textmissing'
+				// @todo: Gergő says to mention T198099 as a "todo" here.
+				$vals['textmissing'] = true;
+				$slot = null;
+			}
+
+			if ( $slot ) {
+				$content = null;
+				$vals += $this->extractSlotInfo( $slot, $revDel, $content );
+				if ( !empty( $vals['nosuchsection'] ) ) {
+					$this->dieWithError(
+						[
+							'apierror-nosuchsection-what',
+							wfEscapeWikiText( $this->section ),
+							$this->msg( 'revid', $revision->getId() )
+						],
+						'nosuchsection'
+					);
+				}
+				if ( $content ) {
+					$vals += $this->extractDeprecatedContent( $content, $revision );
+				}
+			}
+		} else {
+			$roles = array_intersect( $this->slotRoles, $revision->getSlotRoles() );
+			$vals['slots'] = [
+				ApiResult::META_KVP_MERGE => true,
+			];
+			foreach ( $roles as $role ) {
+				try {
+					$slot = $revision->getSlot( $role, RevisionRecord::RAW );
+				} catch ( RevisionAccessException $e ) {
+					// Don't error out here so the client can still process other slots/revisions.
+					// @todo: Gergő says to mention T198099 as a "todo" here.
+					$vals['slots'][$role]['missing'] = true;
+					continue;
+				}
+				$content = null;
+				$vals['slots'][$role] = $this->extractSlotInfo( $slot, $revDel, $content );
+				// @todo Move this into extractSlotInfo() (and remove its $content parameter)
+				// when extractDeprecatedContent() is no more.
+				if ( $content ) {
+					$vals['slots'][$role]['contentmodel'] = $content->getModel();
+					$vals['slots'][$role]['contentformat'] = $content->getDefaultFormat();
+					ApiResult::setContentValue(
+						$vals['slots'][$role],
+						'content',
+						$content->serialize()
+					);
+				}
+			}
+			ApiResult::setArrayType( $vals['slots'], 'kvp', 'role' );
+			ApiResult::setIndexedTagName( $vals['slots'], 'slot' );
+		}
+		return $vals;
+	}
+
+	/**
 	 * Extract information from the SlotRecord
 	 *
 	 * @param SlotRecord $slot
@@ -410,7 +450,7 @@ abstract class ApiQueryRevisionsBase extends ApiQueryGeneratorBase {
 		ApiResult::setArrayType( $vals, 'assoc' );
 
 		if ( $this->fld_slotsize ) {
-			$vals['size'] = intval( $slot->getSize() );
+			$vals['size'] = (int)$slot->getSize();
 		}
 
 		if ( $this->fld_slotsha1 ) {
@@ -446,7 +486,7 @@ abstract class ApiQueryRevisionsBase extends ApiQueryGeneratorBase {
 				// template-added sections don't count and Parser::preprocess()
 				// will have less input
 				if ( $content && $this->section !== false ) {
-					$content = $content->getSection( $this->section, false );
+					$content = $content->getSection( $this->section );
 					if ( !$content ) {
 						$vals['nosuchsection'] = true;
 					}
@@ -464,24 +504,28 @@ abstract class ApiQueryRevisionsBase extends ApiQueryGeneratorBase {
 	 * @return array
 	 */
 	private function extractDeprecatedContent( Content $content, RevisionRecord $revision ) {
-		global $wgParser;
-
 		$vals = [];
 		$title = Title::newFromLinkTarget( $revision->getPageAsLinkTarget() );
 
 		if ( $this->fld_parsetree || ( $this->fld_content && $this->generateXML ) ) {
 			if ( $content->getModel() === CONTENT_MODEL_WIKITEXT ) {
-				$t = $content->getNativeData(); # note: don't set $text
+				/** @var WikitextContent $content */
+				'@phan-var WikitextContent $content';
+				$t = $content->getText(); # note: don't set $text
 
-				$wgParser->startExternalParse(
+				$parser = MediaWikiServices::getInstance()->getParser();
+				$parser->startExternalParse(
 					$title,
 					ParserOptions::newFromContext( $this->getContext() ),
 					Parser::OT_PREPROCESS
 				);
-				$dom = $wgParser->preprocessToDom( $t );
+				$dom = $parser->preprocessToDom( $t );
+				// @phan-suppress-next-line PhanUndeclaredMethodInCallable
 				if ( is_callable( [ $dom, 'saveXML' ] ) ) {
+					// @phan-suppress-next-line PhanUndeclaredMethod
 					$xml = $dom->saveXML();
 				} else {
+					// @phan-suppress-next-line PhanUndeclaredMethod
 					$xml = $dom->__toString();
 				}
 				$vals['parsetree'] = $xml;
@@ -503,9 +547,11 @@ abstract class ApiQueryRevisionsBase extends ApiQueryGeneratorBase {
 
 			if ( $this->expandTemplates && !$this->parseContent ) {
 				if ( $content->getModel() === CONTENT_MODEL_WIKITEXT ) {
-					$text = $content->getNativeData();
+					/** @var WikitextContent $content */
+					'@phan-var WikitextContent $content';
+					$text = $content->getText();
 
-					$text = $wgParser->preprocess(
+					$text = MediaWikiServices::getInstance()->getParser()->preprocess(
 						$text,
 						$title,
 						ParserOptions::newFromContext( $this->getContext() )
@@ -552,7 +598,7 @@ abstract class ApiQueryRevisionsBase extends ApiQueryGeneratorBase {
 			}
 		}
 
-		if ( $content && ( !is_null( $this->diffto ) || !is_null( $this->difftotext ) ) ) {
+		if ( $content && ( $this->diffto !== null || $this->difftotext !== null ) ) {
 			static $n = 0; // Number of uncached diffs we've had
 
 			if ( $n < $this->getConfig()->get( 'APIMaxUncachedDiffs' ) ) {
@@ -561,11 +607,13 @@ abstract class ApiQueryRevisionsBase extends ApiQueryGeneratorBase {
 				$context->setTitle( $title );
 				$handler = $content->getContentHandler();
 
-				if ( !is_null( $this->difftotext ) ) {
+				if ( $this->difftotext !== null ) {
 					$model = $title->getContentModel();
 
 					if ( $this->contentFormat
-						&& !ContentHandler::getForModelID( $model )->isSupportedFormat( $this->contentFormat )
+						&& !$this->getContentHandlerFactory()
+							->getContentHandler( $model )
+							->isSupportedFormat( $this->contentFormat )
 					) {
 						$name = wfEscapeWikiText( $title->getPrefixedText() );
 						$this->addWarning( [ 'apierror-badformat', $this->contentFormat, $model, $name ] );
@@ -710,11 +758,14 @@ abstract class ApiQueryRevisionsBase extends ApiQueryGeneratorBase {
 				ApiBase::PARAM_DEPRECATED => true,
 			],
 			'contentformat' => [
-				ApiBase::PARAM_TYPE => ContentHandler::getAllContentFormats(),
+				ApiBase::PARAM_TYPE => $this->getContentHandlerFactory()->getAllContentFormats(),
 				ApiBase::PARAM_HELP_MSG => 'apihelp-query+revisions+base-param-contentformat',
 				ApiBase::PARAM_DEPRECATED => true,
 			],
 		];
 	}
 
+	private function getContentHandlerFactory(): IContentHandlerFactory {
+		return MediaWikiServices::getInstance()->getContentHandlerFactory();
+	}
 }

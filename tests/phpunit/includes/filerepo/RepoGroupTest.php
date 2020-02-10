@@ -5,19 +5,17 @@
  */
 class RepoGroupTest extends MediaWikiTestCase {
 
-	function testHasForeignRepoNegative() {
+	public function testHasForeignRepoNegative() {
 		$this->setMwGlobals( 'wgForeignFileRepos', [] );
-		RepoGroup::destroySingleton();
-		FileBackendGroup::destroySingleton();
 		$this->assertFalse( RepoGroup::singleton()->hasForeignRepos() );
 	}
 
-	function testHasForeignRepoPositive() {
+	public function testHasForeignRepoPositive() {
 		$this->setUpForeignRepo();
 		$this->assertTrue( RepoGroup::singleton()->hasForeignRepos() );
 	}
 
-	function testForEachForeignRepo() {
+	public function testForEachForeignRepo() {
 		$this->setUpForeignRepo();
 		$fakeCallback = $this->createMock( RepoGroupTestHelper::class );
 		$fakeCallback->expects( $this->once() )->method( 'callback' );
@@ -25,10 +23,8 @@ class RepoGroupTest extends MediaWikiTestCase {
 			[ $fakeCallback, 'callback' ], [ [] ] );
 	}
 
-	function testForEachForeignRepoNone() {
+	public function testForEachForeignRepoNone() {
 		$this->setMwGlobals( 'wgForeignFileRepos', [] );
-		RepoGroup::destroySingleton();
-		FileBackendGroup::destroySingleton();
 		$fakeCallback = $this->createMock( RepoGroupTestHelper::class );
 		$fakeCallback->expects( $this->never() )->method( 'callback' );
 		RepoGroup::singleton()->forEachForeignRepo(
@@ -48,8 +44,6 @@ class RepoGroupTest extends MediaWikiTestCase {
 			'apiThumbCacheExpiry' => 86400,
 			'directory' => $wgUploadDirectory
 		] ] );
-		RepoGroup::destroySingleton();
-		FileBackendGroup::destroySingleton();
 	}
 }
 
@@ -57,7 +51,7 @@ class RepoGroupTest extends MediaWikiTestCase {
  * Quick helper class to use as a mock callback for RepoGroup::singleton()->forEachForeignRepo.
  */
 class RepoGroupTestHelper {
-	function callback( FileRepo $repo, array $foo ) {
+	public function callback( FileRepo $repo, array $foo ) {
 		return true;
 	}
 }

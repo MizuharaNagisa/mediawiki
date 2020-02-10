@@ -23,15 +23,16 @@
  */
 
 use MediaWiki\MediaWikiServices;
-use Wikimedia\Rdbms\IResultWrapper;
 use Wikimedia\Rdbms\Database;
 use Wikimedia\Rdbms\IDatabase;
+use Wikimedia\Rdbms\IResultWrapper;
 
 /**
  * A repository that stores files in the local filesystem and registers them
  * in the wiki's own database. This is the most commonly used repository class.
  *
  * @ingroup FileRepo
+ * @method LocalFile|null newFile( $title, $time = false )
  */
 class LocalRepo extends FileRepo {
 	/** @var callable */
@@ -180,7 +181,11 @@ class LocalRepo extends FileRepo {
 	 * @return string
 	 */
 	public static function getHashFromKey( $key ) {
-		return strtok( $key, '.' );
+		$sha1 = strtok( $key, '.' );
+		if ( is_string( $sha1 ) && strlen( $sha1 ) === 32 && $sha1[0] === '0' ) {
+			$sha1 = substr( $sha1, 1 );
+		}
+		return $sha1;
 	}
 
 	/**
@@ -209,20 +214,16 @@ class LocalRepo extends FileRepo {
 
 				$setOpts += Database::getCacheSetOptions( $dbr );
 
-				if ( $title instanceof Title ) {
-					$row = $dbr->selectRow(
-						[ 'page', 'redirect' ],
-						[ 'rd_namespace', 'rd_title' ],
-						[
-							'page_namespace' => $title->getNamespace(),
-							'page_title' => $title->getDBkey(),
-							'rd_from = page_id'
-						],
-						$method
-					);
-				} else {
-					$row = false;
-				}
+				$row = $dbr->selectRow(
+					[ 'page', 'redirect' ],
+					[ 'rd_namespace', 'rd_title' ],
+					[
+						'page_namespace' => $title->getNamespace(),
+						'page_title' => $title->getDBkey(),
+						'rd_from = page_id'
+					],
+					$method
+				);
 
 				return ( $row && $row->rd_namespace == NS_FILE )
 					? Title::makeTitle( $row->rd_namespace, $row->rd_title )->getDBkey()
@@ -470,16 +471,6 @@ class LocalRepo extends FileRepo {
 	}
 
 	/**
-	 * Alias for getReplicaDB()
-	 *
-	 * @return IDatabase
-	 * @deprecated Since 1.29
-	 */
-	function getSlaveDB() {
-		return $this->getReplicaDB();
-	}
-
-	/**
 	 * Get a connection to the master DB
 	 * @return IDatabase
 	 */
@@ -502,11 +493,10 @@ class LocalRepo extends FileRepo {
 	 * Returns false if the repository's cache is not accessible at this site.
 	 * The parameters are the parts of the key.
 	 *
+	 * @param mixed ...$args
 	 * @return string
 	 */
-	function getSharedCacheKey( /*...*/ ) {
-		$args = func_get_args();
-
+	function getSharedCacheKey( ...$args ) {
 		return $this->wanCache->makeKey( ...$args );
 	}
 

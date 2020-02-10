@@ -13,7 +13,7 @@
  */
 class ApiDeleteTest extends ApiTestCase {
 
-	protected function setUp() {
+	protected function setUp() : void {
 		parent::setUp();
 		$this->tablesUsed = array_merge(
 			$this->tablesUsed,
@@ -67,12 +67,12 @@ class ApiDeleteTest extends ApiTestCase {
 		$jobs->loadParamsAndArgs( null, [ 'quiet' => true ], null );
 		$jobs->execute();
 
-		$this->assertFalse( Title::newFromText( $name )->exists( Title::GAID_FOR_UPDATE ) );
+		$this->assertFalse( Title::newFromText( $name )->exists( Title::READ_LATEST ) );
 	}
 
 	public function testDeleteNonexistent() {
-		$this->setExpectedException( ApiUsageException::class,
-			"The page you specified doesn't exist." );
+		$this->expectException( ApiUsageException::class );
+		$this->expectExceptionMessage( "The page you specified doesn't exist." );
 
 		$this->doApiRequestWithToken( [
 			'action' => 'delete',
@@ -81,8 +81,10 @@ class ApiDeleteTest extends ApiTestCase {
 	}
 
 	public function testDeletionWithoutPermission() {
-		$this->setExpectedException( ApiUsageException::class,
-			'The action you have requested is limited to users in the group:' );
+		$this->expectException( ApiUsageException::class );
+		$this->expectExceptionMessage(
+			'The action you have requested is limited to users in the group:'
+		);
 
 		$name = 'Help:' . ucfirst( __FUNCTION__ );
 
@@ -128,15 +130,17 @@ class ApiDeleteTest extends ApiTestCase {
 			__METHOD__,
 			[],
 			[
-				'change_tag' => [ 'INNER JOIN', 'ct_log_id = log_id' ],
-				'change_tag_def' => [ 'INNER JOIN', 'ctd_id = ct_tag_id' ]
+				'change_tag' => [ 'JOIN', 'ct_log_id = log_id' ],
+				'change_tag_def' => [ 'JOIN', 'ctd_id = ct_tag_id' ]
 			]
 		) );
 	}
 
 	public function testDeleteWithoutTagPermission() {
-		$this->setExpectedException( ApiUsageException::class,
-			'You do not have permission to apply change tags along with your changes.' );
+		$this->expectException( ApiUsageException::class );
+		$this->expectExceptionMessage(
+			'You do not have permission to apply change tags along with your changes.'
+		);
 
 		$name = 'Help:' . ucfirst( __FUNCTION__ );
 
@@ -158,8 +162,8 @@ class ApiDeleteTest extends ApiTestCase {
 	}
 
 	public function testDeleteAbortedByHook() {
-		$this->setExpectedException( ApiUsageException::class,
-			'Deletion aborted by hook. It gave no explanation.' );
+		$this->expectException( ApiUsageException::class );
+		$this->expectExceptionMessage( 'Deletion aborted by hook. It gave no explanation.' );
 
 		$name = 'Help:' . ucfirst( __FUNCTION__ );
 

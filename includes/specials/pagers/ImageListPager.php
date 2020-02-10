@@ -22,9 +22,10 @@
 /**
  * @ingroup Pager
  */
+use MediaWiki\Linker\LinkRenderer;
 use MediaWiki\MediaWikiServices;
-use Wikimedia\Rdbms\IResultWrapper;
 use Wikimedia\Rdbms\FakeResultWrapper;
+use Wikimedia\Rdbms\IResultWrapper;
 
 class ImageListPager extends TablePager {
 
@@ -50,16 +51,17 @@ class ImageListPager extends TablePager {
 
 	protected $mTableName = 'image';
 
-	public function __construct( IContextSource $context, $userName = null, $search = '',
-		$including = false, $showAll = false
+	public function __construct( IContextSource $context, $userName, $search,
+		$including, $showAll, LinkRenderer $linkRenderer
 	) {
 		$this->setContext( $context );
+
 		$this->mIncluding = $including;
 		$this->mShowAll = $showAll;
 
 		if ( $userName !== null && $userName !== '' ) {
 			$nt = Title::makeTitleSafe( NS_USER, $userName );
-			if ( is_null( $nt ) ) {
+			if ( $nt === null ) {
 				$this->outputUserDoesNotExist( $userName );
 			} else {
 				$this->mUserName = $nt->getText();
@@ -95,7 +97,7 @@ class ImageListPager extends TablePager {
 			$this->mDefaultDirection = IndexPager::DIR_DESCENDING;
 		}
 
-		parent::__construct( $context );
+		parent::__construct( $context, $linkRenderer );
 	}
 
 	/**
@@ -133,7 +135,7 @@ class ImageListPager extends TablePager {
 		$prefix = $table === 'image' ? 'img' : 'oi';
 		$conds = [];
 
-		if ( !is_null( $this->mUserName ) ) {
+		if ( $this->mUserName !== null ) {
 			// getQueryInfoReal() should have handled the tables and joins.
 			$dbr = wfGetDB( DB_REPLICA );
 			$actorWhere = ActorMigration::newMigration()->getWhere(
@@ -181,7 +183,7 @@ class ImageListPager extends TablePager {
 				'thumb' => $this->msg( 'listfiles_thumb' )->text(),
 				'img_size' => $this->msg( 'listfiles_size' )->text(),
 			];
-			if ( is_null( $this->mUserName ) ) {
+			if ( $this->mUserName === null ) {
 				// Do not show username if filtering by username
 				$this->mFieldNames['img_user_text'] = $this->msg( 'listfiles_user' )->text();
 			}
@@ -212,7 +214,7 @@ class ImageListPager extends TablePager {
 		 * In particular that means we cannot sort by timestamp when not filtering
 		 * by user and including old images in the results. Which is sad.
 		 */
-		if ( $this->getConfig()->get( 'MiserMode' ) && !is_null( $this->mUserName ) ) {
+		if ( $this->getConfig()->get( 'MiserMode' ) && $this->mUserName !== null ) {
 			// If we're sorting by user, the index only supports sorting by time.
 			if ( $field === 'img_timestamp' ) {
 				return true;
@@ -269,10 +271,8 @@ class ImageListPager extends TablePager {
 				}
 			}
 			$fields['top'] = $dbr->addQuotes( 'no' );
-		} else {
-			if ( $this->mShowAll ) {
-				$fields['top'] = $dbr->addQuotes( 'yes' );
-			}
+		} elseif ( $this->mShowAll ) {
+			$fields['top'] = $dbr->addQuotes( 'yes' );
 		}
 		$fields['thumb'] = $prefix . '_name';
 
@@ -321,15 +321,15 @@ class ImageListPager extends TablePager {
 	 *   is descending, so I renamed it to $asc here.
 	 * @param int $offset
 	 * @param int $limit
-	 * @param bool $asc
-	 * @return array
+	 * @param bool $order IndexPager::QUERY_ASCENDING or IndexPager::QUERY_DESCENDING
+	 * @return FakeResultWrapper
 	 * @throws MWException
 	 */
-	function reallyDoQuery( $offset, $limit, $asc ) {
+	function reallyDoQuery( $offset, $limit, $order ) {
 		$prevTableName = $this->mTableName;
 		$this->mTableName = 'image';
 		list( $tables, $fields, $conds, $fname, $options, $join_conds ) =
-			$this->buildQueryInfo( $offset, $limit, $asc );
+			$this->buildQueryInfo( $offset, $limit, $order );
 		$imageRes = $this->mDb->select( $tables, $fields, $conds, $fname, $options, $join_conds );
 		$this->mTableName = $prevTableName;
 
@@ -347,13 +347,13 @@ class ImageListPager extends TablePager {
 		$this->mIndexField = 'oi_' . substr( $this->mIndexField, 4 );
 
 		list( $tables, $fields, $conds, $fname, $options, $join_conds ) =
-			$this->buildQueryInfo( $offset, $limit, $asc );
+			$this->buildQueryInfo( $offset, $limit, $order );
 		$oldimageRes = $this->mDb->select( $tables, $fields, $conds, $fname, $options, $join_conds );
 
 		$this->mTableName = $prevTableName;
 		$this->mIndexField = $oldIndex;
 
-		return $this->combineResult( $imageRes, $oldimageRes, $limit, $asc );
+		return $this->combineResult( $imageRes, $oldimageRes, $limit, $order );
 	}
 
 	/**
@@ -382,14 +382,12 @@ class ImageListPager extends TablePager {
 					$resultArray[] = $topRes2;
 					$topRes2 = $res2->next();
 				}
+			} elseif ( !$ascending ) {
+				$resultArray[] = $topRes2;
+				$topRes2 = $res2->next();
 			} else {
-				if ( !$ascending ) {
-					$resultArray[] = $topRes2;
-					$topRes2 = $res2->next();
-				} else {
-					$resultArray[] = $topRes1;
-					$topRes1 = $res1->next();
-				}
+				$resultArray[] = $topRes1;
+				$topRes1 = $res1->next();
 			}
 		}
 
@@ -407,7 +405,7 @@ class ImageListPager extends TablePager {
 	}
 
 	function getDefaultSort() {
-		if ( $this->mShowAll && $this->getConfig()->get( 'MiserMode' ) && is_null( $this->mUserName ) ) {
+		if ( $this->mShowAll && $this->getConfig()->get( 'MiserMode' ) && $this->mUserName === null ) {
 			// Unfortunately no index on oi_timestamp.
 			return 'img_name';
 		} else {
@@ -440,7 +438,8 @@ class ImageListPager extends TablePager {
 	 * @throws MWException
 	 */
 	function formatValue( $field, $value ) {
-		$linkRenderer = MediaWikiServices::getInstance()->getLinkRenderer();
+		$services = MediaWikiServices::getInstance();
+		$linkRenderer = $this->getLinkRenderer();
 		switch ( $field ) {
 			case 'thumb':
 				$opt = [ 'time' => wfTimestamp( TS_MW, $this->mCurrentRow->img_timestamp ) ];
@@ -472,15 +471,18 @@ class ImageListPager extends TablePager {
 						$filePage,
 						$filePage->getText()
 					);
-					$download = Xml::element( 'a',
-						[ 'href' => wfLocalFile( $filePage )->getUrl() ],
+					$download = Xml::element(
+						'a',
+						[ 'href' => $services->getRepoGroup()->getLocalRepo()->newFile( $filePage )->getUrl() ],
 						$imgfile
 					);
 					$download = $this->msg( 'parentheses' )->rawParams( $download )->escaped();
 
 					// Add delete links if allowed
 					// From https://github.com/Wikia/app/pull/3859
-					if ( $filePage->userCan( 'delete', $this->getUser() ) ) {
+					$permissionManager = $services->getPermissionManager();
+
+					if ( $permissionManager->userCan( 'delete', $this->getUser(), $filePage ) ) {
 						$deleteMsg = $this->msg( 'listfiles-delete' )->text();
 
 						$delete = $linkRenderer->makeKnownLink(
@@ -517,7 +519,7 @@ class ImageListPager extends TablePager {
 				return $this->getLanguage()->formatNum( intval( $value ) + 1 );
 			case 'top':
 				// Messages: listfiles-latestversion-yes, listfiles-latestversion-no
-				return $this->msg( 'listfiles-latestversion-' . $value );
+				return $this->msg( 'listfiles-latestversion-' . $value )->escaped();
 			default:
 				throw new MWException( "Unknown field '$field'" );
 		}
@@ -596,7 +598,7 @@ class ImageListPager extends TablePager {
 
 	function getPagingQueries() {
 		$queries = parent::getPagingQueries();
-		if ( !is_null( $this->mUserName ) ) {
+		if ( $this->mUserName !== null ) {
 			# Append the username to the query string
 			foreach ( $queries as &$query ) {
 				if ( $query !== false ) {
@@ -610,7 +612,7 @@ class ImageListPager extends TablePager {
 
 	function getDefaultQuery() {
 		$queries = parent::getDefaultQuery();
-		if ( !isset( $queries['user'] ) && !is_null( $this->mUserName ) ) {
+		if ( !isset( $queries['user'] ) && $this->mUserName !== null ) {
 			$queries['user'] = $this->mUserName;
 		}
 

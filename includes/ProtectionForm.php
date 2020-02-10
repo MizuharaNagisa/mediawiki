@@ -23,6 +23,7 @@
  * @file
  */
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Permissions\PermissionManager;
 
 /**
  * Handles the page protection UI and backend
@@ -58,10 +59,22 @@ class ProtectionForm {
 	/** @var array Map of action to the expiry time of the existing protection */
 	protected $mExistingExpiry = [];
 
+	/** @var Article */
+	protected $mArticle;
+
+	/** @var Title */
+	protected $mTitle;
+
+	/** @var bool */
+	protected $disabled;
+
+	/** @var array */
+	protected $disabledAttrib;
+
 	/** @var IContextSource */
 	private $mContext;
 
-	function __construct( Article $article ) {
+	public function __construct( Article $article ) {
 		// Set instance variables.
 		$this->mArticle = $article;
 		$this->mTitle = $article->getTitle();
@@ -73,12 +86,14 @@ class ProtectionForm {
 		$this->mPermErrors = $this->mTitle->getUserPermissionsErrors(
 			'protect',
 			$this->mContext->getUser(),
-			$this->mContext->getRequest()->wasPosted() ? 'secure' : 'full' // T92357
+			$this->mContext->getRequest()->wasPosted()
+				? PermissionManager::RIGOR_SECURE
+				: PermissionManager::RIGOR_FULL // T92357
 		);
 		if ( wfReadOnly() ) {
 			$this->mPermErrors[] = [ 'readonlytext', wfReadOnlyReason() ];
 		}
-		$this->disabled = $this->mPermErrors != [];
+		$this->disabled = $this->mPermErrors !== [];
 		$this->disabledAttrib = $this->disabled
 			? [ 'disabled' => 'disabled' ]
 			: [];
@@ -90,7 +105,7 @@ class ProtectionForm {
 	 * Loads the current state of protection into the object.
 	 */
 	function loadData() {
-		$levels = MWNamespace::getRestrictionLevels(
+		$levels = MediaWikiServices::getInstance()->getPermissionManager()->getNamespaceRestrictionLevels(
 			$this->mTitle->getNamespace(), $this->mContext->getUser()
 		);
 		$this->mCascade = $this->mTitle->areRestrictionsCascading();
@@ -179,7 +194,11 @@ class ProtectionForm {
 	 * Main entry point for action=protect and action=unprotect
 	 */
 	function execute() {
-		if ( MWNamespace::getRestrictionLevels( $this->mTitle->getNamespace() ) === [ '' ] ) {
+		if (
+			MediaWikiServices::getInstance()->getPermissionManager()->getNamespaceRestrictionLevels(
+				$this->mTitle->getNamespace()
+			) === [ '' ]
+		) {
 			throw new ErrorPageError( 'protect-badnamespace-title', 'protect-badnamespace-text' );
 		}
 
@@ -196,7 +215,7 @@ class ProtectionForm {
 	/**
 	 * Show the input form with optional error message
 	 *
-	 * @param string|null $err Error message or null if there's no error
+	 * @param string|string[]|null $err Error message or null if there's no error
 	 */
 	function show( $err = null ) {
 		$out = $this->mContext->getOutput();
@@ -317,7 +336,9 @@ class ProtectionForm {
 		);
 
 		if ( !$status->isOK() ) {
-			$this->show( $out->parseInlineAsInterface( $status->getWikiText() ) );
+			$this->show( $out->parseInlineAsInterface(
+				$status->getWikiText( false, false, $this->mContext->getLanguage() )
+			) );
 			return false;
 		}
 
@@ -353,12 +374,9 @@ class ProtectionForm {
 		$user = $context->getUser();
 		$output = $context->getOutput();
 		$lang = $context->getLanguage();
-		$conf = $context->getConfig();
-		$cascadingRestrictionLevels = $conf->get( 'CascadingRestrictionLevels' );
 		$out = '';
 		if ( !$this->disabled ) {
 			$output->addModules( 'mediawiki.legacy.protect' );
-			$output->addJsConfigVars( 'wgCascadeableLevels', $cascadingRestrictionLevels );
 			$out .= Xml::openElement( 'form', [ 'method' => 'post',
 				'action' => $this->mTitle->getLocalURL( 'action=protect' ),
 				'id' => 'mw-Protect-Form' ] );
@@ -552,7 +570,8 @@ class ProtectionForm {
 		}
 		$out .= Xml::closeElement( 'fieldset' );
 
-		if ( $user->isAllowed( 'editinterface' ) ) {
+		if ( MediaWikiServices::getInstance()->getPermissionManager()
+				->userHasRight( $user, 'editinterface' ) ) {
 			$linkRenderer = MediaWikiServices::getInstance()->getLinkRenderer();
 			$link = $linkRenderer->makeKnownLink(
 				$context->msg( 'protect-dropdown' )->inContentLanguage()->getTitle(),
@@ -584,9 +603,12 @@ class ProtectionForm {
 	function buildSelector( $action, $selected ) {
 		// If the form is disabled, display all relevant levels. Otherwise,
 		// just show the ones this user can use.
-		$levels = MWNamespace::getRestrictionLevels( $this->mTitle->getNamespace(),
-			$this->disabled ? null : $this->mContext->getUser()
-		);
+		$levels = MediaWikiServices::getInstance()
+				->getPermissionManager()
+				->getNamespaceRestrictionLevels(
+					$this->mTitle->getNamespace(),
+					$this->disabled ? null : $this->mContext->getUser()
+				);
 
 		$id = 'mwProtect-level-' . $action;
 
@@ -625,10 +647,9 @@ class ProtectionForm {
 	/**
 	 * Show protection long extracts for this page
 	 *
-	 * @param OutputPage &$out
-	 * @private
+	 * @param OutputPage $out
 	 */
-	function showLogExtract( &$out ) {
+	private function showLogExtract( OutputPage $out ) {
 		# Show relevant lines from the protection log:
 		$protectLogPage = new LogPage( 'protect' );
 		$out->addHTML( Xml::element( 'h2', null, $protectLogPage->getName()->text() ) );

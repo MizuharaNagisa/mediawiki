@@ -189,6 +189,26 @@
 			'HTMLElement[] arrays are preserved as raw html'
 		);
 
+		mw.messages.set( 'simple-double-replace', 'Foo 1: $1 2: $1' );
+		assert.strictEqual(
+			formatParse( 'simple-double-replace', 'bar' ),
+			'Foo 1: bar 2: bar',
+			'string params can be used multiple times'
+		);
+
+		mw.messages.set( 'object-double-replace', 'Foo 1: $1 2: $1' );
+		assert.strictEqual(
+			formatParse( 'object-double-replace', $( '<div class="bar">&gt;</div>' ) ),
+			'Foo 1: <div class="bar">&gt;</div> 2: <div class="bar">&gt;</div>',
+			'jQuery objects can be used multiple times'
+		);
+
+		assert.strictEqual(
+			formatParse( 'object-double-replace', $( '<div class="bar">&gt;</div>' ).get( 0 ) ),
+			'Foo 1: <div class="bar">&gt;</div> 2: <div class="bar">&gt;</div>',
+			'HTMLElement can be used multiple times'
+		);
+
 		assert.strictEqual(
 			formatParse( 'external-link-replace', 'http://example.org/?x=y&z' ),
 			'Foo <a href="http://example.org/?x=y&amp;z">bar</a>',
@@ -765,6 +785,7 @@
 			var message;
 			outerCalled = false;
 			innerCalled = false;
+			// eslint-disable-next-line mediawiki/msg-doc
 			message = mw.message( key );
 			message[ format ]();
 			assert.strictEqual( outerCalled, shouldCall, 'Outer function called for ' + key );
@@ -1212,6 +1233,7 @@
 		for ( i = 0; i < cases.length; i++ ) {
 			mw.messages.set( cases[ i ].key, cases[ i ].msg );
 			assert.strictEqual(
+				// eslint-disable-next-line mediawiki/msg-doc
 				mw.message( cases[ i ].key, $( '<b>' ).text( 'x' ) ).parse(),
 				cases[ i ].expected,
 				cases[ i ].key
@@ -1281,8 +1303,16 @@
 		);
 
 		mw.config.set( 'wgUserLanguage', 'qqx' );
+
 		$bar = $( '<b>' ).text( 'bar' );
-		assert.strictEqual( mw.message( 'foo', $bar, 'baz' ).parse(), '(foo: <b>bar</b>, baz)', 'qqx message with parameters' );
+		mw.messages.set( 'qqx-message', '(qqx-message)' );
+		mw.messages.set( 'non-qqx-message', '<b>hello world</b>' );
+
+		assert.strictEqual( mw.message( 'missing-message' ).parse(), '(missing-message)', 'qqx message (missing)' );
+		assert.strictEqual( mw.message( 'missing-message', $bar, 'baz' ).parse(), '(missing-message: <b>bar</b>, baz)', 'qqx message (missing) with parameters' );
+		assert.strictEqual( mw.message( 'qqx-message' ).parse(), '(qqx-message)', 'qqx message (defined)' );
+		assert.strictEqual( mw.message( 'qqx-message', $bar, 'baz' ).parse(), '(qqx-message: <b>bar</b>, baz)', 'qqx message (defined) with parameters' );
+		assert.strictEqual( mw.message( 'non-qqx-message' ).parse(), '<b>hello world</b>', 'non-qqx message in qqx mode' );
 	} );
 
 	QUnit.test( 'setParserDefaults', function ( assert ) {

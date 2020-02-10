@@ -20,6 +20,8 @@
  * @file
  */
 
+use MediaWiki\MediaWikiServices;
+
 /**
  * This action allows users to get their watchlist items in RSS/Atom formats.
  * When executed, it performs a nested call to the API to get the needed data,
@@ -61,7 +63,7 @@ class ApiFeedWatchlist extends ApiBase {
 			}
 
 			// limit to the number of hours going from now back
-			$endTime = wfTimestamp( TS_MW, time() - intval( $params['hours'] * 60 * 60 ) );
+			$endTime = wfTimestamp( TS_MW, time() - (int)$params['hours'] * 60 * 60 );
 
 			// Prepare parameters for nested request
 			$fauxReqArr = [
@@ -102,10 +104,8 @@ class ApiFeedWatchlist extends ApiBase {
 				$fauxReqArr['wlallrev'] = '';
 			}
 
-			// Create the request
 			$fauxReq = new FauxRequest( $fauxReqArr );
 
-			// Execute
 			$module = new ApiMain( $fauxReq );
 			$module->execute();
 
@@ -150,6 +150,7 @@ class ApiFeedWatchlist extends ApiBase {
 
 			if ( $e instanceof ApiUsageException ) {
 				foreach ( $e->getStatusValue()->getErrors() as $error ) {
+					// @phan-suppress-next-line PhanUndeclaredMethod
 					$msg = ApiMessage::create( $error )
 						->inLanguage( $this->getLanguage() );
 					$errorTitle = $this->msg( 'api-feed-error-title', $msg->getApiCode() );
@@ -211,8 +212,8 @@ class ApiFeedWatchlist extends ApiBase {
 		if ( $this->linkToSections && $comment !== null &&
 			preg_match( '!(.*)/\*\s*(.*?)\s*\*/(.*)!', $comment, $matches )
 		) {
-			global $wgParser;
-			$titleUrl .= $wgParser->guessSectionNameFromWikiText( $matches[ 2 ] );
+			$titleUrl .= MediaWikiServices::getInstance()->getParser()
+				->guessSectionNameFromWikiText( $matches[ 2 ] );
 		}
 
 		$timestamp = $info['timestamp'];
@@ -262,6 +263,7 @@ class ApiFeedWatchlist extends ApiBase {
 			'excludeuser' => 'wlexcludeuser',
 		];
 		if ( $flags ) {
+			// @phan-suppress-next-line PhanParamTooMany
 			$wlparams = $this->getWatchlistModule()->getAllowedParams( $flags );
 			foreach ( $copyParams as $from => $to ) {
 				$p = $wlparams[$from];

@@ -18,7 +18,7 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup Deployment
+ * @ingroup Installer
  */
 
 use Wikimedia\Rdbms\DatabaseSqlite;
@@ -26,7 +26,7 @@ use Wikimedia\Rdbms\DatabaseSqlite;
 /**
  * Class for handling updates to Sqlite databases.
  *
- * @ingroup Deployment
+ * @ingroup Installer
  * @since 1.17
  */
 class SqliteUpdater extends DatabaseUpdater {
@@ -47,9 +47,9 @@ class SqliteUpdater extends DatabaseUpdater {
 			// 1.16
 			[ 'addTable', 'user_properties', 'patch-user_properties.sql' ],
 			[ 'addTable', 'log_search', 'patch-log_search.sql' ],
-			[ 'addField', 'logging', 'log_user_text', 'patch-log_user_text.sql' ],
+			[ 'ifNoActorTable', 'addField', 'logging', 'log_user_text', 'patch-log_user_text.sql' ],
 			# listed separately from the previous update because 1.16 was released without this update
-			[ 'doLogUsertextPopulation' ],
+			[ 'ifNoActorTable', 'doLogUsertextPopulation' ],
 			[ 'doLogSearchPopulation' ],
 			[ 'addTable', 'l10n_cache', 'patch-l10n_cache.sql' ],
 			[ 'dropIndex', 'change_tag', 'ct_rc_id', 'patch-change_tag-indexes.sql' ],
@@ -103,7 +103,6 @@ class SqliteUpdater extends DatabaseUpdater {
 			[ 'addField', 'filearchive', 'fa_sha1', 'patch-fa_sha1.sql' ],
 			[ 'addField', 'job', 'job_token', 'patch-job_token.sql' ],
 			[ 'addField', 'job', 'job_attempts', 'patch-job_attempts.sql' ],
-			[ 'doEnableProfiling' ],
 			[ 'addField', 'uploadstash', 'us_props', 'patch-uploadstash-us_props.sql' ],
 			[ 'modifyField', 'user_groups', 'ug_group', 'patch-ug_group-length-increase-255.sql' ],
 			[ 'modifyField', 'user_former_groups', 'ufg_group',
@@ -119,9 +118,10 @@ class SqliteUpdater extends DatabaseUpdater {
 
 			// 1.23
 			[ 'addField', 'recentchanges', 'rc_source', 'patch-rc_source.sql' ],
-			[ 'addIndex', 'logging', 'log_user_text_type_time',
+			[ 'ifNoActorTable', 'addIndex', 'logging', 'log_user_text_type_time',
 				'patch-logging_user_text_type_time_index.sql' ],
-			[ 'addIndex', 'logging', 'log_user_text_time', 'patch-logging_user_text_time_index.sql' ],
+			[ 'ifNoActorTable', 'addIndex', 'logging', 'log_user_text_time',
+				'patch-logging_user_text_time_index.sql' ],
 			[ 'addField', 'page', 'page_links_updated', 'patch-page_links_updated.sql' ],
 			[ 'addField', 'user', 'user_password_expires', 'patch-user_password_expire.sql' ],
 
@@ -159,7 +159,7 @@ class SqliteUpdater extends DatabaseUpdater {
 			// 1.29
 			[ 'addField', 'externallinks', 'el_index_60', 'patch-externallinks-el_index_60.sql' ],
 			[ 'addField', 'user_groups', 'ug_expiry', 'patch-user_groups-ug_expiry.sql' ],
-			[ 'addIndex', 'image', 'img_user_timestamp', 'patch-image-user-index-2.sql' ],
+			[ 'ifNoActorTable', 'addIndex', 'image', 'img_user_timestamp', 'patch-image-user-index-2.sql' ],
 
 			// 1.30
 			[ 'modifyField', 'image', 'img_media_type', 'patch-add-3d.sql' ],
@@ -185,6 +185,19 @@ class SqliteUpdater extends DatabaseUpdater {
 			[ 'renameIndex', 'user_properties', 'user_properties_user_property', 'PRIMARY', false,
 				'patch-user_properties-fix-pk.sql' ],
 			[ 'addTable', 'comment', 'patch-comment-table.sql' ],
+			[ 'addTable', 'revision_comment_temp', 'patch-revision_comment_temp-table.sql' ],
+			// image_comment_temp is no longer needed when upgrading to MW 1.31 or newer,
+			// as it is dropped later in the update process as part of 'migrateImageCommentTemp'.
+			// File kept on disk and the updater entry here for historical purposes.
+			// [ 'addTable', 'image_comment_temp', 'patch-image_comment_temp-table.sql' ],
+			[ 'addField', 'archive', 'ar_comment_id', 'patch-archive-ar_comment_id.sql' ],
+			[ 'modifyField', 'image', 'img_description', 'patch-image-img_description-default.sql' ],
+			[ 'addField', 'ipblocks', 'ipb_reason_id', 'patch-ipblocks-ipb_reason_id.sql' ],
+			[ 'addField', 'logging', 'log_comment_id', 'patch-logging-log_comment_id.sql' ],
+			[ 'addField', 'oldimage', 'oi_description_id', 'patch-oldimage-oi_description_id.sql' ],
+			[ 'addField', 'protected_titles', 'pt_reason_id', 'patch-protected_titles-pt_reason_id.sql' ],
+			[ 'addField', 'recentchanges', 'rc_comment_id', 'patch-recentchanges-rc_comment_id.sql' ],
+			[ 'modifyField', 'revision', 'rev_comment', 'patch-revision-rev_comment-default.sql' ],
 
 			// This field was added in 1.31, but is put here so it can be used by 'migrateComments'
 			[ 'addField', 'image', 'img_description_id', 'patch-image-img_description_id.sql' ],
@@ -202,7 +215,14 @@ class SqliteUpdater extends DatabaseUpdater {
 			[ 'addTable', 'slot_roles', 'patch-slot_roles.sql' ],
 			[ 'migrateArchiveText' ],
 			[ 'addTable', 'actor', 'patch-actor-table.sql' ],
+			[ 'addField', 'archive', 'ar_actor', 'patch-archive-ar_actor.sql' ],
+			[ 'addTable', 'revision_actor_temp', 'patch-revision_actor_temp-table.sql' ],
+			[ 'addField', 'ipblocks', 'ipb_by_actor', 'patch-ipblocks-ipb_by_actor.sql' ],
+			[ 'addField', 'image', 'img_actor', 'patch-image-img_actor.sql' ],
+			[ 'addField', 'oldimage', 'oi_actor', 'patch-oldimage-oi_actor.sql' ],
 			[ 'addField', 'filearchive', 'fa_actor', 'patch-filearchive-fa_actor.sql' ],
+			[ 'addField', 'recentchanges', 'rc_actor', 'patch-recentchanges-rc_actor.sql' ],
+			[ 'addField', 'logging', 'log_actor', 'patch-logging-log_actor.sql' ],
 			[ 'migrateActors' ],
 			[ 'modifyField', 'revision', 'rev_text_id', 'patch-rev_text_id-default.sql' ],
 			[ 'modifyTable', 'site_stats', 'patch-site_stats-modify.sql' ],
@@ -249,6 +269,18 @@ class SqliteUpdater extends DatabaseUpdater {
 			[ 'dropField', 'recentchanges', 'rc_comment', 'patch-recentchanges-drop-rc_comment.sql' ],
 			[ 'dropField', 'logging', 'log_comment', 'patch-logging-drop-log_comment.sql' ],
 			[ 'dropField', 'protected_titles', 'pt_reason', 'patch-protected_titles-drop-pt_reason.sql' ],
+
+			// 1.34
+			[ 'dropField', 'archive', 'ar_user', 'patch-archive-drop-ar_user.sql' ],
+			[ 'dropField', 'ipblocks', 'ipb_by', 'patch-ipblocks-drop-ipb_by.sql' ],
+			[ 'dropField', 'image', 'img_user', 'patch-image-drop-img_user.sql' ],
+			[ 'dropField', 'oldimage', 'oi_user', 'patch-oldimage-drop-oi_user.sql' ],
+			[ 'dropField', 'filearchive', 'fa_user', 'patch-filearchive-drop-fa_user.sql' ],
+			[ 'dropField', 'recentchanges', 'rc_user', 'patch-recentchanges-drop-rc_user.sql' ],
+			[ 'dropField', 'logging', 'log_user', 'patch-logging-drop-log_user.sql' ],
+
+			// 1.35
+			[ 'addTable', 'watchlist_expiry', 'patch-watchlist_expiry.sql' ],
 		];
 	}
 

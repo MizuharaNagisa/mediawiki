@@ -1,8 +1,6 @@
 <?php
 
 /**
- * Tests for the Site class.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -40,7 +38,7 @@ class SiteTest extends MediaWikiTestCase {
 	 * @covers Site::getInterwikiIds
 	 */
 	public function testGetInterwikiIds( Site $site ) {
-		$this->assertInternalType( 'array', $site->getInterwikiIds() );
+		$this->assertIsArray( $site->getInterwikiIds() );
 	}
 
 	/**
@@ -49,7 +47,7 @@ class SiteTest extends MediaWikiTestCase {
 	 * @covers Site::getNavigationIds
 	 */
 	public function testGetNavigationIds( Site $site ) {
-		$this->assertInternalType( 'array', $site->getNavigationIds() );
+		$this->assertIsArray( $site->getNavigationIds() );
 	}
 
 	/**
@@ -78,7 +76,10 @@ class SiteTest extends MediaWikiTestCase {
 	 * @covers Site::getLanguageCode
 	 */
 	public function testGetLanguageCode( Site $site ) {
-		$this->assertTypeOrValue( 'string', $site->getLanguageCode(), null );
+		$this->assertThat(
+			$site->getLanguageCode(),
+			$this->logicalOr( $this->isNull(), $this->isType( 'string' ) )
+		);
 	}
 
 	/**
@@ -97,7 +98,7 @@ class SiteTest extends MediaWikiTestCase {
 	 * @covers Site::normalizePageName
 	 */
 	public function testNormalizePageName( Site $site ) {
-		$this->assertInternalType( 'string', $site->normalizePageName( 'Foobar' ) );
+		$this->assertIsString( $site->normalizePageName( 'Foobar' ) );
 	}
 
 	/**
@@ -106,7 +107,10 @@ class SiteTest extends MediaWikiTestCase {
 	 * @covers Site::getGlobalId
 	 */
 	public function testGetGlobalId( Site $site ) {
-		$this->assertTypeOrValue( 'string', $site->getGlobalId(), null );
+		$this->assertThat(
+			$site->getGlobalId(),
+			$this->logicalOr( $this->isNull(), $this->isType( 'string' ) )
+		);
 	}
 
 	/**
@@ -125,7 +129,7 @@ class SiteTest extends MediaWikiTestCase {
 	 * @covers Site::getType
 	 */
 	public function testGetType( Site $site ) {
-		$this->assertInternalType( 'string', $site->getType() );
+		$this->assertIsString( $site->getType() );
 	}
 
 	/**
@@ -134,9 +138,18 @@ class SiteTest extends MediaWikiTestCase {
 	 * @covers Site::getPath
 	 */
 	public function testGetPath( Site $site ) {
-		$this->assertTypeOrValue( 'string', $site->getPath( 'page_path' ), null );
-		$this->assertTypeOrValue( 'string', $site->getPath( 'file_path' ), null );
-		$this->assertTypeOrValue( 'string', $site->getPath( 'foobar' ), null );
+		$this->assertThat(
+			$site->getPath( 'page_path' ),
+			$this->logicalOr( $this->isNull(), $this->isType( 'string' ) )
+		);
+		$this->assertThat(
+			$site->getPath( 'file_path' ),
+			$this->logicalOr( $this->isNull(), $this->isType( 'string' ) )
+		);
+		$this->assertThat(
+			$site->getPath( 'foobar' ),
+			$this->logicalOr( $this->isNull(), $this->isType( 'string' ) )
+		);
 	}
 
 	/**
@@ -145,7 +158,7 @@ class SiteTest extends MediaWikiTestCase {
 	 * @covers Site::getAllPaths
 	 */
 	public function testGetAllPaths( Site $site ) {
-		$this->assertInternalType( 'array', $site->getAllPaths() );
+		$this->assertIsArray( $site->getAllPaths() );
 	}
 
 	/**
@@ -163,7 +176,7 @@ class SiteTest extends MediaWikiTestCase {
 
 		$this->assertEquals( $count + 2, count( $site->getAllPaths() ) );
 
-		$this->assertInternalType( 'string', $site->getPath( 'foobar' ) );
+		$this->assertIsString( $site->getPath( 'foobar' ) );
 		$this->assertEquals( 'http://www.wikidata.org/foo/$1', $site->getPath( 'spam' ) );
 
 		$site->removePath( 'spam' );
@@ -224,7 +237,7 @@ class SiteTest extends MediaWikiTestCase {
 		$path = '//acme.com/'; // protocol-relative URL
 		$site->setPath( $type, $path );
 
-		$this->assertEquals( '', $site->getProtocol() );
+		$this->assertSame( '', $site->getProtocol() );
 	}
 
 	public static function provideGetPageUrl() {
@@ -263,17 +276,9 @@ class SiteTest extends MediaWikiTestCase {
 		//      is true for Site but not guaranteed for subclasses.
 		//      Subclasses need to override this test case appropriately.
 		$site->setLinkPath( $path );
-		$this->assertContains( $path, $site->getPageUrl() );
+		$this->assertStringContainsString( $path, $site->getPageUrl() );
 
-		$this->assertContains( $expected, $site->getPageUrl( $page ) );
-	}
-
-	protected function assertTypeOrFalse( $type, $value ) {
-		if ( $value === false ) {
-			$this->assertTrue( true );
-		} else {
-			$this->assertInternalType( $type, $value );
-		}
+		$this->assertStringContainsString( $expected, $site->getPageUrl( $page ) );
 	}
 
 	/**

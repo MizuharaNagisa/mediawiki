@@ -1,12 +1,12 @@
 /*!
- * OOUI v0.30.2
+ * OOUI v0.36.4
  * https://www.mediawiki.org/wiki/OOUI
  *
- * Copyright 2011–2019 OOUI Team and other contributors.
+ * Copyright 2011–2020 OOUI Team and other contributors.
  * Released under the MIT license
  * http://oojs.mit-license.org
  *
- * Date: 2019-01-23T01:14:27Z
+ * Date: 2020-02-05T19:37:21Z
  */
 .oo-ui-element-hidden {
   display: none !important;
@@ -89,6 +89,14 @@
 .oo-ui-buttonElement-frameless > .oo-ui-buttonElement-button:focus > .oo-ui-labelElement-label {
   color: #000;
 }
+.oo-ui-buttonElement-frameless > .oo-ui-buttonElement-button:hover {
+  background-color: rgba(0, 0, 0, 0.01960784);
+  color: #000;
+}
+.oo-ui-buttonElement-frameless > .oo-ui-buttonElement-button:active {
+  background-color: rgba(0, 0, 0, 0.13333333);
+  color: #000;
+}
 .oo-ui-buttonElement-frameless.oo-ui-labelElement:first-child,
 .oo-ui-buttonElement-frameless.oo-ui-iconElement:first-child {
   margin-left: -0.3125em;
@@ -104,6 +112,9 @@
 .oo-ui-buttonElement-frameless.oo-ui-labelElement > .oo-ui-buttonElement-button > .oo-ui-labelElement-label {
   color: #333;
   margin-left: 0.25em;
+}
+.oo-ui-buttonElement-frameless.oo-ui-labelElement > .oo-ui-buttonElement-button > .oo-ui-iconElement-noIcon + .oo-ui-labelElement-label {
+  margin-left: 0;
 }
 .oo-ui-buttonElement-frameless.oo-ui-indicatorElement > .oo-ui-buttonElement-button {
   padding: 0;
@@ -123,7 +134,6 @@
 }
 .oo-ui-buttonElement-frameless.oo-ui-widget-enabled.oo-ui-iconElement > .oo-ui-buttonElement-button:focus:active,
 .oo-ui-buttonElement-frameless.oo-ui-widget-enabled.oo-ui-labelElement > .oo-ui-buttonElement-button:focus:active {
-  border-color: #fff;
   border-color: transparent;
   box-shadow: none;
 }
@@ -252,12 +262,22 @@
   border-color: #ccc;
   box-shadow: none;
 }
+.oo-ui-buttonElement-framed.oo-ui-widget-disabled.oo-ui-buttonElement-active > .oo-ui-buttonElement-button,
+.oo-ui-buttonElement-framed.oo-ui-widget-disabled.oo-ui-buttonElement-active > .oo-ui-buttonElement-button:hover,
+.oo-ui-buttonElement-framed.oo-ui-widget-disabled.oo-ui-buttonElement-active > .oo-ui-buttonElement-button:focus {
+  background-color: #ebebeb;
+  background-image: -webkit-gradient(linear, right top, right bottom, color-stop(0, #ddd), color-stop(100%, #fafafa));
+  background-image: -webkit-linear-gradient(top, #ddd 0, #fafafa 100%);
+  background-image: -moz-linear-gradient(top, #ddd 0, #fafafa 100%);
+  background-image: linear-gradient(to bottom, #ddd 0, #fafafa 100%);
+  box-shadow: inset 0 1px 4px 0 rgba(0, 0, 0, 0.07);
+}
 
 .oo-ui-clippableElement-clippable {
   -webkit-box-sizing: border-box;
   -moz-box-sizing: border-box;
   box-sizing: border-box;
-  min-height: 3.125em;
+  min-height: 40px;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -307,8 +327,6 @@
   top: auto;
   width: 1.5625em;
   height: 1.5625em;
-  min-width: auto;
-  min-height: auto;
   margin: 0.15625em;
   opacity: 0.8;
 }
@@ -335,7 +353,38 @@
 }
 
 .oo-ui-pendingElement-pending {
-  background-image: /* @embed */ url(themes/wikimediaui/images/textures/pending.gif);
+  background-color: #ddd;
+  background-image: -webkit-linear-gradient(135deg, #fff 25%, transparent 25%, transparent 50%, #fff 50%, #fff 75%, transparent 75%, transparent);
+  background-image: -moz-linear-gradient(135deg, #fff 25%, transparent 25%, transparent 50%, #fff 50%, #fff 75%, transparent 75%, transparent);
+  background-image: linear-gradient(135deg, #fff 25%, transparent 25%, transparent 50%, #fff 50%, #fff 75%, transparent 75%, transparent);
+  background-size: 1.5625em 1.5625em;
+  -webkit-animation: oo-ui-pendingElement-stripes 650ms linear infinite;
+  -moz-animation: oo-ui-pendingElement-stripes 650ms linear infinite;
+  animation: oo-ui-pendingElement-stripes 650ms linear infinite;
+}
+@-webkit-keyframes oo-ui-pendingElement-stripes {
+  0% {
+    background-position: -1.5625em 0;
+  }
+  100% {
+    background-position: 0 0;
+  }
+}
+@-moz-keyframes oo-ui-pendingElement-stripes {
+  0% {
+    background-position: -1.5625em 0;
+  }
+  100% {
+    background-position: 0 0;
+  }
+}
+@keyframes oo-ui-pendingElement-stripes {
+  0% {
+    background-position: -1.5625em 0;
+  }
+  100% {
+    background-position: 0 0;
+  }
 }
 
 
@@ -388,8 +437,8 @@
 .oo-ui-fieldLayout .oo-ui-fieldLayout-help {
   float: right;
 }
-.oo-ui-fieldLayout .oo-ui-fieldLayout-help > .oo-ui-popupWidget > .oo-ui-popupWidget-popup {
-  z-index: 1;
+.oo-ui-fieldLayout .oo-ui-fieldLayout-help:not( .oo-ui-popupButtonWidget ) > .oo-ui-buttonElement-button {
+  cursor: help;
 }
 .oo-ui-fieldLayout.oo-ui-fieldLayout-align-left > .oo-ui-fieldLayout-body > .oo-ui-fieldLayout-help,
 .oo-ui-fieldLayout.oo-ui-fieldLayout-align-right > .oo-ui-fieldLayout-body > .oo-ui-fieldLayout-help {
@@ -445,26 +494,19 @@
   color: #ccc;
 }
 .oo-ui-fieldLayout-messages {
-  list-style: none none;
-  margin: 0;
-  padding: 0;
-  margin-top: 0.25em;
-  margin-left: 0.25em;
-}
-.oo-ui-fieldLayout-messages > li {
-  margin: 0;
+  -webkit-box-sizing: border-box;
+  -moz-box-sizing: border-box;
+  box-sizing: border-box;
+  max-width: 50em;
+  margin: 0.25em 0 0 0.25em;
   padding: 0;
 }
-.oo-ui-fieldLayout-messages .oo-ui-iconWidget {
-  display: none;
+.oo-ui-fieldLayout-messages > .oo-ui-messageWidget {
+  margin-left: 0.15625em;
+  margin-right: 0.15625em;
 }
-.oo-ui-fieldLayout-messages .oo-ui-fieldLayout-messages-error {
-  color: #d45353;
-}
-.oo-ui-fieldLayout-messages .oo-ui-labelWidget {
-  padding: 0.1em 0;
-  line-height: 1.5em;
-  vertical-align: middle;
+.oo-ui-fieldLayout-messages > .oo-ui-messageWidget:first-child {
+  margin-top: 0.3125em;
 }
 
 .oo-ui-actionFieldLayout-input,
@@ -491,9 +533,11 @@
   margin-left: -1px;
 }
 .oo-ui-actionFieldLayout .oo-ui-actionFieldLayout-input > .oo-ui-textInputWidget > .oo-ui-inputWidget-input:hover,
-.oo-ui-actionFieldLayout .oo-ui-actionFieldLayout-input > .oo-ui-textInputWidget > .oo-ui-inputWidget-input:hover ~ *,
 .oo-ui-actionFieldLayout .oo-ui-actionFieldLayout-input > .oo-ui-textInputWidget > .oo-ui-inputWidget-input:focus,
-.oo-ui-actionFieldLayout .oo-ui-actionFieldLayout-input > .oo-ui-textInputWidget > .oo-ui-inputWidget-input:focus ~ * {
+.oo-ui-actionFieldLayout .oo-ui-actionFieldLayout-input > .oo-ui-textInputWidget.oo-ui-flaggedElement-invalid > .oo-ui-inputWidget-input,
+.oo-ui-actionFieldLayout .oo-ui-actionFieldLayout-input > .oo-ui-textInputWidget > .oo-ui-inputWidget-input:hover ~ *,
+.oo-ui-actionFieldLayout .oo-ui-actionFieldLayout-input > .oo-ui-textInputWidget > .oo-ui-inputWidget-input:focus ~ *,
+.oo-ui-actionFieldLayout .oo-ui-actionFieldLayout-input > .oo-ui-textInputWidget.oo-ui-flaggedElement-invalid > .oo-ui-inputWidget-input ~ * {
   z-index: 1;
 }
 .oo-ui-actionFieldLayout .oo-ui-actionFieldLayout-button > .oo-ui-buttonElement > .oo-ui-buttonElement-button:hover,
@@ -524,14 +568,17 @@ body:not( :-moz-handler-blocked ) .oo-ui-fieldsetLayout {
   float: left;
   width: 100%;
 }
+.oo-ui-fieldsetLayout > .oo-ui-inline-help {
+  clear: left;
+}
 .oo-ui-fieldsetLayout-group {
   clear: both;
 }
 .oo-ui-fieldsetLayout .oo-ui-fieldsetLayout-help {
   float: right;
 }
-.oo-ui-fieldsetLayout .oo-ui-fieldsetLayout-help > .oo-ui-popupWidget > .oo-ui-popupWidget-popup {
-  z-index: 1;
+.oo-ui-fieldsetLayout .oo-ui-fieldsetLayout-help:not( .oo-ui-popupButtonWidget ) > .oo-ui-buttonElement-button {
+  cursor: help;
 }
 .oo-ui-fieldsetLayout .oo-ui-fieldsetLayout-header {
   max-width: 50em;
@@ -556,6 +603,9 @@ body:not( :-moz-handler-blocked ) .oo-ui-fieldsetLayout {
   position: absolute;
   top: 0.25em;
   left: 0;
+}
+.oo-ui-fieldsetLayout > .oo-ui-inline-help {
+  margin-bottom: 0.5em;
 }
 .oo-ui-fieldsetLayout > .oo-ui-fieldsetLayout-header > .oo-ui-popupButtonWidget {
   margin-right: 0;
@@ -641,7 +691,7 @@ body:not( :-moz-handler-blocked ) .oo-ui-fieldsetLayout {
 .oo-ui-optionWidget .oo-ui-labelElement-label {
   line-height: 1.5em;
 }
-.oo-ui-selectWidget-depressed .oo-ui-optionWidget-selected {
+.oo-ui-selectWidget-unpressed .oo-ui-optionWidget-selected {
   background-color: #a7dcff;
 }
 .oo-ui-selectWidget-pressed .oo-ui-optionWidget-pressed,
@@ -677,7 +727,6 @@ body:not( :-moz-handler-blocked ) .oo-ui-fieldsetLayout {
 
 .oo-ui-radioOptionWidget {
   display: table;
-  width: 100%;
   padding: 0.3125em 0;
 }
 .oo-ui-radioOptionWidget .oo-ui-radioInputWidget,
@@ -694,7 +743,7 @@ body:not( :-moz-handler-blocked ) .oo-ui-fieldsetLayout {
 .oo-ui-radioOptionWidget.oo-ui-optionWidget-selected {
   background-color: transparent;
 }
-.oo-ui-radioOptionWidget.oo-ui-labelElement .oo-ui-labelElement-label {
+.oo-ui-radioOptionWidget.oo-ui-labelElement > .oo-ui-labelElement-label {
   padding-left: 0.5em;
 }
 .oo-ui-radioOptionWidget .oo-ui-radioInputWidget {
@@ -708,6 +757,57 @@ body:not( :-moz-handler-blocked ) .oo-ui-fieldsetLayout {
   display: block;
   color: #595959;
   font-size: 0.9375em;
+}
+
+.oo-ui-messageWidget {
+  position: relative;
+  -webkit-box-sizing: border-box;
+  -moz-box-sizing: border-box;
+  box-sizing: border-box;
+  font-weight: bold;
+}
+.oo-ui-messageWidget .oo-ui-labelElement-label {
+  display: block;
+}
+.oo-ui-messageWidget > .oo-ui-iconElement-icon {
+  display: block;
+  float: left;
+  margin: 0;
+}
+.oo-ui-messageWidget > .oo-ui-labelElement-label {
+  margin-top: 0.15625em;
+  margin-left: 2.5em;
+  line-height: 1.4;
+}
+.oo-ui-messageWidget.oo-ui-messageWidget-block {
+  border: 1px solid;
+  padding: 1.25em 1.875em;
+  font-weight: normal;
+}
+.oo-ui-messageWidget.oo-ui-messageWidget-block.oo-ui-flaggedElement-error {
+  background-color: #ffdcdc;
+  border-color: #d45353;
+}
+.oo-ui-messageWidget.oo-ui-messageWidget-block.oo-ui-flaggedElement-warning {
+  background-color: #fff8c6;
+  border-color: #b85c00;
+}
+.oo-ui-messageWidget.oo-ui-messageWidget-block.oo-ui-flaggedElement-success {
+  background-color: #d5fdd6;
+  border-color: #34782b;
+}
+.oo-ui-messageWidget.oo-ui-messageWidget-block.oo-ui-flaggedElement-notice {
+  background-color: #fafafa;
+  border-color: #ccc;
+}
+.oo-ui-messageWidget.oo-ui-flaggedElement-error:not( .oo-ui-messageWidget-block ) {
+  color: #d45353;
+}
+.oo-ui-messageWidget.oo-ui-flaggedElement-success:not( .oo-ui-messageWidget-block ) {
+  color: #34782b;
+}
+.oo-ui-messageWidget + .oo-ui-messageWidget {
+  margin-top: 0.625em;
 }
 
 .oo-ui-iconWidget {
@@ -812,15 +912,16 @@ body:not( :-moz-handler-blocked ) .oo-ui-fieldsetLayout {
 
 .oo-ui-popupWidget {
   position: absolute;
+  z-index: 1;
 }
 .oo-ui-popupWidget-popup {
   position: relative;
   overflow: hidden;
-  z-index: 1;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 .oo-ui-popupWidget-anchor {
   display: none;
-  z-index: 1;
 }
 .oo-ui-popupWidget-anchored .oo-ui-popupWidget-anchor {
   display: block;
@@ -890,6 +991,14 @@ body:not( :-moz-handler-blocked ) .oo-ui-fieldsetLayout {
   border-radius: 3px;
   box-shadow: 0 0.15em 0.5em 0 rgba(0, 0, 0, 0.2);
 }
+@supports ( filter: drop-shadow( 0 0 0 ) ) {
+  .oo-ui-popupWidget {
+    filter: drop-shadow(0 0.15em 0.5em rgba(0, 0, 0, 0.2));
+  }
+  .oo-ui-popupWidget-popup {
+    box-shadow: none;
+  }
+}
 .oo-ui-popupWidget-anchored-top {
   margin-top: 6px;
 }
@@ -899,7 +1008,7 @@ body:not( :-moz-handler-blocked ) .oo-ui-fieldsetLayout {
 .oo-ui-popupWidget-anchored-top .oo-ui-popupWidget-anchor:before {
   bottom: -7px;
   left: -6px;
-  border-bottom-color: #aaa;
+  border-bottom-color: #a8a8a8;
   border-width: 7px;
 }
 .oo-ui-popupWidget-anchored-top .oo-ui-popupWidget-anchor:after {
@@ -1022,6 +1131,9 @@ body:not( :-moz-handler-blocked ) .oo-ui-fieldsetLayout {
 .oo-ui-checkboxMultiselectInputWidget .oo-ui-fieldLayout .oo-ui-fieldLayout-body {
   padding: 0.3125em 0;
 }
+.oo-ui-checkboxMultiselectInputWidget .oo-ui-fieldLayout .oo-ui-labelElement-label {
+  line-height: 1.5;
+}
 
 .oo-ui-dropdownInputWidget {
   position: relative;
@@ -1033,8 +1145,12 @@ body:not( :-moz-handler-blocked ) .oo-ui-fieldsetLayout {
   max-width: 50em;
 }
 .oo-ui-dropdownInputWidget .oo-ui-dropdownWidget,
-.oo-ui-dropdownInputWidget.oo-ui-dropdownInputWidget-php select {
+.oo-ui-dropdownInputWidget.oo-ui-dropdownInputWidget-php select,
+.oo-ui-dropdownInputWidget.oo-ui-isMobile select {
   display: block;
+}
+.oo-ui-dropdownInputWidget.oo-ui-isMobile .oo-ui-dropdownWidget {
+  display: none;
 }
 .oo-ui-dropdownInputWidget select {
   display: none;
@@ -1054,7 +1170,7 @@ body:not( :-moz-handler-blocked ) .oo-ui-fieldsetLayout {
   padding: 0.5em;
   font-size: inherit;
   font-family: inherit;
-  border: #ccc;
+  border: 1px solid #ccc;
   border-radius: 3px;
 }
 .oo-ui-dropdownInputWidget option {
@@ -1087,6 +1203,9 @@ body:not( :-moz-handler-blocked ) .oo-ui-fieldsetLayout {
 .oo-ui-radioSelectInputWidget .oo-ui-fieldLayout .oo-ui-fieldLayout-body {
   padding: 0.3125em 0;
 }
+.oo-ui-radioSelectInputWidget .oo-ui-fieldLayout .oo-ui-labelElement-label {
+  line-height: 1.5;
+}
 
 .oo-ui-textInputWidget {
   position: relative;
@@ -1097,13 +1216,17 @@ body:not( :-moz-handler-blocked ) .oo-ui-fieldsetLayout {
   width: 100%;
   max-width: 50em;
 }
-.oo-ui-textInputWidget input,
-.oo-ui-textInputWidget textarea {
+.oo-ui-textInputWidget .oo-ui-inputWidget-input {
+  -webkit-appearance: none;
+  -moz-appearance: textfield;
   display: block;
   width: 100%;
   -webkit-box-sizing: border-box;
   -moz-box-sizing: border-box;
   box-sizing: border-box;
+}
+.oo-ui-textInputWidget input::-ms-clear {
+  display: none;
 }
 .oo-ui-textInputWidget textarea {
   overflow: auto;
@@ -1111,23 +1234,37 @@ body:not( :-moz-handler-blocked ) .oo-ui-fieldsetLayout {
 .oo-ui-textInputWidget textarea.oo-ui-textInputWidget-autosized {
   resize: none;
 }
-.oo-ui-textInputWidget [type='number'] {
-  -moz-appearance: textfield;
-}
 .oo-ui-textInputWidget [type='number']::-webkit-outer-spin-button,
 .oo-ui-textInputWidget [type='number']::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
-.oo-ui-textInputWidget [type='search'] {
-  -webkit-appearance: none;
-}
-.oo-ui-textInputWidget [type='search']::-ms-clear {
-  display: none;
-}
 .oo-ui-textInputWidget [type='search']::-webkit-search-decoration,
 .oo-ui-textInputWidget [type='search']::-webkit-search-cancel-button {
   display: none;
+}
+.oo-ui-textInputWidget > .oo-ui-iconElement-icon,
+.oo-ui-textInputWidget-labelPosition-before > .oo-ui-labelElement-label {
+  left: 0;
+}
+.oo-ui-textInputWidget > .oo-ui-indicatorElement-indicator,
+.oo-ui-textInputWidget-labelPosition-after > .oo-ui-labelElement-label {
+  right: 0;
+}
+.oo-ui-textInputWidget > .oo-ui-labelElement-label {
+  position: absolute;
+  top: 0;
+}
+.oo-ui-textInputWidget.oo-ui-labelElement > .oo-ui-labelElement-label {
+  display: block;
+}
+.oo-ui-textInputWidget-labelPosition-after.oo-ui-labelElement ::-ms-clear {
+  display: none;
+}
+.oo-ui-textInputWidget-php > .oo-ui-iconElement-icon,
+.oo-ui-textInputWidget-php > .oo-ui-indicatorElement-indicator,
+.oo-ui-textInputWidget-php > .oo-ui-labelElement-label {
+  pointer-events: none;
 }
 .oo-ui-textInputWidget.oo-ui-widget-enabled > .oo-ui-iconElement-icon,
 .oo-ui-textInputWidget.oo-ui-widget-enabled > .oo-ui-indicatorElement-indicator {
@@ -1143,97 +1280,91 @@ body:not( :-moz-handler-blocked ) .oo-ui-fieldsetLayout {
   -ms-user-select: none;
   user-select: none;
 }
-.oo-ui-textInputWidget.oo-ui-labelElement > .oo-ui-labelElement-label {
-  display: block;
-}
-.oo-ui-textInputWidget > .oo-ui-iconElement-icon,
-.oo-ui-textInputWidget-labelPosition-before > .oo-ui-labelElement-label {
-  left: 0;
-}
-.oo-ui-textInputWidget > .oo-ui-indicatorElement-indicator,
-.oo-ui-textInputWidget-labelPosition-after > .oo-ui-labelElement-label {
-  right: 0;
-}
-.oo-ui-textInputWidget-labelPosition-after.oo-ui-labelElement ::-ms-clear {
-  display: none;
-}
-.oo-ui-textInputWidget > .oo-ui-labelElement-label {
-  position: absolute;
-  top: 0;
-}
-.oo-ui-textInputWidget-php > .oo-ui-iconElement-icon,
-.oo-ui-textInputWidget-php > .oo-ui-indicatorElement-indicator,
-.oo-ui-textInputWidget-php > .oo-ui-labelElement-label {
-  pointer-events: none;
-}
-.oo-ui-textInputWidget input,
-.oo-ui-textInputWidget textarea {
+.oo-ui-textInputWidget .oo-ui-inputWidget-input {
   background-color: #fff;
   color: #000;
   border: 1px solid #ccc;
   border-radius: 3px;
-  padding: 0.546875em 0.5em 0.625em 0.5em;
+  padding: 0.46875em 0.5em;
   box-shadow: 0 0 0 #fff, inset 0 0.1em 0.2em #ddd;
   font-size: inherit;
   font-family: inherit;
+  line-height: 1.40625em;
   -webkit-transition: border-color 250ms, box-shadow 250ms;
   -moz-transition: border-color 250ms, box-shadow 250ms;
   transition: border-color 250ms, box-shadow 250ms;
 }
-.oo-ui-textInputWidget input.oo-ui-pendingElement-pending,
-.oo-ui-textInputWidget textarea.oo-ui-pendingElement-pending {
-  background-color: transparent;
+.oo-ui-textInputWidget .oo-ui-pendingElement-pending {
+  background-color: #ddd;
 }
-.oo-ui-textInputWidget input::-webkit-input-placeholder,
-.oo-ui-textInputWidget textarea::-webkit-input-placeholder {
+.oo-ui-textInputWidget.oo-ui-iconElement > .oo-ui-iconElement-icon,
+.oo-ui-textInputWidget.oo-ui-indicatorElement > .oo-ui-indicatorElement-indicator {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  margin: 0 0.15625em;
+}
+.oo-ui-textInputWidget.oo-ui-iconElement .oo-ui-inputWidget-input {
+  padding-left: 2.475em;
+}
+.oo-ui-textInputWidget.oo-ui-iconElement > .oo-ui-iconElement-icon {
+  max-height: 2.5em;
+  margin-left: 0.5em;
+}
+.oo-ui-textInputWidget.oo-ui-indicatorElement .oo-ui-inputWidget-input {
+  padding-right: 2.4875em;
+}
+.oo-ui-textInputWidget.oo-ui-indicatorElement > .oo-ui-indicatorElement-indicator {
+  max-height: 2.5em;
+  margin-right: 0.775em;
+}
+.oo-ui-textInputWidget > .oo-ui-labelElement-label {
+  color: #767676;
+  top: 1px;
+  padding: 0.46875em 0.4em;
+  line-height: 1.40625em;
+}
+.oo-ui-textInputWidget-labelPosition-after.oo-ui-indicatorElement > .oo-ui-labelElement-label {
+  margin-right: 2.0875em;
+}
+.oo-ui-textInputWidget-labelPosition-before.oo-ui-iconElement > .oo-ui-labelElement-label {
+  margin-left: 2.075em;
+}
+.oo-ui-textInputWidget.oo-ui-widget-enabled .oo-ui-inputWidget-input::-webkit-input-placeholder {
   color: #767676;
   opacity: 1;
 }
-.oo-ui-textInputWidget input:-ms-input-placeholder,
-.oo-ui-textInputWidget textarea:-ms-input-placeholder {
+.oo-ui-textInputWidget.oo-ui-widget-enabled .oo-ui-inputWidget-input:-ms-input-placeholder {
   color: #767676;
   opacity: 1;
 }
-.oo-ui-textInputWidget input::-moz-placeholder,
-.oo-ui-textInputWidget textarea::-moz-placeholder {
+.oo-ui-textInputWidget.oo-ui-widget-enabled .oo-ui-inputWidget-input::-moz-placeholder {
   color: #767676;
   opacity: 1;
 }
-.oo-ui-textInputWidget input:-moz-placeholder,
-.oo-ui-textInputWidget textarea:-moz-placeholder {
+.oo-ui-textInputWidget.oo-ui-widget-enabled .oo-ui-inputWidget-input:-moz-placeholder {
   color: #767676;
   opacity: 1;
 }
-.oo-ui-textInputWidget input::placeholder,
-.oo-ui-textInputWidget textarea::placeholder {
+.oo-ui-textInputWidget.oo-ui-widget-enabled .oo-ui-inputWidget-input::placeholder {
   color: #767676;
   opacity: 1;
 }
-.oo-ui-textInputWidget input {
-  line-height: 1.172em;
-}
-.oo-ui-textInputWidget textarea {
-  line-height: 1.275;
-}
-.oo-ui-textInputWidget.oo-ui-widget-enabled input:focus,
-.oo-ui-textInputWidget.oo-ui-widget-enabled textarea:focus {
+.oo-ui-textInputWidget.oo-ui-widget-enabled .oo-ui-inputWidget-input:focus {
   outline: 0;
   border-color: #ace;
   box-shadow: 0 0 2px 2px #ace;
 }
-.oo-ui-textInputWidget.oo-ui-widget-enabled input[readonly],
-.oo-ui-textInputWidget.oo-ui-widget-enabled textarea[readonly] {
+.oo-ui-textInputWidget.oo-ui-widget-enabled .oo-ui-inputWidget-input[readonly] {
   background-color: #f3f3f3;
 }
-.oo-ui-textInputWidget.oo-ui-widget-enabled.oo-ui-flaggedElement-invalid input,
-.oo-ui-textInputWidget.oo-ui-widget-enabled.oo-ui-flaggedElement-invalid textarea {
+.oo-ui-textInputWidget.oo-ui-widget-enabled.oo-ui-flaggedElement-invalid .oo-ui-inputWidget-input {
   background-color: #fdd;
 }
-.oo-ui-textInputWidget.oo-ui-widget-disabled input,
-.oo-ui-textInputWidget.oo-ui-widget-disabled textarea {
+.oo-ui-textInputWidget.oo-ui-widget-disabled .oo-ui-inputWidget-input {
+  background-color: #f3f3f3;
   color: #ccc;
   border-color: #ddd;
-  background-color: #f3f3f3;
   text-shadow: 0 1px 1px #fff;
 }
 .oo-ui-textInputWidget.oo-ui-widget-disabled > .oo-ui-iconElement-icon,
@@ -1243,42 +1374,6 @@ body:not( :-moz-handler-blocked ) .oo-ui-fieldsetLayout {
 .oo-ui-textInputWidget.oo-ui-widget-disabled > .oo-ui-labelElement-label {
   color: #ddd;
   text-shadow: 0 1px 1px #fff;
-}
-.oo-ui-textInputWidget.oo-ui-iconElement > .oo-ui-iconElement-icon,
-.oo-ui-textInputWidget.oo-ui-indicatorElement > .oo-ui-indicatorElement-indicator {
-  position: absolute;
-  top: 0;
-  height: 100%;
-  margin: 0 0.15625em;
-}
-.oo-ui-textInputWidget.oo-ui-iconElement input,
-.oo-ui-textInputWidget.oo-ui-iconElement textarea {
-  padding-left: 2.475em;
-}
-.oo-ui-textInputWidget.oo-ui-iconElement > .oo-ui-iconElement-icon {
-  max-height: 2.5em;
-  margin-left: 0.5em;
-}
-.oo-ui-textInputWidget.oo-ui-indicatorElement input,
-.oo-ui-textInputWidget.oo-ui-indicatorElement textarea {
-  padding-right: 2.4875em;
-}
-.oo-ui-textInputWidget.oo-ui-indicatorElement > .oo-ui-indicatorElement-indicator {
-  max-height: 2.5em;
-  margin-right: 0.775em;
-}
-.oo-ui-textInputWidget > .oo-ui-labelElement-label {
-  display: none;
-  top: 1px;
-  padding: 0.546875em 0.4em 0.625em 0.4em;
-  line-height: 1.172em;
-  color: #767676;
-}
-.oo-ui-textInputWidget-labelPosition-after.oo-ui-indicatorElement > .oo-ui-labelElement-label {
-  margin-right: 2.0875em;
-}
-.oo-ui-textInputWidget-labelPosition-before.oo-ui-iconElement > .oo-ui-labelElement-label {
-  margin-left: 2.075em;
 }
 
 .oo-ui-menuSelectWidget {
@@ -1293,7 +1388,7 @@ body:not( :-moz-handler-blocked ) .oo-ui-fieldsetLayout {
   box-shadow: 0 0.15em 1em 0 rgba(0, 0, 0, 0.2);
 }
 .oo-ui-menuSelectWidget.oo-ui-clippableElement-clippable {
-  min-height: 2.6em;
+  min-height: 32px;
 }
 .oo-ui-menuSelectWidget-invisible {
   display: none;
@@ -1342,26 +1437,21 @@ body:not( :-moz-handler-blocked ) .oo-ui-fieldsetLayout {
   position: relative;
   width: 100%;
   display: block;
-  -webkit-box-sizing: border-box;
-  -moz-box-sizing: border-box;
-  box-sizing: border-box;
-  padding: 0;
-  overflow: hidden;
-  font-family: inherit;
-  font-size: inherit;
-  text-align: left;
-  text-overflow: ellipsis;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   cursor: default;
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   -moz-user-select: none;
   -ms-user-select: none;
   user-select: none;
+  -webkit-box-sizing: border-box;
+  -moz-box-sizing: border-box;
+  box-sizing: border-box;
 }
-.oo-ui-dropdownWidget-handle::-moz-focus-inner {
-  border-color: transparent;
-  padding: 0;
+.oo-ui-dropdownWidget-handle .oo-ui-labelElement-label {
+  display: inline-block;
 }
 .oo-ui-dropdownWidget.oo-ui-widget-enabled .oo-ui-dropdownWidget-handle {
   cursor: pointer;
@@ -1370,9 +1460,11 @@ body:not( :-moz-handler-blocked ) .oo-ui-fieldsetLayout {
   margin-right: 0;
 }
 .oo-ui-dropdownWidget-handle {
-  height: 2.5em;
+  min-height: 2.5em;
   border: 1px solid #ccc;
   border-radius: 3px;
+  padding: 0.46875em 2.5em 0.46875em 0.78125em;
+  line-height: 1;
 }
 .oo-ui-dropdownWidget-handle:focus {
   outline: 0;
@@ -1382,18 +1474,19 @@ body:not( :-moz-handler-blocked ) .oo-ui-fieldsetLayout {
   position: absolute;
   top: 0;
   height: 100%;
+  margin: 0;
 }
 .oo-ui-dropdownWidget-handle .oo-ui-iconElement-icon {
-  left: 0.25em;
-  margin: 0 0.3em;
+  left: 0.55em;
 }
 .oo-ui-dropdownWidget-handle .oo-ui-labelElement-label {
-  line-height: 2.5em;
-  margin: 0 0.5em;
+  line-height: 1.40625em;
 }
 .oo-ui-dropdownWidget-handle .oo-ui-indicatorElement-indicator {
-  right: 0;
-  margin: 0 0.775em;
+  right: 0.775em;
+}
+.oo-ui-dropdownWidget.oo-ui-iconElement .oo-ui-dropdownWidget-handle {
+  padding-left: 3em;
 }
 .oo-ui-dropdownWidget.oo-ui-widget-enabled .oo-ui-dropdownWidget-handle {
   background-color: #fff;
@@ -1413,12 +1506,6 @@ body:not( :-moz-handler-blocked ) .oo-ui-fieldsetLayout {
 }
 .oo-ui-dropdownWidget.oo-ui-widget-disabled .oo-ui-dropdownWidget-handle .oo-ui-indicatorElement-indicator {
   opacity: 0.2;
-}
-.oo-ui-dropdownWidget.oo-ui-iconElement .oo-ui-dropdownWidget-handle .oo-ui-labelElement-label {
-  margin-left: 3em;
-}
-.oo-ui-dropdownWidget.oo-ui-indicatorElement .oo-ui-dropdownWidget-handle .oo-ui-labelElement-label {
-  margin-right: 2em;
 }
 
 .oo-ui-comboBoxInputWidget {
@@ -1519,7 +1606,6 @@ body:not( :-moz-handler-blocked ) .oo-ui-fieldsetLayout {
 
 .oo-ui-checkboxMultioptionWidget {
   display: table;
-  width: 100%;
   padding: 0.3125em 0;
 }
 .oo-ui-checkboxMultioptionWidget .oo-ui-checkboxInputWidget,
@@ -1533,7 +1619,7 @@ body:not( :-moz-handler-blocked ) .oo-ui-fieldsetLayout {
 .oo-ui-checkboxMultioptionWidget.oo-ui-labelElement > .oo-ui-labelElement-label {
   white-space: normal;
 }
-.oo-ui-checkboxMultioptionWidget.oo-ui-labelElement .oo-ui-labelElement-label {
+.oo-ui-checkboxMultioptionWidget.oo-ui-labelElement > .oo-ui-labelElement-label {
   padding-left: 0.5em;
 }
 .oo-ui-checkboxMultioptionWidget .oo-ui-checkboxInputWidget {
@@ -1564,7 +1650,7 @@ body:not( :-moz-handler-blocked ) .oo-ui-fieldsetLayout {
 }
 .oo-ui-progressBarWidget-indeterminate .oo-ui-progressBarWidget-bar {
   width: 40%;
-  border-left: 1px solid #a6cee1;
+  border-left: 1px solid #ccc;
   -webkit-animation: oo-ui-progressBarWidget-slide 2s infinite linear;
   -moz-animation: oo-ui-progressBarWidget-slide 2s infinite linear;
   animation: oo-ui-progressBarWidget-slide 2s infinite linear;
@@ -1637,6 +1723,10 @@ body:not( :-moz-handler-blocked ) .oo-ui-fieldsetLayout {
 .oo-ui-numberInputWidget-field > .oo-ui-buttonWidget {
   width: 2.5em;
 }
+.oo-ui-numberInputWidget-buttoned .oo-ui-buttonWidget,
+.oo-ui-numberInputWidget-buttoned .oo-ui-inputWidget-input {
+  height: 2.5em;
+}
 .oo-ui-numberInputWidget-buttoned .oo-ui-buttonElement-button .oo-ui-iconElement-icon {
   min-width: 20px;
   width: 1.5625em;
@@ -1653,6 +1743,44 @@ body:not( :-moz-handler-blocked ) .oo-ui-fieldsetLayout {
   border-top-left-radius: 0;
   border-bottom-left-radius: 0;
   border-left-width: 0;
+}
+
+.oo-ui-selectFileInputWidget {
+  width: 100%;
+  max-width: 50em;
+}
+.oo-ui-selectFileInputWidget-selectButton > .oo-ui-buttonElement-button {
+  position: relative;
+  overflow: hidden;
+}
+.oo-ui-selectFileInputWidget-selectButton > .oo-ui-buttonElement-button > [type='file'] {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  z-index: 1;
+  cursor: pointer;
+  padding-top: 100px;
+}
+.oo-ui-selectFileInputWidget-selectButton.oo-ui-widget-disabled > .oo-ui-buttonElement-button > [type='file'] {
+  display: none;
+}
+.oo-ui-selectFileInputWidget-info > .oo-ui-inputWidget-input {
+  pointer-events: none;
+}
+.oo-ui-selectFileInputWidget-clearButton {
+  position: absolute;
+  z-index: 2;
+}
+.oo-ui-selectFileInputWidget-empty .oo-ui-selectFileInputWidget-clearButton {
+  display: none;
+}
+.oo-ui-selectFileInputWidget-empty.oo-ui-widget-enabled .oo-ui-selectFileInputWidget-label {
+  cursor: default;
 }
 
 .oo-ui-defaultOverlay {

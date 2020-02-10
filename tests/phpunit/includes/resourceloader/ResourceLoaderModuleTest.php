@@ -56,7 +56,7 @@ class ResourceLoaderModuleTest extends ResourceLoaderTestCase {
 		);
 
 		// Subclass
-		$module = new ResourceLoaderFileModuleTestModule( $baseParams );
+		$module = new ResourceLoaderFileModuleTestingSubclass( $baseParams );
 		$this->assertNotEquals(
 			$version,
 			json_encode( $module->getVersionHash( $context ) ),
@@ -73,7 +73,8 @@ class ResourceLoaderModuleTest extends ResourceLoaderTestCase {
 			->setMethods( [ 'getDefinitionSummary' ] )->getMock();
 		$module->method( 'getDefinitionSummary' )->willReturn( [ 'a' => 'summary' ] );
 
-		$this->setExpectedException( LogicException::class, 'must call parent' );
+		$this->expectException( LogicException::class );
+		$this->expectExceptionMessage( 'must call parent' );
 		$module->getVersionHash( $context );
 	}
 
@@ -86,6 +87,7 @@ class ResourceLoaderModuleTest extends ResourceLoaderTestCase {
 		$context = $this->getResourceLoaderContext();
 
 		$module = new ResourceLoaderTestModule( [
+			'mayValidateScript' => true,
 			'script' => "var a = 'this is';\n {\ninvalid"
 		] );
 		$this->assertEquals(
@@ -144,7 +146,7 @@ class ResourceLoaderModuleTest extends ResourceLoaderTestCase {
 	 * @dataProvider provideBuildContentScripts
 	 * @covers ResourceLoaderModule::buildContent
 	 */
-	public function testBuildContentScripts( $raw, $build, $message = null ) {
+	public function testBuildContentScripts( $raw, $build, $message = '' ) {
 		$context = $this->getResourceLoaderContext();
 		$module = new ResourceLoaderTestModule( [
 			'script' => $raw

@@ -18,15 +18,16 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup Deployment
+ * @ingroup Installer
  */
 
+use MediaWiki\Installer\InstallException;
 use MediaWiki\MediaWikiServices;
 
 /**
  * Class for the core installer command line interface.
  *
- * @ingroup Deployment
+ * @ingroup Installer
  * @since 1.17
  */
 class CliInstaller extends Installer {
@@ -51,8 +52,9 @@ class CliInstaller extends Installer {
 	 * @param string $siteName
 	 * @param string|null $admin
 	 * @param array $options
+	 * @throws InstallException
 	 */
-	function __construct( $siteName, $admin = null, array $options = [] ) {
+	public function __construct( $siteName, $admin = null, array $options = [] ) {
 		global $wgContLang;
 
 		parent::__construct();
@@ -74,7 +76,8 @@ class CliInstaller extends Installer {
 			$wgLanguageCode = $options['lang'];
 			$this->setVar( 'wgLanguageCode', $wgLanguageCode );
 			$wgContLang = MediaWikiServices::getInstance()->getContentLanguage();
-			$wgLang = Language::factory( $options['lang'] );
+			$wgLang = MediaWikiServices::getInstance()->getLanguageFactory()
+				->getLanguage( $options['lang'] );
 			RequestContext::getMain()->setLanguage( $wgLang );
 		}
 
@@ -114,22 +117,30 @@ class CliInstaller extends Installer {
 			$status = $this->validateExtensions(
 				'extension', 'extensions', $options['extensions'] );
 			if ( !$status->isOK() ) {
-				$this->showStatusMessage( $status );
+				throw new InstallException( $status );
 			}
 			$this->setVar( '_Extensions', $status->value );
 		} elseif ( isset( $options['with-extensions'] ) ) {
-			$this->setVar( '_Extensions', array_keys( $this->findExtensions() ) );
+			$status = $this->findExtensions();
+			if ( !$status->isOK() ) {
+				throw new InstallException( $status );
+			}
+			$this->setVar( '_Extensions', array_keys( $status->value ) );
 		}
 
 		// Set up the default skins
 		if ( isset( $options['skins'] ) ) {
 			$status = $this->validateExtensions( 'skin', 'skins', $options['skins'] );
 			if ( !$status->isOK() ) {
-				$this->showStatusMessage( $status );
+				throw new InstallException( $status );
 			}
 			$skins = $status->value;
 		} else {
-			$skins = array_keys( $this->findExtensions( 'skins' ) );
+			$status = $this->findExtensions( 'skins' );
+			if ( !$status->isOK() ) {
+				throw new InstallException( $status );
+			}
+			$skins = array_keys( $status->value );
 		}
 		$this->setVar( '_Skins', $skins );
 
@@ -163,19 +174,37 @@ class CliInstaller extends Installer {
 
 	/**
 	 * Main entry point.
+	 * @return Status
 	 */
 	public function execute() {
-		$vars = Installer::getExistingLocalSettings();
-		if ( $vars ) {
-			$this->showStatusMessage(
-				Status::newFatal( "config-localsettings-cli-upgrade" )
-			);
+		// If APC is available, use that as the MainCacheType, instead of nothing.
+		// This is hacky and should be consolidated with WebInstallerOptions.
+		// This is here instead of in __construct(), because it should run run after
+		// doEnvironmentChecks(), which populates '_Caches'.
+		if ( count( $this->getVar( '_Caches' ) ) ) {
+			// We detected a CACHE_ACCEL implementation, use it.
+			$this->setVar( '_MainCacheType', 'accel' );
 		}
 
-		$this->performInstallation(
+		$vars = Installer::getExistingLocalSettings();
+		if ( $vars ) {
+			$status = Status::newFatal( "config-localsettings-cli-upgrade" );
+			$this->showStatusMessage( $status );
+			return $status;
+		}
+
+		$result = $this->performInstallation(
 			[ $this, 'startStage' ],
 			[ $this, 'endStage' ]
 		);
+		// PerformInstallation bails on a fatal, so make sure the last item
+		// completed before giving 'next.' Likewise, only provide back on failure
+		$lastStepStatus = end( $result );
+		if ( $lastStepStatus->isOK() ) {
+			return Status::newGood();
+		} else {
+			return $lastStepStatus;
+		}
 	}
 
 	/**
@@ -200,24 +229,23 @@ class CliInstaller extends Installer {
 		$this->showMessage( 'config-install-step-done' );
 	}
 
-	public function showMessage( $msg /*, ... */ ) {
-		echo $this->getMessageText( func_get_args() ) . "\n";
+	public function showMessage( $msg, ...$params ) {
+		echo $this->getMessageText( $msg, $params ) . "\n";
 		flush();
 	}
 
-	public function showError( $msg /*, ... */ ) {
-		echo "***{$this->getMessageText( func_get_args() )}***\n";
+	public function showError( $msg, ...$params ) {
+		echo "***{$this->getMessageText( $msg, $params )}***\n";
 		flush();
 	}
 
 	/**
+	 * @param string $msg
 	 * @param array $params
 	 *
 	 * @return string
 	 */
-	protected function getMessageText( $params ) {
-		$msg = array_shift( $params );
-
+	protected function getMessageText( $msg, $params ) {
 		$text = wfMessage( $msg, $params )->parse();
 
 		$text = preg_replace( '/<a href="(.*?)".*?>(.*?)<\/a>/', '$2 &lt;$1&gt;', $text );
@@ -227,8 +255,10 @@ class CliInstaller extends Installer {
 
 	/**
 	 * Dummy
+	 * @param string $msg Key for wfMessage()
+	 * @param mixed ...$params
 	 */
-	public function showHelpBox( $msg /*, ... */ ) {
+	public function showHelpBox( $msg, ...$params ) {
 	}
 
 	public function showStatusMessage( Status $status ) {
@@ -239,11 +269,6 @@ class CliInstaller extends Installer {
 			foreach ( $warnings as $w ) {
 				$this->showMessage( ...$w );
 			}
-		}
-
-		if ( !$status->isOK() ) {
-			echo "\n";
-			exit( 1 );
 		}
 	}
 
@@ -256,7 +281,8 @@ class CliInstaller extends Installer {
 	}
 
 	protected function envGetDefaultServer() {
-		return null; // Do not guess if installing from CLI
+		// Use a basic value if the user didn't pass in --server
+		return 'http://localhost';
 	}
 
 	public function dirIsExecutable( $dir, $url ) {

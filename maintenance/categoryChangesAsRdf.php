@@ -46,6 +46,7 @@ SPARQL;
 DELETE {
 ?category ?x ?y
 } WHERE {
+   ?category ?x ?y
    VALUES ?category {
      %s
    }
@@ -62,6 +63,7 @@ DELETE {
 } INSERT {
 %s
 } WHERE {
+  ?category ?x ?y
    VALUES ?category {
      %s
    }
@@ -113,19 +115,18 @@ SPARQLDI;
 	}
 
 	public function execute() {
-		global $wgRCMaxAge;
-
 		$this->initialize();
 		$startTS = new MWTimestamp( $this->getOption( "start" ) );
 
 		$endTS = new MWTimestamp( $this->getOption( "end" ) );
 		$now = new MWTimestamp();
+		$rcMaxAge = $this->getConfig()->get( 'RCMaxAge' );
 
-		if ( $now->getTimestamp() - $startTS->getTimestamp() > $wgRCMaxAge ) {
-			$this->error( "Start timestamp too old, maximum RC age is $wgRCMaxAge!" );
+		if ( $now->getTimestamp() - $startTS->getTimestamp() > $rcMaxAge ) {
+			$this->error( "Start timestamp too old, maximum RC age is $rcMaxAge!" );
 		}
-		if ( $now->getTimestamp() - $endTS->getTimestamp() > $wgRCMaxAge ) {
-			$this->error( "End timestamp too old, maximum RC age is $wgRCMaxAge!" );
+		if ( $now->getTimestamp() - $endTS->getTimestamp() > $rcMaxAge ) {
+			$this->error( "End timestamp too old, maximum RC age is $rcMaxAge!" );
 		}
 
 		$this->startTS = $startTS->getTimestamp();
@@ -307,7 +308,7 @@ SPARQL;
 			'rc_type' => RC_LOG,
 		] );
 		$it->addJoinConditions( [
-			'page' => [ 'INNER JOIN', 'rc_cur_id = page_id' ],
+			'page' => [ 'JOIN', 'rc_cur_id = page_id' ],
 		] );
 		$this->addIndex( $it );
 		return $it;
@@ -363,6 +364,7 @@ SPARQL;
 	/**
 	 * Fetch categorization changes or edits
 	 * @param IDatabase $dbr
+	 * @param int $type
 	 * @return BatchRowIterator
 	 */
 	protected function getChangedCatsIterator( IDatabase $dbr, $type ) {
@@ -402,7 +404,7 @@ SPARQL;
 	/**
 	 * Get iterator for links for categories.
 	 * @param IDatabase $dbr
-	 * @param array $ids List of page IDs
+	 * @param int[] $ids List of page IDs
 	 * @return Traversable
 	 */
 	protected function getCategoryLinksIterator( IDatabase $dbr, array $ids ) {
@@ -593,6 +595,8 @@ SPARQL;
 			 * TODO: For now, we do full update even though some data hasn't changed,
 			 * e.g. parents for parent cat and counts for child cat.
 			 */
+			$childPages = [];
+			$parentCats = [];
 			foreach ( $batch as $row ) {
 				$childPages[$row->rc_cur_id] = true;
 				$parentCats[$row->rc_title] = true;
@@ -612,7 +616,7 @@ SPARQL;
 			$pages = [];
 			$deleteUrls = [];
 
-			if ( !empty( $childPages ) ) {
+			if ( $childPages ) {
 				// Load child rows by ID
 				$childRows = $dbr->select(
 					[ 'page', 'page_props', 'category' ],
@@ -640,7 +644,7 @@ SPARQL;
 				}
 			}
 
-			if ( !empty( $parentCats ) ) {
+			if ( $parentCats ) {
 				// Load parent rows by title
 				$joinConditions = [
 					'page' => [
@@ -663,7 +667,7 @@ SPARQL;
 						'cat_subcats',
 						'cat_files',
 					],
-					[ 'cat_title' => array_keys( $parentCats ) ],
+					[ 'cat_title' => array_map( 'strval', array_keys( $parentCats ) ) ],
 					__METHOD__,
 					[],
 					$joinConditions

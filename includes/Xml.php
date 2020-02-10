@@ -42,17 +42,15 @@ class Xml {
 		$allowShortTag = true
 	) {
 		$out = '<' . $element;
-		if ( !is_null( $attribs ) ) {
+		if ( $attribs !== null ) {
 			$out .= self::expandAttributes( $attribs );
 		}
-		if ( is_null( $contents ) ) {
+		if ( $contents === null ) {
 			$out .= '>';
+		} elseif ( $allowShortTag && $contents === '' ) {
+			$out .= ' />';
 		} else {
-			if ( $allowShortTag && $contents === '' ) {
-				$out .= ' />';
-			} else {
-				$out .= '>' . htmlspecialchars( $contents, ENT_NOQUOTES ) . "</$element>";
-			}
+			$out .= '>' . htmlspecialchars( $contents, ENT_NOQUOTES ) . "</$element>";
 		}
 		return $out;
 	}
@@ -68,7 +66,7 @@ class Xml {
 	 */
 	public static function expandAttributes( $attribs ) {
 		$out = '';
-		if ( is_null( $attribs ) ) {
+		if ( $attribs === null ) {
 			return null;
 		} elseif ( is_array( $attribs ) ) {
 			foreach ( $attribs as $name => $val ) {
@@ -146,10 +144,10 @@ class Xml {
 		global $wgLang;
 		$options = [];
 		$data = new XmlSelect( 'month', $id, $selected );
-		if ( is_null( $selected ) ) {
+		if ( $selected === null ) {
 			$selected = '';
 		}
-		if ( !is_null( $allmonths ) ) {
+		if ( $allmonths !== null ) {
 			$options[wfMessage( 'monthsall' )->text()] = $allmonths;
 		}
 		for ( $i = 1; $i < 13; $i++ ) {
@@ -268,7 +266,7 @@ class Xml {
 	/**
 	 * Convenience function to build an HTML text input field
 	 * @param string $name Value of the name attribute
-	 * @param int $size Value of the size attribute
+	 * @param int|false $size Value of the size attribute
 	 * @param mixed $value Value of the value attribute
 	 * @param array $attribs Other attributes
 	 * @return string HTML
@@ -291,7 +289,7 @@ class Xml {
 	/**
 	 * Convenience function to build an HTML password input field
 	 * @param string $name Value of the name attribute
-	 * @param int $size Value of the size attribute
+	 * @param int|false $size Value of the size attribute
 	 * @param mixed $value Value of the value attribute
 	 * @param array $attribs Other attributes
 	 * @return string HTML
@@ -485,7 +483,7 @@ class Xml {
 	 */
 	public static function option( $text, $value = null, $selected = false,
 			$attribs = [] ) {
-		if ( !is_null( $value ) ) {
+		if ( $value !== null ) {
 			$attribs['value'] = $value;
 		}
 		if ( $selected ) {
@@ -602,7 +600,7 @@ class Xml {
 	 *
 	 * @param string|bool $legend Legend of the fieldset. If evaluates to false,
 	 *   legend is not added.
-	 * @param string $content Pre-escaped content for the fieldset. If false,
+	 * @param string|false $content Pre-escaped content for the fieldset. If false,
 	 *   only open fieldset is returned.
 	 * @param array $attribs Any attributes to fieldset-element.
 	 *

@@ -21,6 +21,8 @@
  * @ingroup SpecialPage
  */
 
+use MediaWiki\MediaWikiServices;
+
 /**
  * A special page that list newly created pages
  *
@@ -31,6 +33,7 @@ class SpecialNewpages extends IncludableSpecialPage {
 	 * @var FormOptions
 	 */
 	protected $opts;
+	/** @var array[] */
 	protected $customFilters;
 
 	protected $showNavigation = false;
@@ -39,8 +42,10 @@ class SpecialNewpages extends IncludableSpecialPage {
 		parent::__construct( 'Newpages' );
 	}
 
+	/**
+	 * @param string|null $par
+	 */
 	protected function setup( $par ) {
-		// Options
 		$opts = new FormOptions();
 		$this->opts = $opts; // bind
 		$opts->add( 'hideliu', false );
@@ -54,25 +59,28 @@ class SpecialNewpages extends IncludableSpecialPage {
 		$opts->add( 'feed', '' );
 		$opts->add( 'tagfilter', '' );
 		$opts->add( 'invert', false );
+		$opts->add( 'associated', false );
 		$opts->add( 'size-mode', 'max' );
 		$opts->add( 'size', 0 );
 
 		$this->customFilters = [];
 		Hooks::run( 'SpecialNewPagesFilters', [ $this, &$this->customFilters ] );
+		// @phan-suppress-next-line PhanEmptyForeach False positive
 		foreach ( $this->customFilters as $key => $params ) {
 			$opts->add( $key, $params['default'] );
 		}
 
-		// Set values
 		$opts->fetchValuesFromRequest( $this->getRequest() );
 		if ( $par ) {
 			$this->parseParams( $par );
 		}
 
-		// Validate
 		$opts->validateIntBounds( 'limit', 0, 5000 );
 	}
 
+	/**
+	 * @param string $par
+	 */
 	protected function parseParams( $par ) {
 		$bits = preg_split( '/\s*,\s*/', trim( $par ) );
 		foreach ( $bits as $bit ) {
@@ -118,7 +126,7 @@ class SpecialNewpages extends IncludableSpecialPage {
 	/**
 	 * Show a form for filtering namespace and username
 	 *
-	 * @param string $par
+	 * @param string|null $par
 	 */
 	public function execute( $par ) {
 		$out = $this->getOutput();
@@ -157,6 +165,8 @@ class SpecialNewpages extends IncludableSpecialPage {
 				$navigation = $pager->getNavigationBar();
 			}
 			$out->addHTML( $navigation . $pager->getBody() . $navigation );
+			// Add styles for change tags
+			$out->addModuleStyles( 'mediawiki.interface.helpers.styles' );
 		} else {
 			$out->addWikiMsg( 'specialpage-empty' );
 		}
@@ -178,7 +188,7 @@ class SpecialNewpages extends IncludableSpecialPage {
 		}
 
 		// Disable some if needed
-		if ( !User::groupHasPermission( '*', 'createpage' ) ) {
+		if ( !$this->canAnonymousUsersCreatePages() ) {
 			unset( $filters['hideliu'] );
 		}
 		if ( !$this->getUser()->useNPPatrol() ) {
@@ -224,6 +234,7 @@ class SpecialNewpages extends IncludableSpecialPage {
 		$username = $this->opts->consumeValue( 'username' );
 		$tagFilterVal = $this->opts->consumeValue( 'tagfilter' );
 		$nsinvert = $this->opts->consumeValue( 'invert' );
+		$nsassociated = $this->opts->consumeValue( 'associated' );
 
 		$size = $this->opts->consumeValue( 'size' );
 		$max = $this->opts->consumeValue( 'size-mode' ) === 'max';
@@ -245,6 +256,13 @@ class SpecialNewpages extends IncludableSpecialPage {
 				'label-message' => 'invert',
 				'default' => $nsinvert,
 				'tooltip' => 'invert',
+			],
+			'nsassociated' => [
+				'type' => 'check',
+				'name' => 'associated',
+				'label-message' => 'namespace_association',
+				'default' => $nsassociated,
+				'tooltip' => 'namespace_association',
 			],
 			'tagFilter' => [
 				'type' => 'tagfilter',
@@ -349,14 +367,27 @@ class SpecialNewpages extends IncludableSpecialPage {
 			[ 'class' => 'mw-newpages-pagename' ],
 			$query
 		);
-		$histLink = $linkRenderer->makeKnownLink(
+		$linkArr = [];
+		$linkArr[] = $linkRenderer->makeKnownLink(
 			$title,
 			$this->msg( 'hist' )->text(),
-			[],
+			[ 'class' => 'mw-newpages-history' ],
 			[ 'action' => 'history' ]
 		);
-		$hist = Html::rawElement( 'span', [ 'class' => 'mw-newpages-history' ],
-			$this->msg( 'parentheses' )->rawParams( $histLink )->escaped() );
+		if ( MediaWikiServices::getInstance()
+			->getContentHandlerFactory()
+			->getContentHandler( $title->getContentModel() )
+			->supportsDirectEditing()
+		) {
+			$linkArr[] = $linkRenderer->makeKnownLink(
+				$title,
+				$this->msg( 'editlink' )->text(),
+				[ 'class' => 'mw-newpages-edit' ],
+				[ 'action' => 'edit' ]
+			);
+		}
+		$links = $this->msg( 'parentheses' )->rawParams( $this->getLanguage()
+			->pipeList( $linkArr ) )->escaped();
 
 		$length = Html::rawElement(
 			'span',
@@ -403,7 +434,7 @@ class SpecialNewpages extends IncludableSpecialPage {
 			);
 		}
 
-		$ret = "{$time} {$dm}{$plink} {$hist} {$dm}{$length} {$dm}{$ulink} {$comment} "
+		$ret = "{$time} {$dm}{$plink} {$links} {$dm}{$length} {$dm}{$ulink} {$comment} "
 			. "{$tagDisplay} {$oldTitleText}";
 
 		// Let extensions add data
@@ -516,6 +547,13 @@ class SpecialNewpages extends IncludableSpecialPage {
 			htmlspecialchars( FeedItem::stripComment( $revision->getComment() ) ) .
 			"</p>\n<hr />\n<div>" .
 			nl2br( htmlspecialchars( $content->serialize() ) ) . "</div>";
+	}
+
+	private function canAnonymousUsersCreatePages() {
+		$pm = MediaWikiServices::getInstance()->getPermissionManager();
+		return ( $pm->groupHasPermission( '*', 'createpage' ) ||
+			$pm->groupHasPermission( '*', 'createtalk' )
+		);
 	}
 
 	protected function getGroupName() {

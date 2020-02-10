@@ -20,12 +20,15 @@
  * @file
  */
 
+use MediaWiki\Block\DatabaseBlock;
+
 /**
  * Query module to get information about a list of users
  *
  * @ingroup API
  */
 class ApiQueryUsers extends ApiQueryBase {
+	use ApiQueryBlockInfoTrait;
 
 	private $tokenFunctions, $prop;
 
@@ -100,12 +103,12 @@ class ApiQueryUsers extends ApiQueryBase {
 		$params = $this->extractRequestParams();
 		$this->requireMaxOneParameter( $params, 'userids', 'users' );
 
-		if ( !is_null( $params['prop'] ) ) {
+		if ( $params['prop'] !== null ) {
 			$this->prop = array_flip( $params['prop'] );
 		} else {
 			$this->prop = [];
 		}
-		$useNames = !is_null( $params['users'] );
+		$useNames = $params['users'] !== null;
 
 		$users = (array)$params['users'];
 		$userids = (array)$params['userids'];
@@ -150,7 +153,7 @@ class ApiQueryUsers extends ApiQueryBase {
 				$this->addWhereFld( 'user_id', $userids );
 			}
 
-			$this->showHiddenUsersAddBlockInfo( isset( $this->prop['blockinfo'] ) );
+			$this->addBlockInfoToQuery( isset( $this->prop['blockinfo'] ) );
 
 			$data = [];
 			$res = $this->select( __METHOD__ );
@@ -168,7 +171,7 @@ class ApiQueryUsers extends ApiQueryBase {
 				}
 
 				$this->addTables( 'user_groups' );
-				$this->addJoinConds( [ 'user_groups' => [ 'INNER JOIN', 'ug_user=user_id' ] ] );
+				$this->addJoinConds( [ 'user_groups' => [ 'JOIN', 'ug_user=user_id' ] ] );
 				$this->addFields( [ 'user_name' ] );
 				$this->addFields( UserGroupMembership::selectFields() );
 				$this->addWhere( 'ug_expiry IS NULL OR ug_expiry >= ' .
@@ -225,19 +228,14 @@ class ApiQueryUsers extends ApiQueryBase {
 				}
 
 				if ( isset( $this->prop['rights'] ) ) {
-					$data[$key]['rights'] = $user->getRights();
+					$data[$key]['rights'] = $this->getPermissionManager()
+						->getUserPermissions( $user );
 				}
 				if ( $row->ipb_deleted ) {
 					$data[$key]['hidden'] = true;
 				}
-				if ( isset( $this->prop['blockinfo'] ) && !is_null( $row->ipb_by_text ) ) {
-					$data[$key]['blockid'] = (int)$row->ipb_id;
-					$data[$key]['blockedby'] = $row->ipb_by_text;
-					$data[$key]['blockedbyid'] = (int)$row->ipb_by;
-					$data[$key]['blockedtimestamp'] = wfTimestamp( TS_ISO_8601, $row->ipb_timestamp );
-					$data[$key]['blockreason'] = $commentStore->getComment( 'ipb_reason', $row )
-						->text;
-					$data[$key]['blockexpiry'] = $row->ipb_expiry;
+				if ( isset( $this->prop['blockinfo'] ) && $row->ipb_by_text !== null ) {
+					$data[$key] += $this->getBlockDetails( DatabaseBlock::newFromRow( $row ) );
 				}
 
 				if ( isset( $this->prop['emailable'] ) ) {
@@ -258,7 +256,7 @@ class ApiQueryUsers extends ApiQueryBase {
 					);
 				}
 
-				if ( !is_null( $params['token'] ) ) {
+				if ( $params['token'] !== null ) {
 					$tokenFunctions = $this->getTokenFunctions();
 					foreach ( $params['token'] as $t ) {
 						$val = call_user_func( $tokenFunctions[$t], $user );
@@ -286,7 +284,7 @@ class ApiQueryUsers extends ApiQueryBase {
 					if ( $iwUser instanceof UserRightsProxy ) {
 						$data[$u]['interwiki'] = true;
 
-						if ( !is_null( $params['token'] ) ) {
+						if ( $params['token'] !== null ) {
 							$tokenFunctions = $this->getTokenFunctions();
 
 							foreach ( $params['token'] as $t ) {
@@ -331,8 +329,7 @@ class ApiQueryUsers extends ApiQueryBase {
 				}
 			}
 
-			$fit = $result->addValue( [ 'query', $this->getModuleName() ],
-				null, $data[$u] );
+			$fit = $result->addValue( [ 'query', $this->getModuleName() ], null, $data[$u] );
 			if ( !$fit ) {
 				if ( $useNames ) {
 					$this->setContinueEnumParameter( 'users',

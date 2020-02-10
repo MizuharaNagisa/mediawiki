@@ -1,4 +1,5 @@
 <?php
+
 use MediaWiki\MediaWikiServices;
 
 /**
@@ -10,7 +11,7 @@ class GenderCacheTest extends MediaWikiLangTestCase {
 	/** @var string[] User key => username */
 	private static $nameMap;
 
-	function addDBDataOnce() {
+	public function addDBDataOnce() {
 		// ensure the correct default gender
 		$this->mergeMwGlobalArrayValue( 'wgDefaultUserOptions', [ 'gender' => 'unknown' ] );
 

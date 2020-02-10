@@ -37,18 +37,19 @@ use Message;
 abstract class AuthenticationRequest {
 
 	/** Indicates that the request is not required for authentication to proceed. */
-	const OPTIONAL = 0;
+	public const OPTIONAL = 0;
 
 	/** Indicates that the request is required for authentication to proceed.
 	 * This will only be used for UI purposes; it is the authentication providers'
 	 * responsibility to verify that all required requests are present.
 	 */
-	const REQUIRED = 1;
+	public const REQUIRED = 1;
 
 	/** Indicates that the request is required by a primary authentication
 	 * provider. Since the user can choose which primary to authenticate with,
-	 * the request might or might not end up being actually required. */
-	const PRIMARY_REQUIRED = 2;
+	 * the request might or might not end up being actually required.
+	 */
+	public const PRIMARY_REQUIRED = 2;
 
 	/** @var string|null The AuthManager::ACTION_* constant this request was
 	 * created to be used for. The *_CONTINUE constants are not used here, the
@@ -57,14 +58,16 @@ abstract class AuthenticationRequest {
 	public $action = null;
 
 	/** @var int For login, continue, and link actions, one of self::OPTIONAL,
-	 * self::REQUIRED, or self::PRIMARY_REQUIRED */
+	 * self::REQUIRED, or self::PRIMARY_REQUIRED
+	 */
 	public $required = self::REQUIRED;
 
 	/** @var string|null Return-to URL, in case of redirect */
 	public $returnToUrl = null;
 
 	/** @var string|null Username. See AuthenticationProvider::getAuthenticationRequests()
-	 * for details of what this means and how it behaves. */
+	 * for details of what this means and how it behaves.
+	 */
 	public $username = null;
 
 	/**
@@ -119,6 +122,7 @@ abstract class AuthenticationRequest {
 	 * a 'password' field).
 	 *
 	 * @return array As above
+	 * @phan-return array<string,array{type:string,options?:array,value?:string,label:Message,help:Message,optional?:bool,sensitive?:bool,skippable?:bool}>
 	 */
 	abstract public function getFieldInfo();
 
@@ -243,12 +247,18 @@ abstract class AuthenticationRequest {
 
 	/**
 	 * Select a request by class name.
+	 *
+	 * @codingStandardsIgnoreStart
+	 * @phan-template T
+	 * @codingStandardsIgnoreEnd
 	 * @param AuthenticationRequest[] $reqs
 	 * @param string $class Class name
+	 * @phan-param class-string<T> $class
 	 * @param bool $allowSubclasses If true, also returns any request that's a subclass of the given
 	 *   class.
 	 * @return AuthenticationRequest|null Returns null if there is not exactly
 	 *  one matching request.
+	 * @phan-return T|null
 	 */
 	public static function getRequestByClass( array $reqs, $class, $allowSubclasses = false ) {
 		$requests = array_filter( $reqs, function ( $req ) use ( $class, $allowSubclasses ) {
@@ -334,12 +344,13 @@ abstract class AuthenticationRequest {
 				}
 
 				$options['sensitive'] = !empty( $options['sensitive'] );
+				$type = $options['type'];
 
 				if ( !array_key_exists( $name, $merged ) ) {
 					$merged[$name] = $options;
-				} elseif ( $merged[$name]['type'] !== $options['type'] ) {
+				} elseif ( $merged[$name]['type'] !== $type ) {
 					throw new \UnexpectedValueException( "Field type conflict for \"$name\", " .
-						"\"{$merged[$name]['type']}\" vs \"{$options['type']}\""
+						"\"{$merged[$name]['type']}\" vs \"$type\""
 					);
 				} else {
 					if ( isset( $options['options'] ) ) {
@@ -370,6 +381,7 @@ abstract class AuthenticationRequest {
 	 * @return AuthenticationRequest
 	 */
 	public static function __set_state( $data ) {
+		// @phan-suppress-next-line PhanTypeInstantiateAbstractStatic
 		$ret = new static();
 		foreach ( $data as $k => $v ) {
 			$ret->$k = $v;

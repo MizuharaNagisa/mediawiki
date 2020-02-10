@@ -21,8 +21,8 @@
  * @ingroup SpecialPage
  */
 
-use Wikimedia\Rdbms\IResultWrapper;
 use Wikimedia\Rdbms\IDatabase;
+use Wikimedia\Rdbms\IResultWrapper;
 
 /**
  * Class definition for a wanted query page like
@@ -75,13 +75,7 @@ abstract class WantedQueryPage extends QueryPage {
 					? '<del>' . $linkRenderer->makeLink( $title ) . '</del>'
 					: $linkRenderer->makeLink( $title );
 			} else {
-				$pageLink = $linkRenderer->makeLink(
-					$title,
-					null,
-					[],
-					[],
-					[ 'broken' ]
-				);
+				$pageLink = $linkRenderer->makeBrokenLink( $title );
 			}
 			return $this->getLanguage()->specialList( $pageLink, $this->makeWlhLink( $title, $result ) );
 		} else {
@@ -116,7 +110,7 @@ abstract class WantedQueryPage extends QueryPage {
 	 * @param object $result Result row
 	 * @return string
 	 */
-	private function makeWlhLink( $title, $result ) {
+	protected function makeWlhLink( $title, $result ) {
 		$wlh = SpecialPage::getTitleFor( 'Whatlinkshere', $title->getPrefixedText() );
 		$label = $this->msg( 'nlinks' )->numParams( $result->value )->text();
 		return $this->getLinkRenderer()->makeLink( $wlh, $label );

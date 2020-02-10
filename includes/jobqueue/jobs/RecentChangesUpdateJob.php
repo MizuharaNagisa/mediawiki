@@ -27,7 +27,7 @@ use MediaWiki\MediaWikiServices;
  * @since 1.25
  */
 class RecentChangesUpdateJob extends Job {
-	function __construct( Title $title, array $params ) {
+	public function __construct( Title $title, array $params ) {
 		parent::__construct( 'recentChangesUpdate', $title, $params );
 
 		if ( !isset( $params['type'] ) ) {
@@ -168,7 +168,7 @@ class RecentChangesUpdateJob extends Job {
 			],
 			__METHOD__,
 			[
-				'GROUP BY' => [ 'rc_user_text' ],
+				'GROUP BY' => [ $actorQuery['fields']['rc_user_text'] ],
 				'ORDER BY' => 'NULL' // avoid filesort
 			],
 			$actorQuery['joins']
@@ -185,7 +185,7 @@ class RecentChangesUpdateJob extends Job {
 				[
 					'qcc_type' => 'activeusers',
 					'qcc_namespace' => NS_USER,
-					'qcc_title' => array_keys( $names ),
+					'qcc_title' => array_map( 'strval', array_keys( $names ) ),
 					'qcc_value >= ' . $dbw->addQuotes( $nowUnix - $days * 86400 ), // TS_UNIX
 				 ],
 				__METHOD__

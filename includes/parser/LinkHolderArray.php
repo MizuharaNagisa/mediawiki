@@ -24,11 +24,16 @@
 use MediaWiki\MediaWikiServices;
 
 /**
+ * @internal
+ *
  * @ingroup Parser
  */
 class LinkHolderArray {
+	/** @var array[][] */
 	public $internals = [];
+	/** @var array[] */
 	public $interwikis = [];
+	/** @var int */
 	public $size = 0;
 
 	/**
@@ -38,62 +43,37 @@ class LinkHolderArray {
 	protected $tempIdOffset;
 
 	/**
-	 * @param Parser $parent
+	 * Current language converter
+	 * @var ILanguageConverter
 	 */
-	public function __construct( $parent ) {
+	private $languageConverter;
+
+	/**
+	 * @param Parser $parent
+	 * @param ILanguageConverter|null $languageConverter
+	 */
+	public function __construct( $parent, ILanguageConverter $languageConverter = null ) {
 		$this->parent = $parent;
+		$this->languageConverter = DeprecationHelper::newArgumentWithDeprecation(
+			__METHOD__,
+			'languageConverter',
+			'1.35',
+			$languageConverter,
+			function () use ( $parent ) {
+				return MediaWikiServices::getInstance()->getLanguageConverterFactory()
+					->getLanguageConverter( $parent->getTargetLanguage() );
+			}
+		);
 	}
 
 	/**
 	 * Reduce memory usage to reduce the impact of circular references
 	 */
 	public function __destruct() {
+		// @phan-suppress-next-line PhanTypeSuspiciousNonTraversableForeach
 		foreach ( $this as $name => $value ) {
 			unset( $this->$name );
 		}
-	}
-
-	/**
-	 * Don't serialize the parent object, it is big, and not needed when it is
-	 * a parameter to mergeForeign(), which is the only application of
-	 * serializing at present.
-	 *
-	 * Compact the titles, only serialize the text form.
-	 * @return array
-	 */
-	public function __sleep() {
-		foreach ( $this->internals as &$nsLinks ) {
-			foreach ( $nsLinks as &$entry ) {
-				unset( $entry['title'] );
-			}
-		}
-		unset( $nsLinks );
-		unset( $entry );
-
-		foreach ( $this->interwikis as &$entry ) {
-			unset( $entry['title'] );
-		}
-		unset( $entry );
-
-		return [ 'internals', 'interwikis', 'size' ];
-	}
-
-	/**
-	 * Recreate the Title objects
-	 */
-	public function __wakeup() {
-		foreach ( $this->internals as &$nsLinks ) {
-			foreach ( $nsLinks as &$entry ) {
-				$entry['title'] = Title::newFromText( $entry['pdbk'] );
-			}
-		}
-		unset( $nsLinks );
-		unset( $entry );
-
-		foreach ( $this->interwikis as &$entry ) {
-			$entry['title'] = Title::newFromText( $entry['pdbk'] );
-		}
-		unset( $entry );
 	}
 
 	/**
@@ -110,92 +90,6 @@ class LinkHolderArray {
 			}
 		}
 		$this->interwikis += $other->interwikis;
-	}
-
-	/**
-	 * Merge a LinkHolderArray from another parser instance into this one. The
-	 * keys will not be preserved. Any text which went with the old
-	 * LinkHolderArray and needs to work with the new one should be passed in
-	 * the $texts array. The strings in this array will have their link holders
-	 * converted for use in the destination link holder. The resulting array of
-	 * strings will be returned.
-	 *
-	 * @param LinkHolderArray $other
-	 * @param array $texts Array of strings
-	 * @return array
-	 */
-	public function mergeForeign( $other, $texts ) {
-		$this->tempIdOffset = $idOffset = $this->parent->nextLinkID();
-		$maxId = 0;
-
-		# Renumber internal links
-		foreach ( $other->internals as $ns => $nsLinks ) {
-			foreach ( $nsLinks as $key => $entry ) {
-				$newKey = $idOffset + $key;
-				$this->internals[$ns][$newKey] = $entry;
-				$maxId = $newKey > $maxId ? $newKey : $maxId;
-			}
-		}
-		$texts = preg_replace_callback( '/(<!--LINK\'" \d+:)(\d+)(-->)/',
-			[ $this, 'mergeForeignCallback' ], $texts );
-
-		# Renumber interwiki links
-		foreach ( $other->interwikis as $key => $entry ) {
-			$newKey = $idOffset + $key;
-			$this->interwikis[$newKey] = $entry;
-			$maxId = $newKey > $maxId ? $newKey : $maxId;
-		}
-		$texts = preg_replace_callback( '/(<!--IWLINK\'" )(\d+)(-->)/',
-			[ $this, 'mergeForeignCallback' ], $texts );
-
-		# Set the parent link ID to be beyond the highest used ID
-		$this->parent->setLinkID( $maxId + 1 );
-		$this->tempIdOffset = null;
-		return $texts;
-	}
-
-	/**
-	 * @param array $m
-	 * @return string
-	 */
-	protected function mergeForeignCallback( $m ) {
-		return $m[1] . ( $m[2] + $this->tempIdOffset ) . $m[3];
-	}
-
-	/**
-	 * Get a subset of the current LinkHolderArray which is sufficient to
-	 * interpret the given text.
-	 * @param string $text
-	 * @return LinkHolderArray
-	 */
-	public function getSubArray( $text ) {
-		$sub = new LinkHolderArray( $this->parent );
-
-		# Internal links
-		$pos = 0;
-		while ( $pos < strlen( $text ) ) {
-			if ( !preg_match( '/<!--LINK\'" (\d+):(\d+)-->/',
-				$text, $m, PREG_OFFSET_CAPTURE, $pos )
-			) {
-				break;
-			}
-			$ns = $m[1][0];
-			$key = $m[2][0];
-			$sub->internals[$ns][$key] = $this->internals[$ns][$key];
-			$pos = $m[0][1] + strlen( $m[0][0] );
-		}
-
-		# Interwiki links
-		$pos = 0;
-		while ( $pos < strlen( $text ) ) {
-			if ( !preg_match( '/<!--IWLINK\'" (\d+)-->/', $text, $m, PREG_OFFSET_CAPTURE, $pos ) ) {
-				break;
-			}
-			$key = $m[1][0];
-			$sub->interwikis[$key] = $this->interwikis[$key];
-			$pos = $m[0][1] + strlen( $m[0][0] );
-		}
-		return $sub;
 	}
 
 	/**
@@ -275,6 +169,7 @@ class LinkHolderArray {
 
 	/**
 	 * Replace internal links
+	 * @suppress SecurityCheck-XSS Gets confused with $entry['pdbk']
 	 * @param string &$text
 	 */
 	protected function replaceInternal( &$text ) {
@@ -306,7 +201,7 @@ class LinkHolderArray {
 
 				# Skip invalid entries.
 				# Result will be ugly, but prevents crash.
-				if ( is_null( $title ) ) {
+				if ( $title === null ) {
 					continue;
 				}
 
@@ -362,7 +257,7 @@ class LinkHolderArray {
 		}
 
 		# Do a second query for different language variants of links and categories
-		if ( $this->parent->getContentLanguage()->hasVariants() ) {
+		if ( $this->languageConverter->hasVariants() ) {
 			$this->doVariants( $colours );
 		}
 
@@ -418,6 +313,7 @@ class LinkHolderArray {
 	/**
 	 * Replace interwiki links
 	 * @param string &$text
+	 * @suppress SecurityCheck-XSS Gets confused with $this->interwikis['pdbk']
 	 */
 	protected function replaceInterwiki( &$text ) {
 		if ( empty( $this->interwikis ) ) {
@@ -477,7 +373,7 @@ class LinkHolderArray {
 		}
 
 		// Now do the conversion and explode string to text of titles
-		$titlesAllVariants = $this->parent->getContentLanguage()->
+		$titlesAllVariants = $this->languageConverter->
 			autoConvertToAllVariants( rtrim( $titlesToBeConverted, "\0" ) );
 		$allVariantsName = array_keys( $titlesAllVariants );
 		foreach ( $titlesAllVariants as &$titlesVariant ) {
@@ -519,11 +415,11 @@ class LinkHolderArray {
 		foreach ( $output->getCategoryLinks() as $category ) {
 			$categoryTitle = Title::makeTitleSafe( NS_CATEGORY, $category );
 			$linkBatch->addObj( $categoryTitle );
-			$variants = $this->parent->getContentLanguage()->autoConvertToAllVariants( $category );
+			$variants = $this->languageConverter->autoConvertToAllVariants( $category );
 			foreach ( $variants as $variant ) {
 				if ( $variant !== $category ) {
 					$variantTitle = Title::makeTitleSafe( NS_CATEGORY, $variant );
-					if ( is_null( $variantTitle ) ) {
+					if ( $variantTitle === null ) {
 						continue;
 					}
 					$linkBatch->addObj( $variantTitle );
@@ -607,41 +503,26 @@ class LinkHolderArray {
 	}
 
 	/**
-	 * Replace <!--LINK--> link placeholders with plain text of links
+	 * Replace <!--LINK--> and <!--IWLINK--> link placeholders with plain text of links
 	 * (not HTML-formatted).
 	 *
 	 * @param string $text
 	 * @return string
 	 */
 	public function replaceText( $text ) {
-		$text = preg_replace_callback(
-			'/<!--(LINK|IWLINK)\'" (.*?)-->/',
-			[ $this, 'replaceTextCallback' ],
-			$text );
+		return preg_replace_callback(
+			'/<!--(IW)?LINK\'" (.*?)-->/',
+			function ( $matches ) {
+				list( $unchanged, $isInterwiki, $key ) = $matches;
 
-		return $text;
-	}
-
-	/**
-	 * Callback for replaceText()
-	 *
-	 * @param array $matches
-	 * @return string
-	 * @private
-	 */
-	public function replaceTextCallback( $matches ) {
-		$type = $matches[1];
-		$key = $matches[2];
-		if ( $type == 'LINK' ) {
-			list( $ns, $index ) = explode( ':', $key, 2 );
-			if ( isset( $this->internals[$ns][$index]['text'] ) ) {
-				return $this->internals[$ns][$index]['text'];
-			}
-		} elseif ( $type == 'IWLINK' ) {
-			if ( isset( $this->interwikis[$key]['text'] ) ) {
-				return $this->interwikis[$key]['text'];
-			}
-		}
-		return $matches[0];
+				if ( !$isInterwiki ) {
+					list( $ns, $index ) = explode( ':', $key, 2 );
+					return $this->internals[$ns][$index]['text'] ?? $unchanged;
+				} else {
+					return $this->interwikis[$key]['text'] ?? $unchanged;
+				}
+			},
+			$text
+		);
 	}
 }

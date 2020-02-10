@@ -10,7 +10,7 @@
 	 *     @example
 	 *     // Example of a text input widget
 	 *     var dateTimeInput = new mw.widgets.datetime.DateTimeInputWidget( {} )
-	 *     $( 'body' ).append( dateTimeInput.$element );
+	 *     $( document.body ).append( dateTimeInput.$element );
 	 *
 	 * [1]: https://www.mediawiki.org/wiki/OOUI/Widgets/Inputs
 	 *
@@ -19,6 +19,7 @@
 	 * @mixins OO.ui.mixin.IconElement
 	 * @mixins OO.ui.mixin.IndicatorElement
 	 * @mixins OO.ui.mixin.PendingElement
+	 * @mixins OO.ui.mixin.FlaggedElement
 	 *
 	 * @constructor
 	 * @param {Object} [config] Configuration options
@@ -70,6 +71,7 @@
 		OO.ui.mixin.IconElement.call( this, config );
 		OO.ui.mixin.IndicatorElement.call( this, config );
 		OO.ui.mixin.PendingElement.call( this, config );
+		OO.ui.mixin.FlaggedElement.call( this, config );
 
 		// Properties
 		this.$handle = $( '<span>' );
@@ -174,6 +176,7 @@
 	OO.mixinClass( mw.widgets.datetime.DateTimeInputWidget, OO.ui.mixin.IconElement );
 	OO.mixinClass( mw.widgets.datetime.DateTimeInputWidget, OO.ui.mixin.IndicatorElement );
 	OO.mixinClass( mw.widgets.datetime.DateTimeInputWidget, OO.ui.mixin.PendingElement );
+	OO.mixinClass( mw.widgets.datetime.DateTimeInputWidget, OO.ui.mixin.FlaggedElement );
 
 	/* Static properties */
 
@@ -373,7 +376,7 @@
 				} else {
 					maxlength = spec.size;
 					if ( spec.intercalarySize ) {
-						// eslint-disable-next-line jquery/no-each-util
+						// eslint-disable-next-line no-jquery/no-each-util
 						$.each( spec.intercalarySize, reduceFunc );
 					}
 					$field = $( '<input>' ).attr( 'type', 'text' )
@@ -627,7 +630,7 @@
 								e.keyCode === OO.ui.Keys.UP ? -1 : 1, 'wrap' )
 						);
 					}
-					if ( $field.is( ':input' ) ) {
+					if ( $field.is( 'input' ) ) {
 						$field.trigger( 'select' );
 					}
 					return false;
@@ -649,7 +652,7 @@
 			if ( this.getValueAsDate() === null ) {
 				this.setValue( this.formatter.getDefaultDate() );
 			}
-			if ( $field.is( ':input' ) ) {
+			if ( $field.is( 'input' ) ) {
 				$field.trigger( 'select' );
 			}
 

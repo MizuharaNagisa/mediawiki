@@ -2,19 +2,19 @@
 
 class MWDebugTest extends MediaWikiTestCase {
 
-	protected function setUp() {
+	protected function setUp() : void {
 		parent::setUp();
 		/** Clear log before each test */
 		MWDebug::clearLog();
 	}
 
-	public static function setUpBeforeClass() {
+	public static function setUpBeforeClass() : void {
 		parent::setUpBeforeClass();
 		MWDebug::init();
 		Wikimedia\suppressWarnings();
 	}
 
-	public static function tearDownAfterClass() {
+	public static function tearDownAfterClass() : void {
 		parent::tearDownAfterClass();
 		MWDebug::deinit();
 		Wikimedia\restoreWarnings();
@@ -113,7 +113,7 @@ class MWDebugTest extends MediaWikiTestCase {
 		$xml = ApiFormatXml::recXmlPrint( 'help', $data, null );
 
 		// exception not thrown
-		$this->assertInternalType( 'string', $xml );
+		$this->assertIsString( $xml );
 	}
 
 	/**

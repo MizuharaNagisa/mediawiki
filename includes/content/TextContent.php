@@ -155,7 +155,9 @@ class TextContent extends AbstractContent {
 	 * @return string|bool The raw text, or false if the conversion failed.
 	 */
 	public function getWikitextForTransclusion() {
+		/** @var WikitextContent $wikitext */
 		$wikitext = $this->convert( CONTENT_MODEL_WIKITEXT, 'lossy' );
+		'@phan-var WikitextContent $wikitext';
 
 		if ( $wikitext ) {
 			return $wikitext->getText();
@@ -214,7 +216,8 @@ class TextContent extends AbstractContent {
 	 */
 	public function diff( Content $that, Language $lang = null ) {
 		$this->checkModelID( $that->getModel() );
-
+		/** @var self $that */
+		'@phan-var self $that';
 		// @todo could implement this in DifferenceEngine and just delegate here?
 
 		if ( !$lang ) {
@@ -253,11 +256,12 @@ class TextContent extends AbstractContent {
 	protected function fillParserOutput( Title $title, $revId,
 		ParserOptions $options, $generateHtml, ParserOutput &$output
 	) {
-		global $wgParser, $wgTextModelsToParse;
+		global $wgTextModelsToParse;
 
 		if ( in_array( $this->getModel(), $wgTextModelsToParse ) ) {
 			// parse just to get links etc into the database, HTML is replaced below.
-			$output = $wgParser->parse( $this->getText(), $title, $options, true, true, $revId );
+			$output = MediaWikiServices::getInstance()->getParser()
+				->parse( $this->getText(), $title, $options, true, true, $revId );
 		}
 
 		if ( $generateHtml ) {
@@ -278,32 +282,14 @@ class TextContent extends AbstractContent {
 	 * If further information is to be derived from the content (such as
 	 * categories), the fillParserOutput() method can be overridden instead.
 	 *
-	 * For backwards-compatibility, this default implementation just calls
-	 * getHighlightHtml().
-	 *
 	 * @return string An HTML representation of the content
 	 */
 	protected function getHtml() {
-		return $this->getHighlightHtml();
-	}
-
-	/**
-	 * Generates an HTML version of the content, for display.
-	 *
-	 * This default implementation returns an HTML-escaped version
-	 * of the raw text content.
-	 *
-	 * @note The functionality of this method should really be implemented
-	 * in getHtml(), and subclasses should override getHtml() if needed.
-	 * getHighlightHtml() is kept around for backward compatibility with
-	 * extensions that already override it.
-	 *
-	 * @deprecated since 1.24. Use getHtml() instead. In particular, subclasses overriding
-	 *     getHighlightHtml() should override getHtml() instead.
-	 *
-	 * @return string An HTML representation of the content
-	 */
-	protected function getHighlightHtml() {
+		// TODO: Remove in MediaWiki 1.36
+		if ( method_exists( $this, 'getHighlightHtml' ) ) {
+			wfDeprecated( 'getHighlightHtml', '1.24' );
+			throw new Exception( 'getHighlightHtml() is not called any more!' );
+		}
 		return htmlspecialchars( $this->getText() );
 	}
 
@@ -317,6 +303,7 @@ class TextContent extends AbstractContent {
 	 *
 	 * @return Content|bool A content object with the content model $toModel, or false if that
 	 *     conversion is not supported.
+	 * @throws MWUnknownContentModelException
 	 *
 	 * @see Content::convert()
 	 */
@@ -327,7 +314,7 @@ class TextContent extends AbstractContent {
 			return $converted;
 		}
 
-		$toHandler = ContentHandler::getForModelID( $toModel );
+		$toHandler = $this->getContentHandlerFactory()->getContentHandler( $toModel );
 
 		if ( $toHandler instanceof TextContentHandler ) {
 			// NOTE: ignore content serialization format - it's just text anyway.

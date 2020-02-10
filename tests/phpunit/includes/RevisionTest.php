@@ -17,7 +17,7 @@ use Wikimedia\Rdbms\LoadBalancer;
  */
 class RevisionTest extends MediaWikiTestCase {
 
-	public function setUp() {
+	public function setUp() : void {
 		parent::setUp();
 		$this->setMwGlobals(
 			'wgMultiContentRevisionSchemaMigrationStage',
@@ -187,11 +187,9 @@ class RevisionTest extends MediaWikiTestCase {
 	 * @covers \MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray
 	 */
 	public function testConstructFromArrayThrowsExceptions( $rowArray, Exception $expectedException ) {
-		$this->setExpectedException(
-			get_class( $expectedException ),
-			$expectedException->getMessage(),
-			$expectedException->getCode()
-		);
+		$this->expectException( get_class( $expectedException ) );
+		$this->expectExceptionMessage( $expectedException->getMessage() );
+		$this->expectExceptionCode( $expectedException->getCode() );
 		new Revision( $rowArray, 0, $this->getMockTitle() );
 	}
 
@@ -200,9 +198,7 @@ class RevisionTest extends MediaWikiTestCase {
 	 * @covers \MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray
 	 */
 	public function testConstructFromNothing() {
-		$this->setExpectedException(
-			InvalidArgumentException::class
-		);
+		$this->expectException( InvalidArgumentException::class );
 		new Revision( [] );
 	}
 
@@ -281,7 +277,6 @@ class RevisionTest extends MediaWikiTestCase {
 	 * @covers \MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray
 	 */
 	public function testConstructFromRowWithBadPageId() {
-		$this->overrideMwServices();
 		Wikimedia\suppressWarnings();
 		$rev = new Revision( (object)[
 			'rev_page' => 77777777,
@@ -377,6 +372,7 @@ class RevisionTest extends MediaWikiTestCase {
 	 * @dataProvider provideGetRevisionText
 	 */
 	public function testGetRevisionText( $expected, $rowData, $prefix = 'old_', $wiki = false ) {
+		$this->hideDeprecated( 'Revision::getRevisionText' );
 		$this->assertEquals(
 			$expected,
 			Revision::getRevisionText( $rowData, $prefix, $wiki ) );
@@ -418,6 +414,7 @@ class RevisionTest extends MediaWikiTestCase {
 	public function testGetRevisionWithZlibExtension_badData( $expected, $rowData ) {
 		$this->checkPHPExtension( 'zlib' );
 		Wikimedia\suppressWarnings();
+		$this->hideDeprecated( 'Revision::getRevisionText' );
 		$this->assertFalse(
 			Revision::getRevisionText(
 				(object)$rowData
@@ -438,10 +435,11 @@ class RevisionTest extends MediaWikiTestCase {
 		$lb = $this->getMockBuilder( LoadBalancer::class )
 			->disableOriginalConstructor()
 			->getMock();
-
+		$access = MediaWikiServices::getInstance()->getExternalStoreAccess();
 		$cache = $this->getWANObjectCache();
 
-		$blobStore = new SqlBlobStore( $lb, $cache );
+		$blobStore = new SqlBlobStore( $lb, $access, $cache );
+
 		return $blobStore;
 	}
 
@@ -479,7 +477,8 @@ class RevisionTest extends MediaWikiTestCase {
 			MediaWikiServices::getInstance()->getSlotRoleStore(),
 			MediaWikiServices::getInstance()->getSlotRoleRegistry(),
 			MIGRATION_OLD,
-			MediaWikiServices::getInstance()->getActorMigration()
+			MediaWikiServices::getInstance()->getActorMigration(),
+			MediaWikiServices::getInstance()->getContentHandlerFactory()
 		);
 		return $blobStore;
 	}
@@ -487,7 +486,6 @@ class RevisionTest extends MediaWikiTestCase {
 	public function provideGetRevisionTextWithLegacyEncoding() {
 		yield 'Utf8Native' => [
 			"Wiki est l'\xc3\xa9cole superieur !",
-			'fr',
 			'iso-8859-1',
 			(object)[
 				'old_flags' => 'utf-8',
@@ -496,7 +494,6 @@ class RevisionTest extends MediaWikiTestCase {
 		];
 		yield 'Utf8Legacy' => [
 			"Wiki est l'\xc3\xa9cole superieur !",
-			'fr',
 			'iso-8859-1',
 			(object)[
 				'old_flags' => '',
@@ -509,9 +506,9 @@ class RevisionTest extends MediaWikiTestCase {
 	 * @covers Revision::getRevisionText
 	 * @dataProvider provideGetRevisionTextWithLegacyEncoding
 	 */
-	public function testGetRevisionWithLegacyEncoding( $expected, $lang, $encoding, $rowData ) {
+	public function testGetRevisionWithLegacyEncoding( $expected, $encoding, $rowData ) {
 		$blobStore = $this->getBlobStore();
-		$blobStore->setLegacyEncoding( $encoding, Language::factory( $lang ) );
+		$blobStore->setLegacyEncoding( $encoding );
 		$this->setService( 'BlobStoreFactory', $this->mockBlobStoreFactory( $blobStore ) );
 
 		$this->testGetRevisionText( $expected, $rowData );
@@ -525,7 +522,6 @@ class RevisionTest extends MediaWikiTestCase {
 		 */
 		yield 'Utf8NativeGzip' => [
 			"Wiki est l'\xc3\xa9cole superieur !",
-			'fr',
 			'iso-8859-1',
 			(object)[
 				'old_flags' => 'gzip,utf-8',
@@ -534,7 +530,6 @@ class RevisionTest extends MediaWikiTestCase {
 		];
 		yield 'Utf8LegacyGzip' => [
 			"Wiki est l'\xc3\xa9cole superieur !",
-			'fr',
 			'iso-8859-1',
 			(object)[
 				'old_flags' => 'gzip',
@@ -547,11 +542,11 @@ class RevisionTest extends MediaWikiTestCase {
 	 * @covers Revision::getRevisionText
 	 * @dataProvider provideGetRevisionTextWithGzipAndLegacyEncoding
 	 */
-	public function testGetRevisionWithGzipAndLegacyEncoding( $expected, $lang, $encoding, $rowData ) {
+	public function testGetRevisionWithGzipAndLegacyEncoding( $expected, $encoding, $rowData ) {
 		$this->checkPHPExtension( 'zlib' );
 
 		$blobStore = $this->getBlobStore();
-		$blobStore->setLegacyEncoding( $encoding, Language::factory( $lang ) );
+		$blobStore->setLegacyEncoding( $encoding );
 		$this->setService( 'BlobStoreFactory', $this->mockBlobStoreFactory( $blobStore ) );
 
 		$this->testGetRevisionText( $expected, $rowData );
@@ -570,6 +565,7 @@ class RevisionTest extends MediaWikiTestCase {
 			"Flags should not contain 'gzip'" );
 		$this->assertEquals( "Wiki est l'\xc3\xa9cole superieur !",
 			$row->old_text, "Direct check" );
+		$this->hideDeprecated( 'Revision::getRevisionText' );
 		$this->assertEquals( "Wiki est l'\xc3\xa9cole superieur !",
 			Revision::getRevisionText( $row ), "getRevisionText" );
 	}
@@ -593,6 +589,7 @@ class RevisionTest extends MediaWikiTestCase {
 			"Flags should contain 'gzip'" );
 		$this->assertEquals( "Wiki est l'\xc3\xa9cole superieur !",
 			gzinflate( $row->old_text ), "Direct check" );
+		$this->hideDeprecated( 'Revision::getRevisionText' );
 		$this->assertEquals( "Wiki est l'\xc3\xa9cole superieur !",
 			Revision::getRevisionText( $row ), "getRevisionText" );
 	}
@@ -601,8 +598,6 @@ class RevisionTest extends MediaWikiTestCase {
 	 * @covers Revision::loadFromTitle
 	 */
 	public function testLoadFromTitle() {
-		$this->setMwGlobals( 'wgActorTableSchemaMigrationStage', SCHEMA_COMPAT_OLD );
-		$this->overrideMwServices();
 		$title = $this->getMockTitle();
 
 		$conditions = [
@@ -630,7 +625,7 @@ class RevisionTest extends MediaWikiTestCase {
 		];
 
 		$domain = MediaWikiServices::getInstance()->getDBLoadBalancer()->getLocalDomainID();
-		$db = $this->getMock( IDatabase::class );
+		$db = $this->createMock( IDatabase::class );
 		$db->expects( $this->any() )
 			->method( 'getDomainId' )
 			->will( $this->returnValue( $domain ) );
@@ -640,6 +635,7 @@ class RevisionTest extends MediaWikiTestCase {
 				$this->equalTo( [
 					'revision', 'page', 'user',
 					'temp_rev_comment' => 'revision_comment_temp', 'comment_rev_comment' => 'comment',
+					'temp_rev_user' => 'revision_actor_temp', 'actor_rev_user' => 'actor',
 				] ),
 				// We don't really care about the fields are they come from the selectField methods
 				$this->isType( 'array' ),
@@ -668,7 +664,7 @@ class RevisionTest extends MediaWikiTestCase {
 	public function provideDecompressRevisionText() {
 		yield '(no legacy encoding), false in false out' => [ false, false, [], false ];
 		yield '(no legacy encoding), empty in empty out' => [ false, '', [], '' ];
-		yield '(no legacy encoding), empty in empty out' => [ false, 'A', [], 'A' ];
+		yield '(no legacy encoding), empty in empty out 2' => [ false, 'A', [], 'A' ];
 		yield '(no legacy encoding), string in with gzip flag returns string' => [
 			// gzip string below generated with gzdeflate( 'AAAABBAAA' )
 			false, "sttttr\002\022\000", [ 'gzip' ], 'AAAABBAAA',
@@ -729,7 +725,7 @@ class RevisionTest extends MediaWikiTestCase {
 	public function testDecompressRevisionText( $legacyEncoding, $text, $flags, $expected ) {
 		$blobStore = $this->getBlobStore();
 		if ( $legacyEncoding ) {
-			$blobStore->setLegacyEncoding( $legacyEncoding, Language::factory( 'en' ) );
+			$blobStore->setLegacyEncoding( $legacyEncoding );
 		}
 
 		$this->setService( 'BlobStoreFactory', $this->mockBlobStoreFactory( $blobStore ) );
@@ -773,6 +769,7 @@ class RevisionTest extends MediaWikiTestCase {
 		$prefix,
 		$expected
 	) {
+		$this->hideDeprecated( 'Revision::getRevisionText' );
 		$this->assertSame( $expected, Revision::getRevisionText( $row, $prefix ) );
 	}
 
@@ -789,6 +786,7 @@ class RevisionTest extends MediaWikiTestCase {
 		$text
 	) {
 		Wikimedia\suppressWarnings();
+		$this->hideDeprecated( 'Revision::getRevisionText' );
 		$this->assertFalse(
 			Revision::getRevisionText(
 				(object)[
@@ -806,8 +804,9 @@ class RevisionTest extends MediaWikiTestCase {
 	public function testGetRevisionText_external_noOldId() {
 		$this->setService(
 			'ExternalStoreFactory',
-			new ExternalStoreFactory( [ 'ForTesting' ] )
+			new ExternalStoreFactory( [ 'ForTesting' ], [ 'ForTesting://cluster1' ], 'test-id' )
 		);
+		$this->hideDeprecated( 'Revision::getRevisionText' );
 		$this->assertSame(
 			'AAAABBAAA',
 			Revision::getRevisionText(
@@ -828,16 +827,18 @@ class RevisionTest extends MediaWikiTestCase {
 
 		$this->setService(
 			'ExternalStoreFactory',
-			new ExternalStoreFactory( [ 'ForTesting' ] )
+			new ExternalStoreFactory( [ 'ForTesting' ], [ 'ForTesting://cluster1' ], 'test-id' )
 		);
 
 		$lb = $this->getMockBuilder( LoadBalancer::class )
 			->disableOriginalConstructor()
 			->getMock();
+		$access = MediaWikiServices::getInstance()->getExternalStoreAccess();
 
-		$blobStore = new SqlBlobStore( $lb, $cache );
+		$blobStore = new SqlBlobStore( $lb, $access, $cache );
 		$this->setService( 'BlobStoreFactory', $this->mockBlobStoreFactory( $blobStore ) );
 
+		$this->hideDeprecated( 'Revision::getRevisionText' );
 		$this->assertSame(
 			'AAAABBAAA',
 			Revision::getRevisionText(
@@ -850,8 +851,7 @@ class RevisionTest extends MediaWikiTestCase {
 		);
 
 		$cacheKey = $cache->makeGlobalKey(
-			'BlobStore',
-			'address',
+			'SqlBlobStore-blob',
 			$lb->getLocalDomainID(),
 			'tt:7777'
 		);

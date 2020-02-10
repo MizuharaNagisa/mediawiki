@@ -18,17 +18,18 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup Deployment
+ * @ingroup Installer
  */
-use Wikimedia\Rdbms\MySQLField;
-use Wikimedia\Rdbms\IDatabase;
 use MediaWiki\MediaWikiServices;
+use Wikimedia\Rdbms\IDatabase;
+use Wikimedia\Rdbms\MySQLField;
 
 /**
  * Mysql update list and mysql-specific update functions.
  *
- * @ingroup Deployment
+ * @ingroup Installer
  * @since 1.17
+ * @property Wikimedia\Rdbms\DatabaseMysqlBase $db
  */
 class MysqlUpdater extends DatabaseUpdater {
 	protected function getCoreUpdateList() {
@@ -100,8 +101,10 @@ class MysqlUpdater extends DatabaseUpdater {
 			[ 'addTable', 'querycache_info', 'patch-querycacheinfo.sql' ],
 			[ 'addTable', 'filearchive', 'patch-filearchive.sql' ],
 			[ 'addField', 'ipblocks', 'ipb_anon_only', 'patch-ipb_anon_only.sql' ],
-			[ 'addIndex', 'recentchanges', 'rc_ns_usertext', 'patch-recentchanges-utindex.sql' ],
-			[ 'addIndex', 'recentchanges', 'rc_user_text', 'patch-rc_user_text-index.sql' ],
+			[ 'ifNoActorTable', 'addIndex', 'recentchanges', 'rc_ns_usertext',
+				'patch-recentchanges-utindex.sql' ],
+			[ 'ifNoActorTable', 'addIndex', 'recentchanges', 'rc_user_text',
+				'patch-rc_user_text-index.sql' ],
 
 			// 1.9
 			[ 'addField', 'user', 'user_newpass_time', 'patch-user_newpass_time.sql' ],
@@ -129,9 +132,12 @@ class MysqlUpdater extends DatabaseUpdater {
 			[ 'addField', 'ipblocks', 'ipb_block_email', 'patch-ipb_emailban.sql' ],
 			[ 'doCategorylinksIndicesUpdate' ],
 			[ 'addField', 'oldimage', 'oi_metadata', 'patch-oi_metadata.sql' ],
-			[ 'addIndex', 'archive', 'usertext_timestamp', 'patch-archive-user-index.sql' ],
-			[ 'addIndex', 'image', 'img_usertext_timestamp', 'patch-image-user-index.sql' ],
-			[ 'addIndex', 'oldimage', 'oi_usertext_timestamp', 'patch-oldimage-user-index.sql' ],
+			[ 'ifNoActorTable', 'addIndex', 'archive', 'usertext_timestamp',
+				'patch-archive-user-index.sql' ],
+			[ 'ifNoActorTable', 'addIndex', 'image', 'img_usertext_timestamp',
+				'patch-image-user-index.sql' ],
+			[ 'ifNoActorTable', 'addIndex', 'oldimage', 'oi_usertext_timestamp',
+				'patch-oldimage-user-index.sql' ],
 			[ 'addField', 'archive', 'ar_page_id', 'patch-archive-page_id.sql' ],
 			[ 'addField', 'image', 'img_sha1', 'patch-img_sha1.sql' ],
 
@@ -139,7 +145,7 @@ class MysqlUpdater extends DatabaseUpdater {
 			[ 'addTable', 'protected_titles', 'patch-protected_titles.sql' ],
 
 			// 1.13
-			[ 'addField', 'ipblocks', 'ipb_by_text', 'patch-ipb_by_text.sql' ],
+			[ 'ifNoActorTable', 'addField', 'ipblocks', 'ipb_by_text', 'patch-ipb_by_text.sql' ],
 			[ 'addTable', 'page_props', 'patch-page_props.sql' ],
 			[ 'addTable', 'updatelog', 'patch-updatelog.sql' ],
 			[ 'addTable', 'category', 'patch-category.sql' ],
@@ -148,8 +154,7 @@ class MysqlUpdater extends DatabaseUpdater {
 			[ 'addField', 'user_newtalk', 'user_last_timestamp', 'patch-user_last_timestamp.sql' ],
 			[ 'doPopulateParentId' ],
 			[ 'checkBin', 'protected_titles', 'pt_title', 'patch-pt_title-encoding.sql', ],
-			[ 'doMaybeProfilingMemoryUpdate' ],
-			[ 'doFilearchiveIndicesUpdate' ],
+			[ 'ifNoActorTable', 'doFilearchiveIndicesUpdate' ],
 
 			// 1.14
 			[ 'addField', 'site_stats', 'ss_active_users', 'patch-ss_active_users.sql' ],
@@ -162,9 +167,9 @@ class MysqlUpdater extends DatabaseUpdater {
 			// 1.16
 			[ 'addTable', 'user_properties', 'patch-user_properties.sql' ],
 			[ 'addTable', 'log_search', 'patch-log_search.sql' ],
-			[ 'addField', 'logging', 'log_user_text', 'patch-log_user_text.sql' ],
+			[ 'ifNoActorTable', 'addField', 'logging', 'log_user_text', 'patch-log_user_text.sql' ],
 			# listed separately from the previous update because 1.16 was released without this update
-			[ 'doLogUsertextPopulation' ],
+			[ 'ifNoActorTable', 'doLogUsertextPopulation' ],
 			[ 'doLogSearchPopulation' ],
 			[ 'addTable', 'l10n_cache', 'patch-l10n_cache.sql' ],
 			[ 'dropIndex', 'change_tag', 'ct_rc_id', 'patch-change_tag-indexes.sql' ],
@@ -221,7 +226,6 @@ class MysqlUpdater extends DatabaseUpdater {
 			[ 'addField', 'filearchive', 'fa_sha1', 'patch-fa_sha1.sql' ],
 			[ 'addField', 'job', 'job_token', 'patch-job_token.sql' ],
 			[ 'addField', 'job', 'job_attempts', 'patch-job_attempts.sql' ],
-			[ 'doEnableProfiling' ],
 			[ 'addField', 'uploadstash', 'us_props', 'patch-uploadstash-us_props.sql' ],
 			[ 'modifyField', 'user_groups', 'ug_group', 'patch-ug_group-length-increase-255.sql' ],
 			[ 'modifyField', 'user_former_groups', 'ufg_group',
@@ -239,9 +243,10 @@ class MysqlUpdater extends DatabaseUpdater {
 
 			// 1.23
 			[ 'addField', 'recentchanges', 'rc_source', 'patch-rc_source.sql' ],
-			[ 'addIndex', 'logging', 'log_user_text_type_time',
+			[ 'ifNoActorTable', 'addIndex', 'logging', 'log_user_text_type_time',
 				'patch-logging_user_text_type_time_index.sql' ],
-			[ 'addIndex', 'logging', 'log_user_text_time', 'patch-logging_user_text_time_index.sql' ],
+			[ 'ifNoActorTable', 'addIndex', 'logging', 'log_user_text_time',
+				'patch-logging_user_text_time_index.sql' ],
 			[ 'addField', 'page', 'page_links_updated', 'patch-page_links_updated.sql' ],
 			[ 'addField', 'user', 'user_password_expires', 'patch-user_password_expire.sql' ],
 
@@ -287,13 +292,14 @@ class MysqlUpdater extends DatabaseUpdater {
 			[ 'doNonUniquePlTlIl' ],
 			[ 'addField', 'change_tag', 'ct_id', 'patch-change_tag-ct_id.sql' ],
 			[ 'modifyField', 'recentchanges', 'rc_ip', 'patch-rc_ip_modify.sql' ],
-			[ 'addIndex', 'archive', 'usertext_timestamp', 'patch-rename-ar_usertext_timestamp.sql' ],
+			[ 'ifNoActorTable', 'addIndex', 'archive', 'usertext_timestamp',
+				'patch-rename-ar_usertext_timestamp.sql' ],
 
 			// 1.29
 			[ 'addField', 'externallinks', 'el_index_60', 'patch-externallinks-el_index_60.sql' ],
 			[ 'dropIndex', 'user_groups', 'ug_user_group', 'patch-user_groups-primary-key.sql' ],
 			[ 'addField', 'user_groups', 'ug_expiry', 'patch-user_groups-ug_expiry.sql' ],
-			[ 'addIndex', 'image', 'img_user_timestamp', 'patch-image-user-index-2.sql' ],
+			[ 'ifNoActorTable', 'addIndex', 'image', 'img_user_timestamp', 'patch-image-user-index-2.sql' ],
 
 			// 1.30
 			[ 'modifyField', 'image', 'img_media_type', 'patch-add-3d.sql' ],
@@ -319,6 +325,20 @@ class MysqlUpdater extends DatabaseUpdater {
 			[ 'renameIndex', 'user_properties', 'user_properties_user_property', 'PRIMARY', false,
 				'patch-user_properties-fix-pk.sql' ],
 			[ 'addTable', 'comment', 'patch-comment-table.sql' ],
+			[ 'addTable', 'revision_comment_temp', 'patch-revision_comment_temp-table.sql' ],
+			// image_comment_temp is no longer needed when upgrading to MW 1.31 or newer,
+			// as it is dropped later in the update process as part of 'migrateImageCommentTemp'.
+			// File kept on disk and the updater entry here for historical purposes.
+			// [ 'addTable', 'image_comment_temp', 'patch-image_comment_temp-table.sql' ],
+			[ 'addField', 'archive', 'ar_comment_id', 'patch-archive-ar_comment_id.sql' ],
+			[ 'addField', 'filearchive', 'fa_description_id', 'patch-filearchive-fa_description_id.sql' ],
+			[ 'modifyField', 'image', 'img_description', 'patch-image-img_description-default.sql' ],
+			[ 'addField', 'ipblocks', 'ipb_reason_id', 'patch-ipblocks-ipb_reason_id.sql' ],
+			[ 'addField', 'logging', 'log_comment_id', 'patch-logging-log_comment_id.sql' ],
+			[ 'addField', 'oldimage', 'oi_description_id', 'patch-oldimage-oi_description_id.sql' ],
+			[ 'addField', 'protected_titles', 'pt_reason_id', 'patch-protected_titles-pt_reason_id.sql' ],
+			[ 'addField', 'recentchanges', 'rc_comment_id', 'patch-recentchanges-rc_comment_id.sql' ],
+			[ 'modifyField', 'revision', 'rev_comment', 'patch-revision-rev_comment-default.sql' ],
 
 			// This field was added in 1.31, but is put here so it can be used by 'migrateComments'
 			[ 'addField', 'image', 'img_description_id', 'patch-image-img_description_id.sql' ],
@@ -336,6 +356,14 @@ class MysqlUpdater extends DatabaseUpdater {
 			[ 'addTable', 'content_models', 'patch-content_models.sql' ],
 			[ 'migrateArchiveText' ],
 			[ 'addTable', 'actor', 'patch-actor-table.sql' ],
+			[ 'addTable', 'revision_actor_temp', 'patch-revision_actor_temp-table.sql' ],
+			[ 'addField', 'archive', 'ar_actor', 'patch-archive-ar_actor.sql' ],
+			[ 'addField', 'ipblocks', 'ipb_by_actor', 'patch-ipblocks-ipb_by_actor.sql' ],
+			[ 'addField', 'image', 'img_actor', 'patch-image-img_actor.sql' ],
+			[ 'addField', 'oldimage', 'oi_actor', 'patch-oldimage-oi_actor.sql' ],
+			[ 'addField', 'filearchive', 'fa_actor', 'patch-filearchive-fa_actor.sql' ],
+			[ 'addField', 'recentchanges', 'rc_actor', 'patch-recentchanges-rc_actor.sql' ],
+			[ 'addField', 'logging', 'log_actor', 'patch-logging-log_actor.sql' ],
 			[ 'migrateActors' ],
 			[ 'modifyField', 'revision', 'rev_text_id', 'patch-rev_text_id-default.sql' ],
 			[ 'modifyTable', 'site_stats', 'patch-site_stats-modify.sql' ],
@@ -370,11 +398,22 @@ class MysqlUpdater extends DatabaseUpdater {
 			[ 'addTable', 'ipblocks_restrictions', 'patch-ipblocks_restrictions-table.sql' ],
 			[ 'migrateImageCommentTemp' ],
 
-			// 1,33
+			// 1.33
 			[ 'dropField', 'change_tag', 'ct_tag', 'patch-drop-ct_tag.sql' ],
 			[ 'dropTable', 'valid_tag' ],
 			[ 'dropTable', 'tag_summary' ],
 			[ 'dropField', 'protected_titles', 'pt_reason', 'patch-drop-comment-fields.sql' ],
+			[ 'modifyTable', 'job', 'patch-job-params-mediumblob.sql' ],
+
+			// 1.34
+			[ 'dropIndex', 'archive', 'ar_usertext_timestamp',
+				'patch-drop-archive-ar_usertext_timestamp.sql' ],
+			[ 'dropIndex', 'archive', 'usertext_timestamp', 'patch-drop-archive-usertext_timestamp.sql' ],
+			[ 'dropField', 'logging', 'log_user', 'patch-drop-user-fields.sql' ],
+			[ 'addIndex', 'user_newtalk', 'un_user_ip', 'patch-rename-mysql-user_newtalk-indexes.sql' ],
+
+			// 1.35
+			[ 'addTable', 'watchlist_expiry', 'patch-watchlist_expiry.sql' ],
 		];
 	}
 
@@ -1035,26 +1074,6 @@ class MysqlUpdater extends DatabaseUpdater {
 			$task = $this->maintenance->runChild( PopulateParentId::class );
 			$task->execute();
 		}
-	}
-
-	protected function doMaybeProfilingMemoryUpdate() {
-		if ( !$this->doTable( 'profiling' ) ) {
-			return true;
-		}
-
-		if ( !$this->db->tableExists( 'profiling', __METHOD__ ) ) {
-			return true;
-		} elseif ( $this->db->fieldExists( 'profiling', 'pf_memory', __METHOD__ ) ) {
-			$this->output( "...profiling table has pf_memory field.\n" );
-
-			return true;
-		}
-
-		return $this->applyPatch(
-			'patch-profiling-memory.sql',
-			false,
-			'Adding pf_memory field to table profiling'
-		);
 	}
 
 	protected function doFilearchiveIndicesUpdate() {

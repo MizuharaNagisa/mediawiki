@@ -1,6 +1,6 @@
 <?php
 /**
- * A Block restriction object of type 'Namespace'.
+ * A block restriction object of type 'Namespace'.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,17 +25,17 @@ namespace MediaWiki\Block\Restriction;
 class NamespaceRestriction extends AbstractRestriction {
 
 	/**
-	 * {@inheritdoc}
+	 * @inheritDoc
 	 */
 	const TYPE = 'ns';
 
 	/**
-	 * {@inheritdoc}
+	 * @inheritDoc
 	 */
 	const TYPE_ID = 2;
 
 	/**
-	 * {@inheritdoc}
+	 * @inheritDoc
 	 */
 	public function matches( \Title $title ) {
 		return $this->getValue() === $title->getNamespace();

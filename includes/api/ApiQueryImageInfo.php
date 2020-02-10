@@ -35,7 +35,7 @@ class ApiQueryImageInfo extends ApiQueryBase {
 		// We allow a subclass to override the prefix, to create a related API
 		// module. Some other parts of MediaWiki construct this with a null
 		// $prefix, which used to be ignored when this only took two arguments
-		if ( is_null( $prefix ) ) {
+		if ( $prefix === null ) {
 			$prefix = 'ii';
 		}
 		parent::__construct( $query, $moduleName, $prefix );
@@ -63,7 +63,7 @@ class ApiQueryImageInfo extends ApiQueryBase {
 				$this->dieWithError( [ 'apierror-bad-badfilecontexttitle', $p ], 'invalid-title' );
 			}
 		} else {
-			$badFileContextTitle = false;
+			$badFileContextTitle = null;
 		}
 
 		$pageIds = $this->getPageSet()->getGoodAndMissingTitlesByNamespace();
@@ -72,7 +72,7 @@ class ApiQueryImageInfo extends ApiQueryBase {
 			asort( $titles ); // Ensure the order is always the same
 
 			$fromTitle = null;
-			if ( !is_null( $params['continue'] ) ) {
+			if ( $params['continue'] !== null ) {
 				$cont = explode( '|', $params['continue'] );
 				$this->dieContinueUsageIf( count( $cont ) != 2 );
 				$fromTitle = strval( $cont[0] );
@@ -110,12 +110,13 @@ class ApiQueryImageInfo extends ApiQueryBase {
 				if ( !isset( $images[$title] ) ) {
 					if ( isset( $prop['uploadwarning'] ) || isset( $prop['badfile'] ) ) {
 						// uploadwarning and badfile need info about non-existing files
-						$images[$title] = wfLocalFile( $title );
+						$images[$title] = MediaWikiServices::getInstance()->getRepoGroup()
+							->getLocalRepo()->newFile( $title );
 						// Doesn't exist, so set an empty image repository
 						$info['imagerepository'] = '';
 					} else {
 						$result->addValue(
-							[ 'query', 'pages', intval( $pageId ) ],
+							[ 'query', 'pages', (int)$pageId ],
 							'imagerepository', ''
 						);
 						// The above can't fail because it doesn't increase the result size
@@ -143,10 +144,11 @@ class ApiQueryImageInfo extends ApiQueryBase {
 					$info['imagerepository'] = $img->getRepoName();
 				}
 				if ( isset( $prop['badfile'] ) ) {
-					$info['badfile'] = (bool)wfIsBadImage( $title, $badFileContextTitle );
+					$info['badfile'] = (bool)MediaWikiServices::getInstance()->getBadFileLookup()
+						->isBadFile( $title, $badFileContextTitle );
 				}
 
-				$fit = $result->addValue( [ 'query', 'pages' ], intval( $pageId ), $info );
+				$fit = $result->addValue( [ 'query', 'pages' ], (int)$pageId, $info );
 				if ( !$fit ) {
 					if ( count( $pageIds[NS_FILE] ) == 1 ) {
 						// The user is screwed. imageinfo can't be solely
@@ -171,8 +173,8 @@ class ApiQueryImageInfo extends ApiQueryBase {
 				// Check that the current version is within the start-end boundaries
 				$gotOne = false;
 				if (
-					( is_null( $start ) || $img->getTimestamp() <= $start ) &&
-					( is_null( $params['end'] ) || $img->getTimestamp() >= $params['end'] )
+					( $start === null || $img->getTimestamp() <= $start ) &&
+					( $params['end'] === null || $img->getTimestamp() >= $params['end'] )
 				) {
 					$gotOne = true;
 
@@ -249,13 +251,11 @@ class ApiQueryImageInfo extends ApiQueryBase {
 			// Don't set $scale['width']; this signals mergeThumbParams() to fill it with the image's width
 			$scale = [];
 			$scale['height'] = $params['urlheight'];
+		} elseif ( $params['urlparam'] ) {
+			// Audio files might not have a width/height.
+			$scale = [];
 		} else {
-			if ( $params['urlparam'] ) {
-				// Audio files might not have a width/height.
-				$scale = [];
-			} else {
-				$scale = null;
-			}
+			$scale = null;
 		}
 
 		return $scale;
@@ -312,7 +312,7 @@ class ApiQueryImageInfo extends ApiQueryBase {
 		}
 
 		if ( isset( $paramList['width'] ) && isset( $thumbParams['width'] ) ) {
-			if ( intval( $paramList['width'] ) != intval( $thumbParams['width'] ) ) {
+			if ( (int)$paramList['width'] != (int)$thumbParams['width'] ) {
 				$this->addWarning(
 					[ 'apiwarn-urlparamwidth', $p, $paramList['width'], $thumbParams['width'] ]
 				);
@@ -387,9 +387,13 @@ class ApiQueryImageInfo extends ApiQueryBase {
 		$vals = [
 			ApiResult::META_TYPE => 'assoc',
 		];
+
+		// Some information will be unavailable if the file does not exist. T221812
+		$exists = $file->exists();
+
 		// Timestamp is shown even if the file is revdelete'd in interface
 		// so do same here.
-		if ( isset( $prop['timestamp'] ) ) {
+		if ( isset( $prop['timestamp'] ) && $exists ) {
 			$vals['timestamp'] = wfTimestamp( TS_ISO_8601, $file->getTimestamp() );
 		}
 
@@ -408,7 +412,7 @@ class ApiQueryImageInfo extends ApiQueryBase {
 		$user = isset( $prop['user'] );
 		$userid = isset( $prop['userid'] );
 
-		if ( $user || $userid ) {
+		if ( ( $user || $userid ) && $exists ) {
 			if ( $file->isDeleted( File::DELETED_USER ) ) {
 				$vals['userhidden'] = true;
 				$anyHidden = true;
@@ -428,10 +432,10 @@ class ApiQueryImageInfo extends ApiQueryBase {
 
 		// This is shown even if the file is revdelete'd in interface
 		// so do same here.
-		if ( isset( $prop['size'] ) || isset( $prop['dimensions'] ) ) {
-			$vals['size'] = intval( $file->getSize() );
-			$vals['width'] = intval( $file->getWidth() );
-			$vals['height'] = intval( $file->getHeight() );
+		if ( ( isset( $prop['size'] ) || isset( $prop['dimensions'] ) ) && $exists ) {
+			$vals['size'] = (int)$file->getSize();
+			$vals['width'] = (int)$file->getWidth();
+			$vals['height'] = (int)$file->getHeight();
 
 			$pageCount = $file->pageCount();
 			if ( $pageCount !== false ) {
@@ -449,7 +453,7 @@ class ApiQueryImageInfo extends ApiQueryBase {
 		$pcomment = isset( $prop['parsedcomment'] );
 		$comment = isset( $prop['comment'] );
 
-		if ( $pcomment || $comment ) {
+		if ( ( $pcomment || $comment ) && $exists ) {
 			if ( $file->isDeleted( File::DELETED_COMMENT ) ) {
 				$vals['commenthidden'] = true;
 				$anyHidden = true;
@@ -500,8 +504,8 @@ class ApiQueryImageInfo extends ApiQueryBase {
 		}
 
 		if ( $url ) {
-			if ( $file->exists() ) {
-				if ( !is_null( $thumbParams ) ) {
+			if ( $exists ) {
+				if ( $thumbParams !== null ) {
 					$mto = $file->transform( $thumbParams );
 					self::$transformCount++;
 					if ( $mto && !$mto->isError() ) {
@@ -510,11 +514,11 @@ class ApiQueryImageInfo extends ApiQueryBase {
 						// T25834 - If the URLs are the same, we haven't resized it, so shouldn't give the wanted
 						// thumbnail sizes for the thumbnail actual size
 						if ( $mto->getUrl() !== $file->getUrl() ) {
-							$vals['thumbwidth'] = intval( $mto->getWidth() );
-							$vals['thumbheight'] = intval( $mto->getHeight() );
+							$vals['thumbwidth'] = (int)$mto->getWidth();
+							$vals['thumbheight'] = (int)$mto->getHeight();
 						} else {
-							$vals['thumbwidth'] = intval( $file->getWidth() );
-							$vals['thumbheight'] = intval( $file->getHeight() );
+							$vals['thumbwidth'] = (int)$file->getWidth();
+							$vals['thumbheight'] = (int)$file->getHeight();
 						}
 
 						if ( isset( $prop['thumbmime'] ) && $file->getHandler() ) {
@@ -523,12 +527,12 @@ class ApiQueryImageInfo extends ApiQueryBase {
 							$vals['thumbmime'] = $mime;
 						}
 					} elseif ( $mto && $mto->isError() ) {
+						/** @var MediaTransformError $mto */
+						'@phan-var MediaTransformError $mto';
 						$vals['thumberror'] = $mto->toText();
 					}
 				}
 				$vals['url'] = wfExpandUrl( $file->getFullUrl(), PROTO_CURRENT );
-			} else {
-				$vals['filemissing'] = true;
 			}
 			$vals['descriptionurl'] = wfExpandUrl( $file->getDescriptionUrl(), PROTO_CURRENT );
 
@@ -538,11 +542,15 @@ class ApiQueryImageInfo extends ApiQueryBase {
 			}
 		}
 
-		if ( $sha1 ) {
+		if ( !$exists ) {
+			$vals['filemissing'] = true;
+		}
+
+		if ( $sha1 && $exists ) {
 			$vals['sha1'] = Wikimedia\base_convert( $file->getSha1(), 36, 16, 40 );
 		}
 
-		if ( $meta ) {
+		if ( $meta && $exists ) {
 			Wikimedia\suppressWarnings();
 			$metadata = unserialize( $file->getMetadata() );
 			Wikimedia\restoreWarnings();
@@ -551,17 +559,18 @@ class ApiQueryImageInfo extends ApiQueryBase {
 			}
 			$vals['metadata'] = $metadata ? static::processMetaData( $metadata, $result ) : null;
 		}
-		if ( $commonmeta ) {
+		if ( $commonmeta && $exists ) {
 			$metaArray = $file->getCommonMetaArray();
 			$vals['commonmetadata'] = $metaArray ? static::processMetaData( $metaArray, $result ) : [];
 		}
 
-		if ( $extmetadata ) {
+		if ( $extmetadata && $exists ) {
 			// Note, this should return an array where all the keys
 			// start with a letter, and all the values are strings.
 			// Thus there should be no issue with format=xml.
 			$format = new FormatMetadata;
 			$format->setSingleLanguage( !$opts['multilang'] );
+			// @phan-suppress-next-line PhanUndeclaredMethod
 			$format->getContext()->setLanguage( $opts['language'] );
 			$extmetaArray = $format->fetchExtendedMetadata( $file );
 			if ( $opts['extmetadatafilter'] ) {
@@ -572,19 +581,21 @@ class ApiQueryImageInfo extends ApiQueryBase {
 			$vals['extmetadata'] = $extmetaArray;
 		}
 
-		if ( $mime ) {
+		if ( $mime && $exists ) {
 			$vals['mime'] = $file->getMimeType();
 		}
 
-		if ( $mediatype ) {
+		if ( $mediatype && $exists ) {
 			$vals['mediatype'] = $file->getMediaType();
 		}
 
 		if ( $archive && $file->isOld() ) {
+			/** @var OldLocalFile $file */
+			'@phan-var OldLocalFile $file';
 			$vals['archivename'] = $file->getArchiveName();
 		}
 
-		if ( $bitdepth ) {
+		if ( $bitdepth && $exists ) {
 			$vals['bitdepth'] = $file->getBitDepth();
 		}
 
@@ -598,7 +609,7 @@ class ApiQueryImageInfo extends ApiQueryBase {
 	 *
 	 * @return int Count
 	 */
-	static function getTransformCount() {
+	protected static function getTransformCount() {
 		return self::$transformCount;
 	}
 
@@ -755,58 +766,6 @@ class ApiQueryImageInfo extends ApiQueryBase {
 				'badfile' => 'apihelp-query+imageinfo-paramvalue-prop-badfile',
 			],
 			array_flip( $filter )
-		);
-	}
-
-	/**
-	 * Returns array key value pairs of properties and their descriptions
-	 *
-	 * @deprecated since 1.25
-	 * @param string $modulePrefix
-	 * @return array
-	 */
-	private static function getProperties( $modulePrefix = '' ) {
-		return [
-			'timestamp' => ' timestamp     - Adds timestamp for the uploaded version',
-			'user' => ' user          - Adds the user who uploaded the image version',
-			'userid' => ' userid        - Add the user ID that uploaded the image version',
-			'comment' => ' comment       - Comment on the version',
-			'parsedcomment' => ' parsedcomment - Parse the comment on the version',
-			'canonicaltitle' => ' canonicaltitle - Adds the canonical title of the image file',
-			'url' => ' url           - Gives URL to the image and the description page',
-			'size' => ' size          - Adds the size of the image in bytes, ' .
-				'its height and its width. Page count and duration are added if applicable',
-			'dimensions' => ' dimensions    - Alias for size', // B/C with Allimages
-			'sha1' => ' sha1          - Adds SHA-1 hash for the image',
-			'mime' => ' mime          - Adds MIME type of the image',
-			'thumbmime' => ' thumbmime     - Adds MIME type of the image thumbnail' .
-				' (requires url and param ' . $modulePrefix . 'urlwidth)',
-			'mediatype' => ' mediatype     - Adds the media type of the image',
-			'metadata' => ' metadata      - Lists Exif metadata for the version of the image',
-			'commonmetadata' => ' commonmetadata - Lists file format generic metadata ' .
-				'for the version of the image',
-			'extmetadata' => ' extmetadata   - Lists formatted metadata combined ' .
-				'from multiple sources. Results are HTML formatted.',
-			'archivename' => ' archivename   - Adds the file name of the archive ' .
-				'version for non-latest versions',
-			'bitdepth' => ' bitdepth      - Adds the bit depth of the version',
-			'uploadwarning' => ' uploadwarning - Used by the Special:Upload page to ' .
-				'get information about an existing file. Not intended for use outside MediaWiki core',
-		];
-	}
-
-	/**
-	 * Returns the descriptions for the properties provided by getPropertyNames()
-	 *
-	 * @deprecated since 1.25
-	 * @param array $filter List of properties to filter out
-	 * @param string $modulePrefix
-	 * @return array
-	 */
-	public static function getPropertyDescriptions( $filter = [], $modulePrefix = '' ) {
-		return array_merge(
-			[ 'What image information to get:' ],
-			array_values( array_diff_key( static::getProperties( $modulePrefix ), array_flip( $filter ) ) )
 		);
 	}
 

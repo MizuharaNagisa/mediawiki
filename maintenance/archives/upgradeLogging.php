@@ -23,7 +23,7 @@
 
 require __DIR__ . '/../commandLine.inc';
 
-use Wikimedia\Rdbms\IMaintainableDatabase;
+use Wikimedia\Rdbms\Database;
 
 /**
  * Maintenance script that upgrade for log_id/log_deleted fields in a
@@ -34,14 +34,14 @@ use Wikimedia\Rdbms\IMaintainableDatabase;
 class UpdateLogging {
 
 	/**
-	 * @var IMaintainableDatabase
+	 * @var Database
 	 */
 	public $dbw;
 	public $batchSize = 1000;
 	public $minTs = false;
 
-	function execute() {
-		$this->dbw = $this->getDB( DB_MASTER );
+	public function execute() {
+		$this->dbw = wfGetDB( DB_MASTER );
 		$logging = $this->dbw->tableName( 'logging' );
 		$logging_1_10 = $this->dbw->tableName( 'logging_1_10' );
 		$logging_pre_1_10 = $this->dbw->tableName( 'logging_pre_1_10' );
@@ -130,7 +130,7 @@ EOT;
 	 * @param string $srcTable
 	 * @param string $dstTable
 	 */
-	function sync( $srcTable, $dstTable ) {
+	private function sync( $srcTable, $dstTable ) {
 		$batchSize = 1000;
 		$minTs = $this->dbw->selectField( $srcTable, 'MIN(log_timestamp)', '', __METHOD__ );
 		$minTsUnix = wfTimestamp( TS_UNIX, $minTs );
@@ -180,7 +180,7 @@ EOT;
 		echo "Copied $numRowsCopied rows\n";
 	}
 
-	function copyExactMatch( $srcTable, $dstTable, $copyPos ) {
+	private function copyExactMatch( $srcTable, $dstTable, $copyPos ) {
 		$numRowsCopied = 0;
 		$srcRes = $this->dbw->select( $srcTable, '*', [ 'log_timestamp' => $copyPos ], __METHOD__ );
 		$dstRes = $this->dbw->select( $dstTable, '*', [ 'log_timestamp' => $copyPos ], __METHOD__ );

@@ -18,11 +18,13 @@
  * @file
  */
 
+use MediaWiki\MediaWikiServices;
+
 /**
  * @since 1.16.3
  */
 class IcuCollation extends Collation {
-	const FIRST_LETTER_VERSION = 3;
+	const FIRST_LETTER_VERSION = 4;
 
 	/** @var Collator */
 	private $primaryCollator;
@@ -225,6 +227,7 @@ class IcuCollation extends Collation {
 		'tl' => [ "Ñ", "Ng" ], // not in libicu
 		'to' => [ "Ng", "ʻ" ],
 		'tr' => [ "Ç", "Ğ", "İ", "Ö", "Ş", "Ü" ],
+		'-tr' => [ "ı" ],
 		'tt' => [ "Ә", "Ө", "Ү", "Җ", "Ң", "Һ" ], // not in libicu
 		'uk' => [ "Ґ", "Ь" ],
 		'uz' => [ "Ch", "G'", "Ng", "O'", "Sh" ], // not in libicu
@@ -252,7 +255,8 @@ class IcuCollation extends Collation {
 		$this->locale = $locale;
 		// Drop everything after the '@' in locale's name
 		$localeParts = explode( '@', $locale );
-		$this->digitTransformLanguage = Language::factory( $locale === 'root' ? 'en' : $localeParts[0] );
+		$this->digitTransformLanguage = MediaWikiServices::getInstance()->getLanguageFactory()
+			->getLanguage( $locale === 'root' ? 'en' : $localeParts[0] );
 
 		$this->mainCollator = Collator::create( $locale );
 		if ( !$this->mainCollator ) {
@@ -364,16 +368,14 @@ class IcuCollation extends Collation {
 			foreach ( $digits as $digit ) {
 				$letters[] = $this->digitTransformLanguage->formatNum( $digit, true );
 			}
+		} elseif ( $this->locale === 'root' ) {
+			$letters = require "$IP/includes/collation/data/first-letters-root.php";
 		} else {
-			if ( $this->locale === 'root' ) {
-				$letters = require "$IP/includes/collation/data/first-letters-root.php";
-			} else {
-				// FIXME: Is this still used?
-				$letters = wfGetPrecompiledData( "first-letters-{$this->locale}.ser" );
-				if ( $letters === false ) {
-					throw new MWException( "MediaWiki does not support ICU locale " .
-						"\"{$this->locale}\"" );
-				}
+			// FIXME: Is this still used?
+			$letters = wfGetPrecompiledData( "first-letters-{$this->locale}.ser" );
+			if ( $letters === false ) {
+				throw new MWException( "MediaWiki does not support ICU locale " .
+					"\"{$this->locale}\"" );
 			}
 		}
 
@@ -505,7 +507,7 @@ class IcuCollation extends Collation {
 	}
 
 	/**
-	 * @return string
+	 * @return int
 	 * @since 1.16.3
 	 */
 	public function getFirstLetterCount() {
@@ -525,23 +527,6 @@ class IcuCollation extends Collation {
 			}
 		}
 		return false;
-	}
-
-	/**
-	 * Return the version of ICU library used by PHP's intl extension,
-	 * or false when the extension is not installed of the version
-	 * can't be determined.
-	 *
-	 * The constant INTL_ICU_VERSION this function refers to isn't really
-	 * documented, but see https://bugs.php.net/bug.php?id=54561.
-	 *
-	 * @since 1.21
-	 * @deprecated since 1.32, use INTL_ICU_VERSION directly
-	 * @return string
-	 */
-	static function getICUVersion() {
-		wfDeprecated( __METHOD__, '1.32' );
-		return INTL_ICU_VERSION;
 	}
 
 	/**

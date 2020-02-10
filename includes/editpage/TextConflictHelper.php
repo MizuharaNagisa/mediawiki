@@ -28,8 +28,12 @@ use Content;
 use ContentHandler;
 use Html;
 use IBufferingStatsdDataFactory;
+use MediaWiki\Content\IContentHandlerFactory;
+use MediaWiki\MediaWikiServices;
+use MWUnknownContentModelException;
 use OutputPage;
 use Title;
+use User;
 
 /**
  * Helper for displaying edit conflicts in text content
@@ -47,12 +51,12 @@ class TextConflictHelper {
 	/**
 	 * @var null|string
 	 */
-	public $contentModel = null;
+	public $contentModel;
 
 	/**
 	 * @var null|string
 	 */
-	public $contentFormat = null;
+	public $contentFormat;
 
 	/**
 	 * @var OutputPage
@@ -80,20 +84,38 @@ class TextConflictHelper {
 	protected $storedversion = '';
 
 	/**
+	 * @var IContentHandlerFactory
+	 */
+	private $contentHandlerFactory;
+
+	/**
 	 * @param Title $title
 	 * @param OutputPage $out
 	 * @param IBufferingStatsdDataFactory $stats
 	 * @param string $submitLabel
+	 * @param IContentHandlerFactory|null $contentHandlerFactory Required param with legacy support
+	 *
+	 * @throws MWUnknownContentModelException
 	 */
 	public function __construct( Title $title, OutputPage $out, IBufferingStatsdDataFactory $stats,
-		$submitLabel
+		$submitLabel, ?IContentHandlerFactory $contentHandlerFactory = null
 	) {
 		$this->title = $title;
 		$this->out = $out;
 		$this->stats = $stats;
 		$this->submitLabel = $submitLabel;
 		$this->contentModel = $title->getContentModel();
-		$this->contentFormat = ContentHandler::getForModelID( $this->contentModel )->getDefaultFormat();
+
+		if ( $contentHandlerFactory === null ) {
+			//wfDeprecated( __METHOD__, '1.35' );
+			$this->contentHandlerFactory = MediaWikiServices::getInstance()
+				->getContentHandlerFactory();
+		} else {
+			$this->contentHandlerFactory = $contentHandlerFactory;
+		}
+		$this->contentFormat = $this->contentHandlerFactory
+			->getContentHandler( $this->contentModel )
+			->getDefaultFormat();
 	}
 
 	/**
@@ -121,8 +143,9 @@ class TextConflictHelper {
 
 	/**
 	 * Record a user encountering an edit conflict
+	 * @param User|null $user
 	 */
-	public function incrementConflictStats() {
+	public function incrementConflictStats( User $user = null ) {
 		$this->stats->increment( 'edit.failures.conflict' );
 		// Only include 'standard' namespaces to avoid creating unknown numbers of statsd metrics
 		if (
@@ -133,12 +156,16 @@ class TextConflictHelper {
 				'edit.failures.conflict.byNamespaceId.' . $this->title->getNamespace()
 			);
 		}
+		if ( $user ) {
+			$this->incrementStatsByUserEdits( $user->getEditCount(), 'edit.failures.conflict' );
+		}
 	}
 
 	/**
 	 * Record when a user has resolved an edit conflict
+	 * @param User|null $user
 	 */
-	public function incrementResolvedStats() {
+	public function incrementResolvedStats( User $user = null ) {
 		$this->stats->increment( 'edit.failures.conflict.resolved' );
 		// Only include 'standard' namespaces to avoid creating unknown numbers of statsd metrics
 		if (
@@ -149,6 +176,31 @@ class TextConflictHelper {
 				'edit.failures.conflict.resolved.byNamespaceId.' . $this->title->getNamespace()
 			);
 		}
+		if ( $user ) {
+			$this->incrementStatsByUserEdits(
+				$user->getEditCount(),
+				'edit.failures.conflict.resolved'
+			);
+		}
+	}
+
+	/**
+	 * @param int|null $userEdits
+	 * @param string $keyPrefixBase
+	 */
+	protected function incrementStatsByUserEdits( $userEdits, $keyPrefixBase ) {
+		if ( $userEdits === null ) {
+			$userBucket = 'anon';
+		} elseif ( $userEdits > 200 ) {
+			$userBucket = 'over200';
+		} elseif ( $userEdits > 100 ) {
+			$userBucket = 'over100';
+		} elseif ( $userEdits > 10 ) {
+			$userBucket = 'over10';
+		} else {
+			$userBucket = 'under11';
+		}
+		$this->stats->increment( $keyPrefixBase . '.byUserEdits.' . $userBucket );
 	}
 
 	/**
@@ -166,7 +218,6 @@ class TextConflictHelper {
 	 * HTML to build the textbox1 on edit conflicts
 	 *
 	 * @param array $customAttribs
-	 * @return string HTML
 	 */
 	public function getEditConflictMainTextBox( array $customAttribs = [] ) {
 		$builder = new TextboxBuilder();
@@ -218,7 +269,7 @@ class TextConflictHelper {
 
 		$yourContent = $this->toEditContent( $this->yourtext );
 		$storedContent = $this->toEditContent( $this->storedversion );
-		$handler = ContentHandler::getForModelID( $this->contentModel );
+		$handler = $this->contentHandlerFactory->getContentHandler( $this->contentModel );
 		$diffEngine = $handler->createDifferenceEngine( $this->out );
 
 		$diffEngine->setContent( $yourContent, $storedContent );
@@ -246,7 +297,7 @@ class TextConflictHelper {
 	 * @param string $text
 	 * @return Content
 	 */
-	public function toEditContent( $text ) {
+	private function toEditContent( $text ) {
 		return ContentHandler::makeContent(
 			$text,
 			$this->title,

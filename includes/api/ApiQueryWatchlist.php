@@ -21,6 +21,7 @@
  */
 
 use MediaWiki\MediaWikiServices;
+use MediaWiki\ParamValidator\TypeDef\UserDef;
 use MediaWiki\Revision\RevisionRecord;
 
 /**
@@ -53,7 +54,7 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 		$fld_loginfo = false, $fld_tags;
 
 	/**
-	 * @param ApiPageSet $resultPageSet
+	 * @param ApiPageSet|null $resultPageSet
 	 * @return void
 	 */
 	private function run( $resultPageSet = null ) {
@@ -64,7 +65,7 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 		$user = $this->getUser();
 		$wlowner = $this->getWatchlistUser( $params );
 
-		if ( !is_null( $params['prop'] ) && is_null( $resultPageSet ) ) {
+		if ( $params['prop'] !== null && $resultPageSet === null ) {
 			$prop = array_flip( $params['prop'] );
 
 			$this->fld_ids = isset( $prop['ids'] );
@@ -81,10 +82,8 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 			$this->fld_loginfo = isset( $prop['loginfo'] );
 			$this->fld_tags = isset( $prop['tags'] );
 
-			if ( $this->fld_patrol ) {
-				if ( !$user->useRCPatrol() && !$user->useNPPatrol() ) {
-					$this->dieWithError( 'apierror-permissiondenied-patrolflag', 'patrol' );
-				}
+			if ( $this->fld_patrol && !$user->useRCPatrol() && !$user->useNPPatrol() ) {
+				$this->dieWithError( 'apierror-permissiondenied-patrolflag', 'patrol' );
 			}
 
 			if ( $this->fld_comment || $this->fld_parsedcomment ) {
@@ -98,7 +97,7 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 				: WatchedItemQueryService::DIR_NEWER,
 		];
 
-		if ( is_null( $resultPageSet ) ) {
+		if ( $resultPageSet === null ) {
 			$options['includeFields'] = $this->getFieldsToInclude();
 		} else {
 			$options['usedInGenerator'] = true;
@@ -112,7 +111,7 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 		}
 
 		$startFrom = null;
-		if ( !is_null( $params['continue'] ) ) {
+		if ( $params['continue'] !== null ) {
 			$cont = explode( '|', $params['continue'] );
 			$this->dieContinueUsageIf( count( $cont ) != 2 );
 			$continueTimestamp = $cont[0];
@@ -126,7 +125,7 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 			$options['watchlistOwnerToken'] = $params['token'];
 		}
 
-		if ( !is_null( $params['namespace'] ) ) {
+		if ( $params['namespace'] !== null ) {
 			$options['namespaceIds'] = $params['namespace'];
 		}
 
@@ -134,7 +133,7 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 			$options['allRevisions'] = true;
 		}
 
-		if ( !is_null( $params['show'] ) ) {
+		if ( $params['show'] !== null ) {
 			$show = array_flip( $params['show'] );
 
 			/* Check for conflicting parameters. */
@@ -154,7 +153,7 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 			$options['filters'] = array_keys( $show );
 		}
 
-		if ( !is_null( $params['type'] ) ) {
+		if ( $params['type'] !== null ) {
 			try {
 				$rcTypes = RecentChange::parseToRCType( $params['type'] );
 				if ( $rcTypes ) {
@@ -166,10 +165,10 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 		}
 
 		$this->requireMaxOneParameter( $params, 'user', 'excludeuser' );
-		if ( !is_null( $params['user'] ) ) {
+		if ( $params['user'] !== null ) {
 			$options['onlyByUser'] = $params['user'];
 		}
-		if ( !is_null( $params['excludeuser'] ) ) {
+		if ( $params['excludeuser'] !== null ) {
 			$options['notByUser'] = $params['excludeuser'];
 		}
 
@@ -180,25 +179,40 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 		] );
 
 		$ids = [];
-		$count = 0;
-		$watchedItemQuery = MediaWikiServices::getInstance()->getWatchedItemQueryService();
+		$services = MediaWikiServices::getInstance();
+		$watchedItemQuery = $services->getWatchedItemQueryService();
 		$items = $watchedItemQuery->getWatchedItemsWithRecentChangeInfo( $wlowner, $options, $startFrom );
+
+		// Get gender information
+		if ( $items !== [] && $resultPageSet === null && $this->fld_title &&
+			$services->getContentLanguage()->needsGenderDistinction()
+		) {
+			$nsInfo = $services->getNamespaceInfo();
+			$usernames = [];
+			foreach ( $items as list( $watchedItem, $recentChangeInfo ) ) {
+				$linkTarget = $watchedItem->getLinkTarget();
+				if ( $nsInfo->hasGenderDistinction( $linkTarget->getNamespace() ) ) {
+					$usernames[] = $linkTarget->getText();
+				}
+			}
+			if ( $usernames !== [] ) {
+				$services->getGenderCache()->doQuery( $usernames, __METHOD__ );
+			}
+		}
 
 		foreach ( $items as list( $watchedItem, $recentChangeInfo ) ) {
 			/** @var WatchedItem $watchedItem */
-			if ( is_null( $resultPageSet ) ) {
+			if ( $resultPageSet === null ) {
 				$vals = $this->extractOutputData( $watchedItem, $recentChangeInfo );
 				$fit = $this->getResult()->addValue( [ 'query', $this->getModuleName() ], null, $vals );
 				if ( !$fit ) {
 					$startFrom = [ $recentChangeInfo['rc_timestamp'], $recentChangeInfo['rc_id'] ];
 					break;
 				}
+			} elseif ( $params['allrev'] ) {
+				$ids[] = (int)$recentChangeInfo['rc_this_oldid'];
 			} else {
-				if ( $params['allrev'] ) {
-					$ids[] = intval( $recentChangeInfo['rc_this_oldid'] );
-				} else {
-					$ids[] = intval( $recentChangeInfo['rc_cur_id'] );
-				}
+				$ids[] = (int)$recentChangeInfo['rc_cur_id'];
 			}
 		}
 
@@ -206,7 +220,7 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 			$this->setContinueEnumParameter( 'continue', implode( '|', $startFrom ) );
 		}
 
-		if ( is_null( $resultPageSet ) ) {
+		if ( $resultPageSet === null ) {
 			$this->getResult()->addIndexedTagName(
 				[ 'query', $this->getModuleName() ],
 				'item'
@@ -272,7 +286,7 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 
 		/* Our output data. */
 		$vals = [];
-		$type = intval( $recentChangeInfo['rc_type'] );
+		$type = (int)$recentChangeInfo['rc_type'];
 		$vals['type'] = RecentChange::parseFromRCType( $type );
 		$anyHidden = false;
 
@@ -294,9 +308,9 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 					ApiQueryBase::addTitleInfo( $vals, $title );
 				}
 				if ( $this->fld_ids ) {
-					$vals['pageid'] = intval( $recentChangeInfo['rc_cur_id'] );
-					$vals['revid'] = intval( $recentChangeInfo['rc_this_oldid'] );
-					$vals['old_revid'] = intval( $recentChangeInfo['rc_last_oldid'] );
+					$vals['pageid'] = (int)$recentChangeInfo['rc_cur_id'];
+					$vals['revid'] = (int)$recentChangeInfo['rc_this_oldid'];
+					$vals['old_revid'] = (int)$recentChangeInfo['rc_last_oldid'];
 				}
 			}
 		}
@@ -337,8 +351,8 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 
 		/* Add sizes of each revision. (Only available on 1.10+) */
 		if ( $this->fld_sizes ) {
-			$vals['oldlen'] = intval( $recentChangeInfo['rc_old_len'] );
-			$vals['newlen'] = intval( $recentChangeInfo['rc_new_len'] );
+			$vals['oldlen'] = (int)$recentChangeInfo['rc_old_len'];
+			$vals['newlen'] = (int)$recentChangeInfo['rc_new_len'];
 		}
 
 		/* Add the timestamp. */
@@ -391,7 +405,7 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 				LogPage::DELETED_ACTION,
 				$user
 			) ) {
-				$vals['logid'] = intval( $recentChangeInfo['rc_logid'] );
+				$vals['logid'] = (int)$recentChangeInfo['rc_logid'];
 				$vals['logtype'] = $recentChangeInfo['rc_log_type'];
 				$vals['logaction'] = $recentChangeInfo['rc_log_action'];
 				$vals['logparams'] = LogFormatter::newFromRow( $recentChangeInfo )->formatParametersForApi();
@@ -434,9 +448,11 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 			],
 			'user' => [
 				ApiBase::PARAM_TYPE => 'user',
+				UserDef::PARAM_ALLOWED_USER_TYPES => [ 'name', 'ip', 'id', 'interwiki' ],
 			],
 			'excludeuser' => [
 				ApiBase::PARAM_TYPE => 'user',
+				UserDef::PARAM_ALLOWED_USER_TYPES => [ 'name', 'ip', 'id', 'interwiki' ],
 			],
 			'dir' => [
 				ApiBase::PARAM_DFLT => 'older',
@@ -497,7 +513,8 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 				ApiBase::PARAM_TYPE => RecentChange::getChangeTypes()
 			],
 			'owner' => [
-				ApiBase::PARAM_TYPE => 'user'
+				ApiBase::PARAM_TYPE => 'user',
+				UserDef::PARAM_ALLOWED_USER_TYPES => [ 'name' ],
 			],
 			'token' => [
 				ApiBase::PARAM_TYPE => 'string',

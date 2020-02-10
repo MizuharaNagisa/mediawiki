@@ -20,6 +20,8 @@
  * @file
  * @ingroup Media
  */
+
+use MediaWiki\Shell\Shell;
 use Wikimedia\ScopedCallback;
 
 /**
@@ -41,7 +43,7 @@ class SvgHandler extends ImageHandler {
 		'title' => 'ObjectName',
 	];
 
-	function isEnabled() {
+	public function isEnabled() {
 		global $wgSVGConverters, $wgSVGConverter;
 		if ( !isset( $wgSVGConverters[$wgSVGConverter] ) ) {
 			wfDebug( "\$wgSVGConverter is invalid, disabling SVG rendering.\n" );
@@ -199,20 +201,16 @@ class SvgHandler extends ImageHandler {
 				$params['physicalWidth'] = $wgSVGMaxSize;
 				$params['physicalHeight'] = File::scaleHeight( $srcWidth, $srcHeight, $wgSVGMaxSize );
 			}
-		} else {
-			if ( $params['physicalHeight'] > $wgSVGMaxSize ) {
-				$srcWidth = $image->getWidth( $params['page'] );
-				$srcHeight = $image->getHeight( $params['page'] );
-				$params['physicalWidth'] = File::scaleHeight( $srcHeight, $srcWidth, $wgSVGMaxSize );
-				$params['physicalHeight'] = $wgSVGMaxSize;
-			}
+		} elseif ( $params['physicalHeight'] > $wgSVGMaxSize ) {
+			$srcWidth = $image->getWidth( $params['page'] );
+			$srcHeight = $image->getHeight( $params['page'] );
+			$params['physicalWidth'] = File::scaleHeight( $srcHeight, $srcWidth, $wgSVGMaxSize );
+			$params['physicalHeight'] = $wgSVGMaxSize;
 		}
 		// To prevent the proliferation of thumbnails in languages not present in SVGs, unless
 		// explicitly forced by user.
-		if ( isset( $params['targetlang'] ) ) {
-			if ( !$image->getMatchedLanguage( $params['targetlang'] ) ) {
-				unset( $params['targetlang'] );
-			}
+		if ( isset( $params['targetlang'] ) && !$image->getMatchedLanguage( $params['targetlang'] ) ) {
+			unset( $params['targetlang'] );
 		}
 
 		return $params;
@@ -339,11 +337,11 @@ class SvgHandler extends ImageHandler {
 				// External command
 				$cmd = str_replace(
 					[ '$path/', '$width', '$height', '$input', '$output' ],
-					[ $wgSVGConverterPath ? wfEscapeShellArg( "$wgSVGConverterPath/" ) : "",
+					[ $wgSVGConverterPath ? Shell::escape( "$wgSVGConverterPath/" ) : "",
 						intval( $width ),
 						intval( $height ),
-						wfEscapeShellArg( $srcPath ),
-						wfEscapeShellArg( $dstPath ) ],
+						Shell::escape( $srcPath ),
+						Shell::escape( $dstPath ) ],
 					$wgSVGConverters[$wgSVGConverter]
 				);
 
@@ -383,7 +381,7 @@ class SvgHandler extends ImageHandler {
 	 * @param File|FSFile $file
 	 * @param string $path Unused
 	 * @param bool|array $metadata
-	 * @return array
+	 * @return array|false
 	 */
 	function getImageSize( $file, $path, $metadata = false ) {
 		if ( $metadata === false && $file instanceof File ) {
@@ -399,7 +397,7 @@ class SvgHandler extends ImageHandler {
 		}
 	}
 
-	function getThumbType( $ext, $mime, $params = null ) {
+	public function getThumbType( $ext, $mime, $params = null ) {
 		return [ 'png', 'image/png' ];
 	}
 
@@ -412,7 +410,7 @@ class SvgHandler extends ImageHandler {
 	 * @param File $file
 	 * @return string
 	 */
-	function getLongDesc( $file ) {
+	public function getLongDesc( $file ) {
 		global $wgLang;
 
 		$metadata = $this->unpackMetadata( $file->getMetadata() );
@@ -438,10 +436,12 @@ class SvgHandler extends ImageHandler {
 	 * @param string $filename
 	 * @return string Serialised metadata
 	 */
-	function getMetadata( $file, $filename ) {
+	public function getMetadata( $file, $filename ) {
 		$metadata = [ 'version' => self::SVG_METADATA_VERSION ];
+
 		try {
-			$metadata += SVGMetadataExtractor::getMetadata( $filename );
+			$svgReader = new SVGReader( $filename );
+			$metadata += $svgReader->getMetadata();
 		} catch ( Exception $e ) { // @todo SVG specific exceptions
 			// File not found, broken, etc.
 			$metadata['error'] = [
@@ -469,7 +469,7 @@ class SvgHandler extends ImageHandler {
 		return 'parsed-svg';
 	}
 
-	function isMetadataValid( $image, $metadata ) {
+	public function isMetadataValid( $image, $metadata ) {
 		$meta = $this->unpackMetadata( $metadata );
 		if ( $meta === false ) {
 			return self::METADATA_BAD;
@@ -493,7 +493,7 @@ class SvgHandler extends ImageHandler {
 	 * @param bool|IContextSource $context Context to use (optional)
 	 * @return array|bool
 	 */
-	function formatMetadata( $file, $context = false ) {
+	public function formatMetadata( $file, $context = false ) {
 		$result = [
 			'visible' => [],
 			'collapsed' => []
@@ -594,7 +594,7 @@ class SvgHandler extends ImageHandler {
 	 * @param array $params
 	 * @return array
 	 */
-	function getScriptParams( $params ) {
+	protected function getScriptParams( $params ) {
 		$scriptParams = [ 'width' => $params['width'] ];
 		if ( isset( $params['lang'] ) ) {
 			$scriptParams['lang'] = $params['lang'];

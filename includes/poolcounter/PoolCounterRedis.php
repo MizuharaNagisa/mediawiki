@@ -81,7 +81,7 @@ class PoolCounterRedis extends PoolCounter {
 	/** @var PoolCounterRedis[] List of active PoolCounterRedis objects in this script */
 	protected static $active = null;
 
-	function __construct( $conf, $type, $key ) {
+	public function __construct( $conf, $type, $key ) {
 		parent::__construct( $conf, $type, $key );
 
 		$this->serversByLabel = $conf['servers'];
@@ -152,7 +152,9 @@ class PoolCounterRedis extends PoolCounter {
 		if ( !$status->isOK() ) {
 			return $status;
 		}
+		/** @var RedisConnRef $conn */
 		$conn = $status->value;
+		'@phan-var RedisConnRef $conn';
 
 		// phpcs:disable Generic.Files.LineLength
 		static $script =
@@ -238,7 +240,9 @@ LUA;
 		if ( !$status->isOK() ) {
 			return $status;
 		}
+		/** @var RedisConnRef $conn */
 		$conn = $status->value;
+		'@phan-var RedisConnRef $conn';
 
 		$now = microtime( true );
 		try {

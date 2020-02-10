@@ -31,13 +31,13 @@ abstract class QuickTemplate {
 	 */
 	public $data;
 
-	/** @var Config $config */
+	/** @var Config */
 	protected $config;
 
 	/**
 	 * @param Config|null $config
 	 */
-	function __construct( Config $config = null ) {
+	public function __construct( Config $config = null ) {
 		$this->data = [];
 		if ( $config === null ) {
 			wfDebug( __METHOD__ . ' was called with no Config instance passed to it' );
@@ -63,7 +63,7 @@ abstract class QuickTemplate {
 	 */
 	public function extend( $name, $value ) {
 		if ( $this->haveData( $name ) ) {
-			$this->data[$name] = $this->data[$name] . $value;
+			$this->data[$name] .= $value;
 		} else {
 			$this->data[$name] = $value;
 		}
@@ -79,18 +79,6 @@ abstract class QuickTemplate {
 	 */
 	public function get( $name, $default = null ) {
 		return $this->data[$name] ?? $default;
-	}
-
-	/**
-	 * @deprecated since 1.31 This function is a now-redundant optimisation intended
-	 *  for very old versions of PHP. The use of references here makes the code
-	 *  more fragile and is incompatible with plans like T140664. Use set() instead.
-	 * @param string $name
-	 * @param mixed &$value
-	 */
-	public function setRef( $name, &$value ) {
-		wfDeprecated( __METHOD__, '1.31' );
-		$this->data[$name] =& $value;
 	}
 
 	/**
@@ -126,25 +114,12 @@ abstract class QuickTemplate {
 	}
 
 	/**
-	 * @private
-	 * @param string $msgKey
-	 * @warning You should never use this method. I18n messages should be escaped
-	 * @deprecated 1.32 Use ->msg() instead.
-	 * @suppress SecurityCheck-XSS
-	 * @return-taint exec_html
-	 */
-	function msgHtml( $msgKey ) {
-		wfDeprecated( __METHOD__, '1.32' );
-		echo wfMessage( $msgKey )->text();
-	}
-
-	/**
 	 * An ugly, ugly hack.
 	 * @deprecated since 1.33 Use ->msg() instead.
 	 * @param string $msgKey
 	 */
 	function msgWiki( $msgKey ) {
-		// TODO: Add wfDeprecated( __METHOD__, '1.33' ) after 1.33 got released
+		wfDeprecated( __METHOD__, '1.33' );
 		global $wgOut;
 
 		$text = wfMessage( $msgKey )->plain();

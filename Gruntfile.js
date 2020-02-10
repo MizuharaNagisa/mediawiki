@@ -8,9 +8,7 @@ module.exports = function ( grunt ) {
 
 	grunt.loadNpmTasks( 'grunt-banana-checker' );
 	grunt.loadNpmTasks( 'grunt-contrib-copy' );
-	grunt.loadNpmTasks( 'grunt-contrib-watch' );
 	grunt.loadNpmTasks( 'grunt-eslint' );
-	grunt.loadNpmTasks( 'grunt-jsonlint' );
 	grunt.loadNpmTasks( 'grunt-karma' );
 	grunt.loadNpmTasks( 'grunt-stylelint' );
 	grunt.loadNpmTasks( 'grunt-svgmin' );
@@ -23,10 +21,11 @@ module.exports = function ( grunt ) {
 	grunt.initConfig( {
 		eslint: {
 			options: {
-				reportUnusedDisableDirectives: true
+				extensions: [ '.js', '.json', '.vue' ],
+				cache: true
 			},
 			all: [
-				'**/*.js',
+				'**/*.{js,json,vue}',
 				'!docs/**',
 				'!node_modules/**',
 				'!resources/lib/**',
@@ -36,27 +35,24 @@ module.exports = function ( grunt ) {
 				'!tests/coverage/**',
 				'!vendor/**',
 				// Explicitly say "**/*.js" here in case of symlinks
-				'!extensions/**/*.js',
-				'!skins/**/*.js'
-			]
-		},
-		jsonlint: {
-			all: [
-				'**/*.json',
-				'!{docs/js,extensions,node_modules,skins,vendor}/**'
+				'!extensions/**/*.{js,json,vue}',
+				'!skins/**/*.{js,json,vue}'
 			]
 		},
 		banana: {
 			options: {
+				requireLowerCase: false,
 				disallowBlankTranslations: false
 			},
 			core: 'languages/i18n/',
 			exif: 'languages/i18n/exif/',
 			api: 'includes/api/i18n/',
-			installer: 'includes/installer/i18n/'
+			rest: 'includes/Rest/i18n/',
+			installer: 'includes/installer/i18n/',
+			paramvalidator: 'includes/libs/ParamValidator/i18n/'
 		},
 		stylelint: {
-			src: '{resources/src,mw-config}/**/*.{css,less}'
+			src: '{resources/src,mw-config}/**/*.{css,less,vue}'
 		},
 		svgmin: {
 			options: {
@@ -103,6 +99,18 @@ module.exports = function ( grunt ) {
 		},
 		karma: {
 			options: {
+				customLaunchers: {
+					ChromeCustom: {
+						base: 'ChromeHeadless',
+						// Chrome requires --no-sandbox in Docker/CI.
+						// Newer CI images expose CHROMIUM_FLAGS which sets this (and
+						// anything else it might need) automatically. Older CI images,
+						// (including Quibble for MW) don't set it yet.
+						flags: ( process.env.CHROMIUM_FLAGS ||
+							( process.env.ZUUL_PROJECT ? '--no-sandbox' : '' )
+						).split( ' ' )
+					}
+				},
 				proxies: karmaProxy,
 				files: [ {
 					pattern: wgServer + wgScriptPath + '/index.php?title=Special:JavaScriptTest/qunit/export',
@@ -110,7 +118,7 @@ module.exports = function ( grunt ) {
 					included: true,
 					served: false
 				} ],
-				logLevel: 'DEBUG',
+				logLevel: ( process.env.ZUUL_PROJECT ? 'DEBUG' : 'INFO' ),
 				frameworks: [ 'qunit' ],
 				reporters: [ 'mocha' ],
 				singleRun: true,
@@ -122,13 +130,10 @@ module.exports = function ( grunt ) {
 				crossOriginAttribute: false
 			},
 			main: {
-				browsers: [ 'Chrome' ]
-			},
-			chromium: {
-				browsers: [ 'Chromium' ]
+				browsers: [ 'ChromeCustom' ]
 			},
 			firefox: {
-				browsers: [ 'Firefox' ]
+				browsers: [ 'FirefoxHeadless' ]
 			}
 		},
 		copy: {
@@ -159,7 +164,4 @@ module.exports = function ( grunt ) {
 	grunt.registerTask( 'minify', 'svgmin' );
 	grunt.registerTask( 'lint', [ 'eslint', 'banana', 'stylelint' ] );
 	grunt.registerTask( 'qunit', [ 'assert-mw-env', 'karma:main' ] );
-
-	grunt.registerTask( 'test', [ 'lint' ] );
-	grunt.registerTask( 'default', [ 'minify', 'test' ] );
 };

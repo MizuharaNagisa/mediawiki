@@ -1,7 +1,8 @@
 <?php
 
-use MediaWiki\Block\Restriction\PageRestriction;
+use MediaWiki\Block\DatabaseBlock;
 use MediaWiki\Block\Restriction\NamespaceRestriction;
+use MediaWiki\Block\Restriction\PageRestriction;
 
 /**
  * @group API
@@ -13,7 +14,7 @@ use MediaWiki\Block\Restriction\NamespaceRestriction;
 class ApiBlockTest extends ApiTestCase {
 	protected $mUser = null;
 
-	protected function setUp() {
+	protected function setUp() : void {
 		parent::setUp();
 		$this->tablesUsed = array_merge(
 			$this->tablesUsed,
@@ -21,6 +22,10 @@ class ApiBlockTest extends ApiTestCase {
 		);
 
 		$this->mUser = $this->getMutableTestUser()->getUser();
+		$this->setMwGlobals( 'wgBlockCIDRLimit', [
+			'IPv4' => 16,
+			'IPv6' => 19,
+		] );
 	}
 
 	protected function getTokens() {
@@ -40,7 +45,6 @@ class ApiBlockTest extends ApiTestCase {
 		$tokens = $this->getTokens();
 
 		$this->assertNotNull( $this->mUser, 'Sanity check' );
-		$this->assertNotSame( 0, $this->mUser->getId(), 'Sanity check' );
 
 		$this->assertArrayHasKey( 'blocktoken', $tokens, 'Sanity check' );
 
@@ -57,12 +61,12 @@ class ApiBlockTest extends ApiTestCase {
 		$ret = $this->doApiRequest( array_merge( $params, $extraParams ), null,
 			false, $blocker );
 
-		$block = Block::newFromTarget( $this->mUser->getName() );
+		$block = DatabaseBlock::newFromTarget( $this->mUser->getName() );
 
-		$this->assertTrue( !is_null( $block ), 'Block is valid' );
+		$this->assertTrue( $block !== null, 'Block is valid' );
 
 		$this->assertSame( $this->mUser->getName(), (string)$block->getTarget() );
-		$this->assertSame( 'Some reason', $block->mReason );
+		$this->assertSame( 'Some reason', $block->getReasonComment()->text );
 
 		return $ret;
 	}
@@ -85,11 +89,13 @@ class ApiBlockTest extends ApiTestCase {
 	 * A blocked user can't block
 	 */
 	public function testBlockByBlockedUser() {
-		$this->setExpectedException( ApiUsageException::class,
-			'You cannot block or unblock other users because you are yourself blocked.' );
+		$this->expectException( ApiUsageException::class );
+		$this->expectExceptionMessage(
+			'You cannot block or unblock other users because you are yourself blocked.'
+		);
 
 		$blocked = $this->getMutableTestUser( [ 'sysop' ] )->getUser();
-		$block = new Block( [
+		$block = new DatabaseBlock( [
 			'address' => $blocked->getName(),
 			'by' => self::$users['sysop']->getUser()->getId(),
 			'reason' => 'Capriciousness',
@@ -102,16 +108,18 @@ class ApiBlockTest extends ApiTestCase {
 	}
 
 	public function testBlockOfNonexistentUser() {
-		$this->setExpectedException( ApiUsageException::class,
-			'There is no user by the name "Nonexistent". Check your spelling.' );
+		$this->expectException( ApiUsageException::class );
+		$this->expectExceptionMessage(
+			'There is no user by the name "Nonexistent". Check your spelling.'
+		);
 
 		$this->doBlock( [ 'user' => 'Nonexistent' ] );
 	}
 
 	public function testBlockOfNonexistentUserId() {
 		$id = 948206325;
-		$this->setExpectedException( ApiUsageException::class,
-			"There is no user with ID $id." );
+		$this->expectException( ApiUsageException::class );
+		$this->expectExceptionMessage( "There is no user with ID $id." );
 
 		$this->assertFalse( User::whoIs( $id ), 'Sanity check' );
 
@@ -131,15 +139,17 @@ class ApiBlockTest extends ApiTestCase {
 			__METHOD__,
 			[],
 			[
-				'change_tag' => [ 'INNER JOIN', 'ct_log_id = log_id' ],
-				'change_tag_def' => [ 'INNER JOIN', 'ctd_id = ct_tag_id' ],
+				'change_tag' => [ 'JOIN', 'ct_log_id = log_id' ],
+				'change_tag_def' => [ 'JOIN', 'ctd_id = ct_tag_id' ],
 			]
 		) );
 	}
 
 	public function testBlockWithProhibitedTag() {
-		$this->setExpectedException( ApiUsageException::class,
-			'You do not have permission to apply change tags along with your changes.' );
+		$this->expectException( ApiUsageException::class );
+		$this->expectExceptionMessage(
+			'You do not have permission to apply change tags along with your changes.'
+		);
 
 		ChangeTags::defineTag( 'custom tag' );
 
@@ -168,13 +178,20 @@ class ApiBlockTest extends ApiTestCase {
 	}
 
 	public function testBlockWithProhibitedHide() {
-		$this->setExpectedException( ApiUsageException::class,
-			"You don't have permission to hide user names from the block log." );
+		$this->expectException( ApiUsageException::class );
+		$this->expectExceptionMessage(
+			"You don't have permission to hide user names from the block log."
+		);
 
 		$this->doBlock( [ 'hidename' => '' ] );
 	}
 
 	public function testBlockWithEmailBlock() {
+		$this->setMwGlobals( [
+			'wgEnableEmail' => true,
+			'wgEnableUserEmail' => true,
+		] );
+
 		$res = $this->doBlock( [ 'noemail' => '' ] );
 
 		$dbw = wfGetDB( DB_MASTER );
@@ -187,8 +204,15 @@ class ApiBlockTest extends ApiTestCase {
 	}
 
 	public function testBlockWithProhibitedEmailBlock() {
-		$this->setExpectedException( ApiUsageException::class,
-			"You don't have permission to block users from sending email through the wiki." );
+		$this->setMwGlobals( [
+			'wgEnableEmail' => true,
+			'wgEnableUserEmail' => true,
+		] );
+
+		$this->expectException( ApiUsageException::class );
+		$this->expectExceptionMessage(
+			"You don't have permission to block users from sending email through the wiki."
+		);
 
 		$this->setMwGlobals( 'wgRevokePermissions',
 			[ 'sysop' => [ 'blockemail' => true ] ] );
@@ -213,7 +237,8 @@ class ApiBlockTest extends ApiTestCase {
 	}
 
 	public function testBlockWithInvalidExpiry() {
-		$this->setExpectedException( ApiUsageException::class, "Expiry time invalid." );
+		$this->expectException( ApiUsageException::class );
+		$this->expectExceptionMessage( "Expiry time invalid." );
 
 		$this->doBlock( [ 'expiry' => '' ] );
 	}
@@ -225,7 +250,7 @@ class ApiBlockTest extends ApiTestCase {
 
 		$this->doBlock();
 
-		$block = Block::newFromTarget( $this->mUser->getName() );
+		$block = DatabaseBlock::newFromTarget( $this->mUser->getName() );
 
 		$this->assertTrue( $block->isSitewide() );
 		$this->assertCount( 0, $block->getRestrictions() );
@@ -244,9 +269,10 @@ class ApiBlockTest extends ApiTestCase {
 			'partial' => true,
 			'pagerestrictions' => $title,
 			'namespacerestrictions' => $namespace,
+			'allowusertalk' => true,
 		] );
 
-		$block = Block::newFromTarget( $this->mUser->getName() );
+		$block = DatabaseBlock::newFromTarget( $this->mUser->getName() );
 
 		$this->assertFalse( $block->isSitewide() );
 		$this->assertCount( 2, $block->getRestrictions() );
@@ -256,11 +282,9 @@ class ApiBlockTest extends ApiTestCase {
 		$this->assertEquals( $namespace, $block->getRestrictions()[1]->getValue() );
 	}
 
-	/**
-	 * @expectedException ApiUsageException
-	 * @expectedExceptionMessage The "token" parameter must be set
-	 */
 	public function testBlockingActionWithNoToken() {
+		$this->expectException( ApiUsageException::class );
+		$this->expectExceptionMessage( 'The "token" parameter must be set' );
 		$this->doApiRequest(
 			[
 				'action' => 'block',
@@ -273,13 +297,11 @@ class ApiBlockTest extends ApiTestCase {
 		);
 	}
 
-	/**
-	 * @expectedException ApiUsageException
-	 * @expectedExceptionMessage Invalid value "127.0.0.1/64" for user parameter "user".
-	 */
 	public function testBlockWithLargeRange() {
 		$tokens = $this->getTokens();
 
+		$this->expectException( ApiUsageException::class );
+		$this->expectExceptionMessage( 'Invalid value "127.0.0.1/64" for user parameter "user".' );
 		$this->doApiRequest(
 			[
 				'action' => 'block',
@@ -293,18 +315,16 @@ class ApiBlockTest extends ApiTestCase {
 		);
 	}
 
-	/**
-	 * @expectedException ApiUsageException
-	 * @expectedExceptionMessage Too many values supplied for parameter "pagerestrictions". The
-	 * limit is 10.
-	 */
-	public function testBlockingToManyPageRestrictions() {
+	public function testBlockingTooManyPageRestrictions() {
 		$this->setMwGlobals( [
 			'wgEnablePartialBlocks' => true,
 		] );
 
 		$tokens = $this->getTokens();
 
+		$this->expectException( ApiUsageException::class );
+		$this->expectExceptionMessage(
+			"Too many values supplied for parameter \"pagerestrictions\". The limit is 10." );
 		$this->doApiRequest(
 			[
 				'action' => 'block',
@@ -318,5 +338,17 @@ class ApiBlockTest extends ApiTestCase {
 			false,
 			self::$users['sysop']->getUser()
 		);
+	}
+
+	public function testRangeBlock() {
+		$this->mUser = User::newFromName( '128.0.0.0/16', false );
+		$this->doBlock();
+	}
+
+	public function testVeryLargeRangeBlock() {
+		$this->mUser = User::newFromName( '128.0.0.0/1', false );
+		$this->expectException( ApiUsageException::class );
+		$this->expectExceptionMessage( "Range blocks larger than /16 are not allowed." );
+		$this->doBlock();
 	}
 }

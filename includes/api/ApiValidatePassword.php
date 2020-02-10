@@ -1,6 +1,7 @@
 <?php
 
 use MediaWiki\Auth\AuthManager;
+use MediaWiki\ParamValidator\TypeDef\UserDef;
 
 /**
  * @ingroup API
@@ -33,6 +34,7 @@ class ApiValidatePassword extends ApiBase {
 			$user = $this->getUser();
 		}
 
+		$r = [];
 		$validity = $user->checkPasswordValidity( $params['password'] );
 		$r['validity'] = $validity->isGood() ? 'Good' : ( $validity->isOK() ? 'Change' : 'Invalid' );
 		$messages = array_merge(
@@ -60,6 +62,7 @@ class ApiValidatePassword extends ApiBase {
 			],
 			'user' => [
 				ApiBase::PARAM_TYPE => 'user',
+				UserDef::PARAM_ALLOWED_USER_TYPES => [ 'name', 'id' ],
 			],
 			'email' => null,
 			'realname' => null,

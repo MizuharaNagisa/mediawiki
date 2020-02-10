@@ -1,4 +1,5 @@
 <?php
+
 namespace MediaWiki\Tests\Revision;
 
 use InvalidArgumentException;
@@ -16,7 +17,6 @@ use WikitextContent;
  * @group RevisionStore
  * @group Storage
  * @group Database
- * @group medium
  */
 class McrWriteBothRevisionStoreDbTest extends RevisionStoreDbTestBase {
 
@@ -55,7 +55,7 @@ class McrWriteBothRevisionStoreDbTest extends RevisionStoreDbTestBase {
 			[ 'rev_id' => $rev->getId(), 'rev_text_id > 0' ],
 			[ [ 1 ] ],
 			[],
-			[ 'text' => [ 'INNER JOIN', [ 'rev_text_id = old_id' ] ] ]
+			[ 'text' => [ 'JOIN', [ 'rev_text_id = old_id' ] ] ]
 		);
 
 		parent::assertRevisionExistsInDatabase( $rev );
@@ -180,6 +180,16 @@ class McrWriteBothRevisionStoreDbTest extends RevisionStoreDbTestBase {
 
 		// can we find it directly in the database?
 		$this->assertRevisionExistsInDatabase( $return );
+	}
+
+	/**
+	 * Conditions to use together with getSlotsQueryInfo() when selecting slot rows for a given
+	 * revision.
+	 *
+	 * @return array
+	 */
+	protected function getSlotRevisionConditions( $revId ) {
+		return [ 'rev_id' => $revId ];
 	}
 
 }

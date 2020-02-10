@@ -58,7 +58,10 @@ class CategoryMembershipChangeJob extends Job {
 				'pageId' => $title->getArticleID(),
 				'revTimestamp' => $revisionTimestamp,
 			],
-			[],
+			[
+				'removeDuplicates' => true,
+				'removeDuplicatesIgnoreParams' => [ 'revTimestamp' ]
+			],
 			$title
 		);
 	}
@@ -81,7 +84,7 @@ class CategoryMembershipChangeJob extends Job {
 	public function run() {
 		$lbFactory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
 		$lb = $lbFactory->getMainLB();
-		$dbw = $lb->getConnection( DB_MASTER );
+		$dbw = $lb->getConnectionRef( DB_MASTER );
 
 		$this->ticket = $lbFactory->getEmptyTransactionTicket( __METHOD__ );
 
@@ -91,15 +94,15 @@ class CategoryMembershipChangeJob extends Job {
 			return false; // deleted?
 		}
 
-		// Cut down on the time spent in safeWaitForMasterPos() in the critical section
-		$dbr = $lb->getConnection( DB_REPLICA, [ 'recentchanges' ] );
-		if ( !$lb->safeWaitForMasterPos( $dbr ) ) {
+		// Cut down on the time spent in waitForMasterPos() in the critical section
+		$dbr = $lb->getConnectionRef( DB_REPLICA, [ 'recentchanges' ] );
+		if ( !$lb->waitForMasterPos( $dbr ) ) {
 			$this->setLastError( "Timed out while pre-waiting for replica DB to catch up" );
 			return false;
 		}
 
 		// Use a named lock so that jobs for this page see each others' changes
-		$lockKey = "CategoryMembershipUpdates:{$page->getId()}";
+		$lockKey = "{$dbw->getDomainID()}:CategoryMembershipChange:{$page->getId()}"; // per-wiki
 		$scopedLock = $dbw->getScopedLockAndFlush( $lockKey, __METHOD__, 3 );
 		if ( !$scopedLock ) {
 			$this->setLastError( "Could not acquire lock '$lockKey'" );
@@ -107,7 +110,7 @@ class CategoryMembershipChangeJob extends Job {
 		}
 
 		// Wait till replica DB is caught up so that jobs for this page see each others' changes
-		if ( !$lb->safeWaitForMasterPos( $dbr ) ) {
+		if ( !$lb->waitForMasterPos( $dbr ) ) {
 			$this->setLastError( "Timed out while waiting for replica DB to catch up" );
 			return false;
 		}
@@ -133,14 +136,11 @@ class CategoryMembershipChangeJob extends Job {
 					[
 						'rc_this_oldid = rev_id',
 						'rc_source' => RecentChange::SRC_CATEGORIZE,
-						// Allow rc_cur_id or rc_timestamp index usage
-						'rc_cur_id = rev_page',
-						'rc_timestamp = rev_timestamp'
 					]
 				) . ')'
 			],
 			__METHOD__,
-			[ 'ORDER BY' => 'rev_timestamp DESC, rev_id DESC' ]
+			[ 'ORDER BY' => [ 'rev_timestamp DESC', 'rev_id DESC' ] ]
 		);
 		// Only consider revisions newer than any such revision
 		if ( $row ) {
@@ -163,7 +163,7 @@ class CategoryMembershipChangeJob extends Job {
 					" OR (rev_timestamp = $encCutoff AND rev_id > $lastRevId)"
 			],
 			__METHOD__,
-			[ 'ORDER BY' => 'rev_timestamp ASC, rev_id ASC' ],
+			[ 'ORDER BY' => [ 'rev_timestamp ASC', 'rev_id ASC' ] ],
 			$revQuery['joins']
 		);
 
@@ -195,7 +195,7 @@ class CategoryMembershipChangeJob extends Job {
 		// Get the prior revision (the same for null edits)
 		if ( $newRev->getParentId() ) {
 			$oldRev = Revision::newFromId( $newRev->getParentId(), Revision::READ_LATEST );
-			if ( !$oldRev->getContent() ) {
+			if ( !$oldRev || !$oldRev->getContent() ) {
 				return; // deleted?
 			}
 		} else {

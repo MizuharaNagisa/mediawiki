@@ -1,8 +1,6 @@
 <?php
 
 /**
- * Tests for MultiHttpClient
- *
  * The urls herein are not actually called, because we mock the return results.
  *
  * @covers MultiHttpClient
@@ -10,7 +8,7 @@
 class MultiHttpClientTest extends MediaWikiTestCase {
 	protected $client;
 
-	protected function setUp() {
+	protected function setUp() : void {
 		parent::setUp();
 		$client = $this->getMockBuilder( MultiHttpClient::class )
 			->setConstructorArgs( [ [] ] )

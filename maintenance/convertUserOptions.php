@@ -23,8 +23,8 @@
 
 require_once __DIR__ . '/Maintenance.php';
 
-use Wikimedia\Rdbms\ResultWrapper;
 use Wikimedia\Rdbms\IDatabase;
+use Wikimedia\Rdbms\IResultWrapper;
 
 /**
  * Maintenance script to convert user options to the new `user_properties` table.
@@ -76,11 +76,11 @@ class ConvertUserOptions extends Maintenance {
 	}
 
 	/**
-	 * @param ResultWrapper $res
+	 * @param IResultWrapper $res
 	 * @param IDatabase $dbw
 	 * @return null|int
 	 */
-	function convertOptionBatch( $res, $dbw ) {
+	private function convertOptionBatch( $res, $dbw ) {
 		$id = null;
 		foreach ( $res as $row ) {
 			$this->mConversionCount++;
@@ -94,7 +94,7 @@ class ConvertUserOptions extends Maintenance {
 				// MW < 1.16 would save even default values. Filter them out
 				// here (as in User) to avoid adding many unnecessary rows.
 				$defaultOption = User::getDefaultOption( $m[1] );
-				if ( is_null( $defaultOption ) || $m[2] != $defaultOption ) {
+				if ( $defaultOption === null || $m[2] != $defaultOption ) {
 					$insertRows[] = [
 						'up_user' => $row->user_id,
 						'up_property' => $m[1],

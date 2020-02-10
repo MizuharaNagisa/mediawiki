@@ -80,10 +80,10 @@ class ExifBitmapHandler extends BitmapHandler {
 
 	/**
 	 * @param File $image
-	 * @param array $metadata
+	 * @param string $metadata
 	 * @return bool|int
 	 */
-	function isMetadataValid( $image, $metadata ) {
+	public function isMetadataValid( $image, $metadata ) {
 		global $wgShowEXIF;
 		if ( !$wgShowEXIF ) {
 			# Metadata disabled and so an empty field is expected
@@ -127,7 +127,7 @@ class ExifBitmapHandler extends BitmapHandler {
 	 * @param bool|IContextSource $context Context to use (optional)
 	 * @return array|bool
 	 */
-	function formatMetadata( $image, $context = false ) {
+	public function formatMetadata( $image, $context = false ) {
 		$meta = $this->getCommonMetaArray( $image );
 		if ( count( $meta ) === 0 ) {
 			return false;
@@ -166,7 +166,7 @@ class ExifBitmapHandler extends BitmapHandler {
 	 *
 	 * @param File|FSFile $image
 	 * @param string $path
-	 * @return array
+	 * @return array|false
 	 */
 	function getImageSize( $image, $path ) {
 		$gis = parent::getImageSize( $image, $path );

@@ -23,8 +23,9 @@
 
 namespace MediaWiki\Session;
 
-use Psr\Log\LoggerInterface;
 use BagOStuff;
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
 
 /**
  * Adapter for PHP's session handling
@@ -37,9 +38,11 @@ class PHPSessionHandler implements \SessionHandlerInterface {
 
 	/** @var bool Whether PHP session handling is enabled */
 	protected $enable = false;
+
+	/** @var bool */
 	protected $warn = true;
 
-	/** @var SessionManager|null */
+	/** @var SessionManagerInterface|null */
 	protected $manager;
 
 	/** @var BagOStuff|null */
@@ -149,12 +152,12 @@ class PHPSessionHandler implements \SessionHandlerInterface {
 	/**
 	 * Set the manager, store, and logger
 	 * @private Use self::install().
-	 * @param SessionManager $manager
+	 * @param SessionManagerInterface $manager
 	 * @param BagOStuff $store
 	 * @param LoggerInterface $logger
 	 */
 	public function setManager(
-		SessionManager $manager, BagOStuff $store, LoggerInterface $logger
+		SessionManagerInterface $manager, BagOStuff $store, LoggerInterface $logger
 	) {
 		if ( $this->manager !== $manager ) {
 			// Close any existing session before we change stores
@@ -297,12 +300,12 @@ class PHPSessionHandler implements \SessionHandlerInterface {
 		}
 		// Anything deleted in $_SESSION and unchanged in Session should be deleted too
 		// (but not if $_SESSION can't represent it at all)
-		\Wikimedia\PhpSessionSerializer::setLogger( new \Psr\Log\NullLogger() );
+		\Wikimedia\PhpSessionSerializer::setLogger( new NullLogger() );
 		foreach ( $cache as $key => $value ) {
 			if ( !array_key_exists( $key, $data ) && $session->exists( $key ) &&
 				\Wikimedia\PhpSessionSerializer::encode( [ $key => true ] )
 			) {
-				if ( $cache[$key] === $session->get( $key ) ) {
+				if ( $value === $session->get( $key ) ) {
 					// Unchanged in Session, delete it
 					$session->remove( $key );
 					$changed = true;

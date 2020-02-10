@@ -231,7 +231,7 @@ class SiteConfiguration {
 				}
 				// Do suffix settings
 				$suffix = $params['suffix'];
-				if ( !is_null( $suffix ) ) {
+				if ( $suffix !== null ) {
 					if ( array_key_exists( $suffix, $thisSetting ) ) {
 						if ( is_array( $retval ) && is_array( $thisSetting[$suffix] ) ) {
 							$retval = self::arrayMerge( $retval, $thisSetting[$suffix] );
@@ -261,7 +261,7 @@ class SiteConfiguration {
 			} while ( false );
 		}
 
-		if ( !is_null( $retval ) && count( $params['params'] ) ) {
+		if ( $retval !== null && count( $params['params'] ) ) {
 			foreach ( $params['params'] as $key => $value ) {
 				$retval = $this->doReplace( '$' . $key, $value, $retval );
 			}
@@ -314,7 +314,7 @@ class SiteConfiguration {
 			if ( $append && is_array( $value ) && is_array( $GLOBALS[$var] ) ) {
 				$value = self::arrayMerge( $value, $GLOBALS[$var] );
 			}
-			if ( !is_null( $value ) ) {
+			if ( $value !== null ) {
 				$localSettings[$var] = $value;
 			}
 		}
@@ -355,7 +355,7 @@ class SiteConfiguration {
 		$params = [], $wikiTags = []
 	) {
 		$value = $this->get( $setting, $wiki, $suffix, $params, $wikiTags );
-		if ( !is_null( $value ) ) {
+		if ( $value !== null ) {
 			$var = $value;
 		}
 	}
@@ -382,7 +382,7 @@ class SiteConfiguration {
 	 */
 	public function extractGlobalSetting( $setting, $wiki, $params ) {
 		$value = $this->getSetting( $setting, $wiki, $params );
-		if ( !is_null( $value ) ) {
+		if ( $value !== null ) {
 			if ( substr( $setting, 0, 1 ) == '+' && is_array( $value ) ) {
 				$setting = substr( $setting, 1 );
 				if ( is_array( $GLOBALS[$setting] ) ) {
@@ -439,8 +439,8 @@ class SiteConfiguration {
 		}
 
 		foreach ( $default as $name => $def ) {
-			if ( !isset( $ret[$name] ) || ( is_array( $default[$name] ) && !is_array( $ret[$name] ) ) ) {
-				$ret[$name] = $default[$name];
+			if ( !isset( $ret[$name] ) || ( is_array( $def ) && !is_array( $ret[$name] ) ) ) {
+				$ret[$name] = $def;
 			}
 		}
 
@@ -462,7 +462,7 @@ class SiteConfiguration {
 	protected function mergeParams( $wiki, $suffix, array $params, array $wikiTags ) {
 		$ret = $this->getWikiParams( $wiki );
 
-		if ( is_null( $ret['suffix'] ) ) {
+		if ( $ret['suffix'] === null ) {
 			$ret['suffix'] = $suffix;
 		}
 
@@ -471,10 +471,10 @@ class SiteConfiguration {
 		$ret['params'] += $params;
 
 		// Automatically fill that ones if needed
-		if ( !isset( $ret['params']['lang'] ) && !is_null( $ret['lang'] ) ) {
+		if ( !isset( $ret['params']['lang'] ) && $ret['lang'] !== null ) {
 			$ret['params']['lang'] = $ret['lang'];
 		}
-		if ( !isset( $ret['params']['site'] ) && !is_null( $ret['suffix'] ) ) {
+		if ( !isset( $ret['params']['site'] ) && $ret['suffix'] !== null ) {
 			$ret['params']['site'] = $ret['suffix'];
 		}
 
@@ -490,7 +490,7 @@ class SiteConfiguration {
 	public function siteFromDB( $wiki ) {
 		// Allow override
 		$def = $this->getWikiParams( $wiki );
-		if ( !is_null( $def['suffix'] ) && !is_null( $def['lang'] ) ) {
+		if ( $def['suffix'] !== null && $def['lang'] !== null ) {
 			return [ $def['suffix'], $def['lang'] ];
 		}
 
@@ -562,7 +562,7 @@ class SiteConfiguration {
 				->execute();
 
 			$data = trim( $result->getStdout() );
-			if ( $result->getExitCode() != 0 || !strlen( $data ) ) {
+			if ( $result->getExitCode() || $data === '' ) {
 				throw new MWException( "Failed to run getConfiguration.php: {$result->getStdout()}" );
 			}
 			$res = unserialize( $data );
@@ -582,14 +582,14 @@ class SiteConfiguration {
 	 * which is not fun
 	 *
 	 * @param array $array1
+	 * @param array ...$arrays
 	 *
 	 * @return array
 	 */
-	static function arrayMerge( $array1/* ... */ ) {
+	static function arrayMerge( array $array1, ...$arrays ) {
 		$out = $array1;
-		$argsCount = func_num_args();
-		for ( $i = 1; $i < $argsCount; $i++ ) {
-			foreach ( func_get_arg( $i ) as $key => $value ) {
+		foreach ( $arrays as $array ) {
+			foreach ( $array as $key => $value ) {
 				if ( isset( $out[$key] ) && is_array( $out[$key] ) && is_array( $value ) ) {
 					$out[$key] = self::arrayMerge( $out[$key], $value );
 				} elseif ( !isset( $out[$key] ) || !$out[$key] && !is_numeric( $key ) ) {

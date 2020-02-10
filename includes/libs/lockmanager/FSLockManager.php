@@ -56,7 +56,7 @@ class FSLockManager extends LockManager {
 	 * @param array $config Includes:
 	 *   - lockDirectory : Directory containing the lock files
 	 */
-	function __construct( array $config ) {
+	public function __construct( array $config ) {
 		parent::__construct( $config );
 
 		$this->lockDir = $config['lockDirectory'];
@@ -124,9 +124,13 @@ class FSLockManager extends LockManager {
 			} else {
 				Wikimedia\suppressWarnings();
 				$handle = fopen( $this->getLockPath( $path ), 'a+' );
-				if ( !$handle ) { // lock dir missing?
-					mkdir( $this->lockDir, 0777, true );
-					$handle = fopen( $this->getLockPath( $path ), 'a+' ); // try again
+				if ( !$handle && !is_dir( $this->lockDir ) ) {
+					// Create the lock directory in case it is missing
+					if ( mkdir( $this->lockDir, 0777, true ) ) {
+						$handle = fopen( $this->getLockPath( $path ), 'a+' ); // try again
+					} else {
+						$this->logger->error( "Cannot create directory '{$this->lockDir}'." );
+					}
 				}
 				Wikimedia\restoreWarnings();
 			}
@@ -242,7 +246,7 @@ class FSLockManager extends LockManager {
 	/**
 	 * Make sure remaining locks get cleared for sanity
 	 */
-	function __destruct() {
+	public function __destruct() {
 		while ( count( $this->locksHeld ) ) {
 			foreach ( $this->locksHeld as $path => $locks ) {
 				$this->doSingleUnlock( $path, self::LOCK_EX );

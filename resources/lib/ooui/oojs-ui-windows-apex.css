@@ -1,16 +1,13 @@
 /*!
- * OOUI v0.30.2
+ * OOUI v0.36.4
  * https://www.mediawiki.org/wiki/OOUI
  *
- * Copyright 2011–2019 OOUI Team and other contributors.
+ * Copyright 2011–2020 OOUI Team and other contributors.
  * Released under the MIT license
  * http://oojs.mit-license.org
  *
- * Date: 2019-01-23T01:14:27Z
+ * Date: 2020-02-05T19:37:21Z
  */
-.oo-ui-actionWidget.oo-ui-pendingElement-pending {
-  background-image: /* @embed */ url(themes/wikimediaui/images/textures/pending.gif);
-}
 
 .oo-ui-window {
   background-color: transparent;
@@ -64,7 +61,7 @@
 }
 .oo-ui-dialog-content > .oo-ui-window-head {
   overflow: hidden;
-  z-index: 1;
+  z-index: 3;
   top: 0;
 }
 .oo-ui-dialog-content > .oo-ui-window-body {
@@ -242,7 +239,6 @@
 .oo-ui-processDialog-navigation {
   position: relative;
   height: 3.4em;
-  padding: 0 1em;
 }
 .oo-ui-processDialog-location {
   padding: 0.75em 0;
@@ -264,11 +260,6 @@
 .oo-ui-processDialog-actions-primary .oo-ui-actionWidget .oo-ui-labelElement-label,
 .oo-ui-processDialog-actions-other .oo-ui-actionWidget .oo-ui-labelElement-label {
   line-height: 1.875em;
-}
-.oo-ui-processDialog-actions-safe .oo-ui-actionWidget.oo-ui-iconElement .oo-ui-iconElement-icon,
-.oo-ui-processDialog-actions-primary .oo-ui-actionWidget.oo-ui-iconElement .oo-ui-iconElement-icon,
-.oo-ui-processDialog-actions-other .oo-ui-actionWidget.oo-ui-iconElement .oo-ui-iconElement-icon {
-  margin-top: -0.125em;
 }
 .oo-ui-processDialog-actions-safe .oo-ui-actionWidget.oo-ui-buttonElement-framed,
 .oo-ui-processDialog-actions-primary .oo-ui-actionWidget.oo-ui-buttonElement-framed,
@@ -329,24 +320,25 @@
 }
 .oo-ui-processDialog-errors {
   background-color: rgba(255, 255, 255, 0.9);
-  padding: 3em 3em 1.5em 3em;
-  text-align: center;
-}
-.oo-ui-processDialog-errors .oo-ui-buttonWidget {
-  margin: 2em 1em 2em 1em;
+  padding: 3em 3em 0 3em;
 }
 .oo-ui-processDialog-errors-title {
   font-size: 1.5em;
   color: #000;
   margin-bottom: 2em;
+  text-align: center;
 }
-.oo-ui-processDialog-error {
+.oo-ui-processDialog-errors > .oo-ui-messageWidget {
+  margin: 1em 0 0;
+}
+.oo-ui-processDialog-errors-actions {
+  text-align: center;
+}
+.oo-ui-processDialog-errors-actions > .oo-ui-buttonWidget {
+  margin: 2em 1em;
+}
+.oo-ui-processDialog.oo-ui-isMobile .oo-ui-processDialog-location {
   text-align: left;
-  margin: 1em;
-  padding: 1em;
-  border: 1px solid #ff9e9e;
-  background-color: #fff7f7;
-  border-radius: 3px;
 }
 
 .oo-ui-windowManager-modal > .oo-ui-dialog {
@@ -382,6 +374,10 @@
 .oo-ui-windowManager-modal-active {
   overflow: hidden;
   position: relative;
+}
+.oo-ui-windowManager-ios-modal-ready {
+  height: 100%;
+  overflow: hidden;
 }
 .oo-ui-windowManager-modal > .oo-ui-dialog {
   background-color: rgba(255, 255, 255, 0.5);

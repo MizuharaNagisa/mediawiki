@@ -1,9 +1,12 @@
 <?php
+
 namespace Wikimedia\Services;
 
 use InvalidArgumentException;
+use Psr\Container\ContainerInterface;
 use RuntimeException;
 use Wikimedia\Assert\Assert;
+use Wikimedia\ScopedCallback;
 
 /**
  * Generic service container.
@@ -40,10 +43,10 @@ use Wikimedia\Assert\Assert;
  * getter methods with more meaningful names and more specific return type
  * declarations.
  *
- * @see docs/injection.txt for an overview of using dependency injection in the
+ * @see docs/Injection.md for an overview of using dependency injection in the
  *      MediaWiki code base.
  */
-class ServiceContainer implements DestructibleService {
+class ServiceContainer implements ContainerInterface, DestructibleService {
 
 	/**
 	 * @var object[]
@@ -74,6 +77,11 @@ class ServiceContainer implements DestructibleService {
 	 * @var bool
 	 */
 	private $destroyed = false;
+
+	/**
+	 * @var array Set of services currently being created, to detect loops
+	 */
+	private $servicesBeingCreated = [];
 
 	/**
 	 * @param array $extraInstantiationParams Any additional parameters to be passed to the
@@ -192,6 +200,11 @@ class ServiceContainer implements DestructibleService {
 		return isset( $this->serviceInstantiators[$name] );
 	}
 
+	/** @inheritDoc */
+	public function has( $name ) {
+		return $this->hasService( $name );
+	}
+
 	/**
 	 * Returns the service instance for $name only if that service has already been instantiated.
 	 * This is intended for situations where services get destroyed/cleaned up, so we can
@@ -236,9 +249,7 @@ class ServiceContainer implements DestructibleService {
 	 *
 	 * @throws RuntimeException if there is already a service registered as $name.
 	 */
-	public function defineService( $name, callable $instantiator ) {
-		Assert::parameterType( 'string', $name, '$name' );
-
+	public function defineService( string $name, callable $instantiator ) {
 		if ( $this->hasService( $name ) ) {
 			throw new ServiceAlreadyDefinedException( $name );
 		}
@@ -265,9 +276,7 @@ class ServiceContainer implements DestructibleService {
 	 * @throws NoSuchServiceException if $name is not a known service.
 	 * @throws CannotReplaceActiveServiceException if the service was already instantiated.
 	 */
-	public function redefineService( $name, callable $instantiator ) {
-		Assert::parameterType( 'string', $name, '$name' );
-
+	public function redefineService( string $name, callable $instantiator ) {
 		if ( !$this->hasService( $name ) ) {
 			throw new NoSuchServiceException( $name );
 		}
@@ -306,9 +315,7 @@ class ServiceContainer implements DestructibleService {
 	 * @throws NoSuchServiceException if $name is not a known service.
 	 * @throws CannotReplaceActiveServiceException if the service was already instantiated.
 	 */
-	public function addServiceManipulator( $name, callable $manipulator ) {
-		Assert::parameterType( 'string', $name, '$name' );
-
+	public function addServiceManipulator( string $name, callable $manipulator ) {
 		if ( !$this->hasService( $name ) ) {
 			throw new NoSuchServiceException( $name );
 		}
@@ -368,9 +375,7 @@ class ServiceContainer implements DestructibleService {
 	 *
 	 * @throws RuntimeException if $name is not a known service.
 	 */
-	final protected function resetService( $name, $destroy = true ) {
-		Assert::parameterType( 'string', $name, '$name' );
-
+	final protected function resetService( string $name, $destroy = true ) {
 		$instance = $this->peekService( $name );
 
 		if ( $destroy && $instance instanceof DestructibleService ) {
@@ -399,7 +404,7 @@ class ServiceContainer implements DestructibleService {
 	 * @throws ContainerDisabledException if this container has already been destroyed.
 	 * @throws ServiceDisabledException if the requested service has been disabled.
 	 *
-	 * @return object The service instance
+	 * @return mixed The service instance
 	 */
 	public function getService( $name ) {
 		if ( $this->destroyed ) {
@@ -417,14 +422,30 @@ class ServiceContainer implements DestructibleService {
 		return $this->services[$name];
 	}
 
+	/** @inheritDoc */
+	public function get( $name ) {
+		return $this->getService( $name );
+	}
+
 	/**
 	 * @param string $name
 	 *
 	 * @throws InvalidArgumentException if $name is not a known service.
+	 * @throws RuntimeException if a circular dependency is detected.
 	 * @return object
 	 */
 	private function createService( $name ) {
 		if ( isset( $this->serviceInstantiators[$name] ) ) {
+			if ( isset( $this->servicesBeingCreated[$name] ) ) {
+				throw new RecursiveServiceDependencyException(
+					"Circular dependency when creating service! " .
+					implode( ' -> ', array_keys( $this->servicesBeingCreated ) ) . " -> $name" );
+			}
+			$this->servicesBeingCreated[$name] = true;
+			$removeFromStack = new ScopedCallback( function () use ( $name ) {
+				unset( $this->servicesBeingCreated[$name] );
+			} );
+
 			$service = ( $this->serviceInstantiators[$name] )(
 				$this,
 				...$this->extraInstantiationParams
@@ -446,6 +467,8 @@ class ServiceContainer implements DestructibleService {
 				}
 			}
 
+			$removeFromStack->consume();
+
 			// NOTE: when adding more wiring logic here, make sure importWiring() is kept in sync!
 		} else {
 			throw new NoSuchServiceException( $name );
@@ -463,9 +486,3 @@ class ServiceContainer implements DestructibleService {
 		return isset( $this->disabled[$name] );
 	}
 }
-
-/**
- * Retain the old class name for backwards compatibility.
- * @deprecated since 1.33
- */
-class_alias( ServiceContainer::class, 'MediaWiki\Services\ServiceContainer' );

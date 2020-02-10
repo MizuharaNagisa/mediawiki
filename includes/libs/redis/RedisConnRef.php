@@ -17,8 +17,8 @@
  *
  * @file
  */
-use Psr\Log\LoggerInterface;
 use Psr\Log\LoggerAwareInterface;
+use Psr\Log\LoggerInterface;
 
 /**
  * Helper class to handle automatically marking connectons as reusable (via RAII pattern)
@@ -33,9 +33,10 @@ class RedisConnRef implements LoggerAwareInterface {
 	protected $pool;
 	/** @var Redis */
 	protected $conn;
-
-	protected $server; // string
-	protected $lastError; // string
+	/** @var string */
+	protected $server;
+	/** @var string|null */
+	protected $lastError;
 
 	/**
 	 * @var LoggerInterface
@@ -294,7 +295,7 @@ class RedisConnRef implements LoggerAwareInterface {
 		return $this->conn === $conn;
 	}
 
-	function __destruct() {
+	public function __destruct() {
 		$this->pool->freeConnection( $this->server, $this->conn );
 	}
 }

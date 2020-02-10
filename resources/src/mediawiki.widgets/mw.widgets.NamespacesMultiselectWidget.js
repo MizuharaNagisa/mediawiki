@@ -38,7 +38,10 @@
 			{
 				clearInputOnChoose: true,
 				inputPosition: 'inline',
-				allowEditTags: false
+				allowEditTags: false,
+				menu: {
+					filterMode: 'substring'
+				}
 			},
 			config,
 			{
@@ -59,22 +62,22 @@
 			// Use this instead of <input type="hidden">, because hidden inputs do not have separate
 			// 'value' and 'defaultValue' properties. The script on Special:Preferences
 			// (mw.special.preferences.confirmClose) checks this property to see if a field was changed.
-			this.hiddenInput = $( '<textarea>' )
+			this.$hiddenInput = $( '<textarea>' )
 				.addClass( 'oo-ui-element-hidden' )
 				.attr( 'name', config.name )
 				.appendTo( this.$element );
 			// Update with preset values
 			// Set the default value (it might be different from just being empty)
-			this.hiddenInput.prop( 'defaultValue', this.getItems().map( function ( item ) {
+			this.$hiddenInput.prop( 'defaultValue', this.getItems().map( function ( item ) {
 				return item.getData();
 			} ).join( '\n' ) );
 			this.on( 'change', function ( items ) {
-				this.hiddenInput.val( items.map( function ( item ) {
+				this.$hiddenInput.val( items.map( function ( item ) {
 					return item.getData();
 				} ).join( '\n' ) );
 				// Trigger a 'change' event as if a user edited the text
 				// (it is not triggered when changing the value from JS code).
-				this.hiddenInput.trigger( 'change' );
+				this.$hiddenInput.trigger( 'change' );
 			}.bind( this ) );
 		}
 	};
@@ -83,5 +86,18 @@
 
 	OO.inheritClass( mw.widgets.NamespacesMultiselectWidget, OO.ui.MenuTagMultiselectWidget );
 	OO.mixinClass( mw.widgets.NamespacesMultiselectWidget, OO.ui.mixin.PendingElement );
+
+	/* Methods */
+
+	/**
+	 * @inheritdoc
+	 */
+	mw.widgets.NamespacesMultiselectWidget.prototype.createMenuOptionWidget = function ( data, label, icon ) {
+		return new mw.widgets.NamespacesMenuOptionWidget( {
+			data: data,
+			label: label || data,
+			icon: icon
+		} );
+	};
 
 }() );

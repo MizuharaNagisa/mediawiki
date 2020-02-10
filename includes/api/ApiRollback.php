@@ -20,6 +20,8 @@
  * @file
  */
 
+use MediaWiki\ParamValidator\TypeDef\UserDef;
+
 /**
  * @ingroup API
  */
@@ -85,13 +87,13 @@ class ApiRollback extends ApiBase {
 
 		$info = [
 			'title' => $titleObj->getPrefixedText(),
-			'pageid' => intval( $details['current']->getPage() ),
+			'pageid' => (int)$details['current']->getPage(),
 			'summary' => $details['summary'],
-			'revid' => intval( $details['newid'] ),
+			'revid' => (int)$details['newid'],
 			// The revision being reverted (previously the current revision of the page)
-			'old_revid' => intval( $details['current']->getID() ),
+			'old_revid' => (int)$details['current']->getID(),
 			// The revision being restored (the last revision before revision(s) by the reverted user)
-			'last_revid' => intval( $details['target']->getID() )
+			'last_revid' => (int)$details['target']->getID()
 		];
 
 		$this->getResult()->addValue( null, $this->getModuleName(), $info );
@@ -117,6 +119,8 @@ class ApiRollback extends ApiBase {
 			],
 			'user' => [
 				ApiBase::PARAM_TYPE => 'user',
+				UserDef::PARAM_ALLOWED_USER_TYPES => [ 'name', 'ip', 'id', 'interwiki' ],
+				UserDef::PARAM_RETURN_OBJECT => true,
 				ApiBase::PARAM_REQUIRED => true
 			],
 			'summary' => '',
@@ -151,13 +155,7 @@ class ApiRollback extends ApiBase {
 			return $this->mUser;
 		}
 
-		// We need to be able to revert IPs, but getCanonicalName rejects them
-		$this->mUser = User::isIP( $params['user'] )
-			? $params['user']
-			: User::getCanonicalName( $params['user'] );
-		if ( !$this->mUser ) {
-			$this->dieWithError( [ 'apierror-invaliduser', wfEscapeWikiText( $params['user'] ) ] );
-		}
+		$this->mUser = $params['user'];
 
 		return $this->mUser;
 	}

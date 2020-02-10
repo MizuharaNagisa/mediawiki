@@ -19,6 +19,8 @@
  * @ingroup RevisionDelete
  */
 
+use MediaWiki\MediaWikiServices;
+use MediaWiki\Revision\RevisionRecord;
 use Wikimedia\Rdbms\FakeResultWrapper;
 use Wikimedia\Rdbms\IDatabase;
 
@@ -48,7 +50,7 @@ class RevDelRevisionList extends RevDelList {
 	}
 
 	public static function getRevdelConstant() {
-		return Revision::DELETED_TEXT;
+		return RevisionRecord::DELETED_TEXT;
 	}
 
 	public static function suggestTarget( $target, array $ids ) {
@@ -158,7 +160,7 @@ class RevDelRevisionList extends RevDelList {
 	}
 
 	public function getCurrent() {
-		if ( is_null( $this->currentRevId ) ) {
+		if ( $this->currentRevId === null ) {
 			$dbw = wfGetDB( DB_MASTER );
 			$this->currentRevId = $dbw->selectField(
 				'page', 'page_latest', $this->title->pageCond(), __METHOD__ );
@@ -167,7 +169,7 @@ class RevDelRevisionList extends RevDelList {
 	}
 
 	public function getSuppressBit() {
-		return Revision::DELETED_RESTRICTED;
+		return RevisionRecord::DELETED_RESTRICTED;
 	}
 
 	public function doPreCommitUpdates() {
@@ -179,6 +181,9 @@ class RevDelRevisionList extends RevDelList {
 		$this->title->purgeSquid();
 		// Extensions that require referencing previous revisions may need this
 		Hooks::run( 'ArticleRevisionVisibilitySet', [ $this->title, $this->ids, $visibilityChangeMap ] );
+		MediaWikiServices::getInstance()
+			->getMainWANObjectCache()
+			->touchCheckKey( "RevDelRevisionList:page:{$this->title->getArticleID()}}" );
 		return Status::newGood();
 	}
 }

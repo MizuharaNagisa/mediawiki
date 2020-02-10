@@ -67,6 +67,7 @@ class ForeignDBRepo extends LocalRepo {
 	 */
 	function __construct( $info ) {
 		parent::__construct( $info );
+		'@phan-var array $info';
 		$this->dbType = $info['dbType'];
 		$this->dbServer = $info['dbServer'];
 		$this->dbUser = $info['dbUser'];
@@ -107,8 +108,7 @@ class ForeignDBRepo extends LocalRepo {
 			'password' => $this->dbPassword,
 			'dbname' => $this->dbName,
 			'flags' => $this->dbFlags,
-			'tablePrefix' => $this->tablePrefix,
-			'foreign' => true,
+			'tablePrefix' => $this->tablePrefix
 		];
 
 		return function ( $index ) use ( $type, $params ) {
@@ -127,12 +127,11 @@ class ForeignDBRepo extends LocalRepo {
 	 * Get a key on the primary cache for this repository.
 	 * Returns false if the repository's cache is not accessible at this site.
 	 * The parameters are the parts of the key, as for wfMemcKey().
+	 * @param mixed ...$args
 	 * @return bool|mixed
 	 */
-	function getSharedCacheKey( /*...*/ ) {
+	function getSharedCacheKey( ...$args ) {
 		if ( $this->hasSharedCache() ) {
-			$args = func_get_args();
-
 			return wfForeignMemcKey( $this->dbName, $this->tablePrefix, ...$args );
 		} else {
 			return false;

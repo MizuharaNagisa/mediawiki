@@ -21,6 +21,8 @@
  * @ingroup SpecialPage
  */
 
+use MediaWiki\Revision\RevisionRecord;
+
 /**
  * Special page allowing users with the appropriate permissions to
  * merge article histories, with some restrictions
@@ -293,12 +295,12 @@ class SpecialMergeHistory extends SpecialPage {
 			[],
 			[ 'oldid' => $rev->getId() ]
 		);
-		if ( $rev->isDeleted( Revision::DELETED_TEXT ) ) {
+		if ( $rev->isDeleted( RevisionRecord::DELETED_TEXT ) ) {
 			$pageLink = '<span class="history-deleted">' . $pageLink . '</span>';
 		}
 
 		# Last link
-		if ( !$rev->userCan( Revision::DELETED_TEXT, $user ) ) {
+		if ( !$rev->userCan( RevisionRecord::DELETED_TEXT, $user ) ) {
 			$last = $this->msg( 'last' )->escaped();
 		} elseif ( isset( $this->prevId[$row->rev_id] ) ) {
 			$last = $linkRenderer->makeKnownLink(
@@ -315,7 +317,7 @@ class SpecialMergeHistory extends SpecialPage {
 		$userLink = Linker::revUserTools( $rev );
 
 		$size = $row->rev_len;
-		if ( !is_null( $size ) ) {
+		if ( $size !== null ) {
 			$stxt = Linker::formatRevisionSize( $size );
 		}
 		$comment = Linker::revComment( $rev );
@@ -343,7 +345,7 @@ class SpecialMergeHistory extends SpecialPage {
 		# keep it consistent...
 		$targetTitle = Title::newFromID( $this->mTargetID );
 		$destTitle = Title::newFromID( $this->mDestID );
-		if ( is_null( $targetTitle ) || is_null( $destTitle ) ) {
+		if ( $targetTitle === null || $destTitle === null ) {
 			return false; // validate these
 		}
 		if ( $targetTitle->getArticleID() == $destTitle->getArticleID() ) {

@@ -324,19 +324,14 @@
 	} );
 
 	QUnit.test( 'wantSignaturesNamespace', function ( assert ) {
-		var namespaces = mw.config.values.wgExtraSignatureNamespaces;
-
-		mw.config.values.wgExtraSignatureNamespaces = [];
+		mw.config.set( 'wgExtraSignatureNamespaces', [] );
 		assert.strictEqual( mw.Title.wantSignaturesNamespace( 0 ), false, 'Main namespace has no signatures' );
 		assert.strictEqual( mw.Title.wantSignaturesNamespace( 1 ), true, 'Talk namespace has signatures' );
 		assert.strictEqual( mw.Title.wantSignaturesNamespace( 2 ), false, 'NS2 has no signatures' );
 		assert.strictEqual( mw.Title.wantSignaturesNamespace( 3 ), true, 'NS3 has signatures' );
 
-		mw.config.values.wgExtraSignatureNamespaces = [ 0 ];
+		mw.config.set( 'wgExtraSignatureNamespaces', [ 0 ] );
 		assert.strictEqual( mw.Title.wantSignaturesNamespace( 0 ), true, 'Main namespace has signatures when explicitly defined' );
-
-		// Restore
-		mw.config.values.wgExtraSignatureNamespaces = namespaces;
 	} );
 
 	QUnit.test( 'Throw error on invalid title', function ( assert ) {
@@ -657,6 +652,14 @@
 					title: 'File:Foo.JPEG  ',
 					expected: 'File:Foo.JPEG',
 					description: 'Page in File-namespace with trailing whitespace'
+				},
+				{
+					title: 'File:Foo',
+					description: 'File name without file extension'
+				},
+				{
+					title: 'File:Foo.',
+					description: 'File name with empty file extension'
 				}
 			];
 
@@ -670,13 +673,32 @@
 				assert.notStrictEqual( title, null, prefix + 'Parses successfully' );
 				assert.strictEqual( title.toText(), thisCase.expected, prefix + 'Title as expected' );
 				if ( thisCase.defaultNamespace === undefined ) {
-					title = mw.Title.newFromUserInput( thisCase.title, thisCase.options );
+					title = mw.Title.newFromUserInput( thisCase.title, 0, thisCase.options );
 					assert.strictEqual( title.toText(), thisCase.expected, prefix + 'Skipping namespace argument' );
 				}
 			} else {
 				assert.strictEqual( title, null, thisCase.description + ', should not produce an mw.Title object' );
 			}
 		}
+	} );
+
+	QUnit.test( 'newFromUserInput with invalid file name for upload', function ( assert ) {
+		var title = mw.Title.newFromUserInput( 'File:No_dot' );
+		// Invalid file name is rejected by default
+		assert.strictEqual( title, null, 'file name is not accepted for upload' );
+	} );
+
+	QUnit.test( 'newFromUserInput with misplaced parameter', function ( assert ) {
+		var title = mw.Title.newFromUserInput( 'File:No_dot', { forUploading: false } );
+		// Misplaces options parameter (pseudo-compat with MW 1.33 and earlier),
+		// behaves as if it wasn't passed - rejected the same as the default would.
+		assert.strictEqual( title, null, 'misplaced options parameter is ignored' );
+	} );
+
+	QUnit.test( 'newFromUserInput with invalid file name, but not for upload', function ( assert ) {
+		var title = mw.Title.newFromUserInput( 'File:No_dot', 0, { forUploading: false } );
+		// Invalid file name is tolerated with this option
+		assert.strictEqual( title.getPrefixedText(), 'File:No dot', 'file name is accepted' );
 	} );
 
 	QUnit.test( 'newFromFileName', function ( assert ) {
@@ -687,12 +709,6 @@
 					typeOfName: 'Standard camera output',
 					nameText: 'DCS0001557854455',
 					prefixedText: 'File:DCS0001557854455.JPG'
-				},
-				{
-					fileName: 'File:Sample.png',
-					typeOfName: 'Carrying namespace',
-					nameText: 'File-Sample',
-					prefixedText: 'File:File-Sample.png'
 				},
 				{
 					fileName: 'Treppe 2222 Test upload.jpg',
@@ -731,10 +747,10 @@
 					prefixedText: 'File:100% ab progress.jpg'
 				},
 				{
-					fileName: '<([>]):/#.jpg',
+					fileName: '<([>])/#.jpg',
 					typeOfName: 'File name with characters not permitted in titles that are replaced',
-					nameText: '((()))---',
-					prefixedText: 'File:((()))---.jpg'
+					nameText: '((()))--',
+					prefixedText: 'File:((()))--.jpg'
 				},
 				{
 					fileName: 'spaces\u0009\u2000\u200A\u200Bx.djvu',
@@ -769,6 +785,23 @@
 					typeOfName: 'String with only alphabet characters'
 				}
 			];
+
+		if ( mw.config.get( 'wgIllegalFileChars', '' ).indexOf( ':' ) > -1 ) {
+			// ":" is automatically replaced with "-". Only test this if it is present
+			// in wgIllegalFileChars. Bug: T196480
+			cases.push( {
+				fileName: 'File:Sample.png',
+				typeOfName: 'Carrying namespace',
+				nameText: 'File-Sample',
+				prefixedText: 'File:File-Sample.png'
+			} );
+			cases.push( {
+				fileName: 'Illegal:Char.png',
+				typeOfName: 'File name with : character not permitted in titles that are replaced',
+				nameText: 'Illegal-Char',
+				prefixedText: 'File:Illegal-Char.png'
+			} );
+		}
 
 		for ( i = 0; i < cases.length; i++ ) {
 			thisCase = cases[ i ];

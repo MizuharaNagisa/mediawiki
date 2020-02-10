@@ -19,14 +19,19 @@
  * @ingroup Parser
  */
 
+use MediaWiki\BadFileLookup;
+use MediaWiki\Config\ServiceOptions;
+use MediaWiki\Languages\LanguageConverterFactory;
+use MediaWiki\Linker\LinkRendererFactory;
 use MediaWiki\Special\SpecialPageFactory;
+use Psr\Log\LoggerInterface;
 
 /**
  * @since 1.32
  */
 class ParserFactory {
-	/** @var array */
-	private $parserConf;
+	/** @var ServiceOptions */
+	private $svcOptions;
 
 	/** @var MagicWordFactory */
 	private $magicWordFactory;
@@ -40,36 +45,81 @@ class ParserFactory {
 	/** @var SpecialPageFactory */
 	private $specialPageFactory;
 
-	/** @var Config */
-	private $siteConfig;
+	/** @var LinkRendererFactory */
+	private $linkRendererFactory;
+
+	/** @var NamespaceInfo */
+	private $nsInfo;
+
+	/** @var LoggerInterface */
+	private $logger;
+
+	/** @var BadFileLookup */
+	private $badFileLookup;
+
+	/** @var LanguageConverterFactory */
+	private $languageConverterFactory;
 
 	/**
-	 * @param array $parserConf See $wgParserConf documentation
+	 * @param ServiceOptions $svcOptions
 	 * @param MagicWordFactory $magicWordFactory
 	 * @param Language $contLang Content language
 	 * @param string $urlProtocols As returned from wfUrlProtocols()
 	 * @param SpecialPageFactory $spFactory
-	 * @param Config $siteConfig
+	 * @param LinkRendererFactory $linkRendererFactory
+	 * @param NamespaceInfo $nsInfo
+	 * @param LoggerInterface $logger
+	 * @param BadFileLookup $badFileLookup
+	 * @param LanguageConverterFactory $languageConverterFactory
 	 * @since 1.32
 	 */
 	public function __construct(
-		array $parserConf, MagicWordFactory $magicWordFactory, Language $contLang, $urlProtocols,
-		SpecialPageFactory $spFactory, Config $siteConfig
+		ServiceOptions $svcOptions,
+		MagicWordFactory $magicWordFactory,
+		Language $contLang,
+		string $urlProtocols,
+		SpecialPageFactory $spFactory,
+		LinkRendererFactory $linkRendererFactory,
+		NamespaceInfo $nsInfo,
+		LoggerInterface $logger,
+		BadFileLookup $badFileLookup,
+		LanguageConverterFactory $languageConverterFactory
 	) {
-		$this->parserConf = $parserConf;
+		$svcOptions->assertRequiredOptions( Parser::CONSTRUCTOR_OPTIONS );
+
+		wfDebug( __CLASS__ . ": using default preprocessor\n" );
+
+		$this->svcOptions = $svcOptions;
 		$this->magicWordFactory = $magicWordFactory;
 		$this->contLang = $contLang;
 		$this->urlProtocols = $urlProtocols;
 		$this->specialPageFactory = $spFactory;
-		$this->siteConfig = $siteConfig;
+		$this->linkRendererFactory = $linkRendererFactory;
+		$this->nsInfo = $nsInfo;
+		$this->logger = $logger;
+		$this->badFileLookup = $badFileLookup;
+		$this->languageConverterFactory = $languageConverterFactory;
 	}
 
 	/**
+	 * Creates a new parser
+	 *
 	 * @return Parser
 	 * @since 1.32
 	 */
 	public function create() : Parser {
-		return new Parser( $this->parserConf, $this->magicWordFactory, $this->contLang, $this,
-			$this->urlProtocols, $this->specialPageFactory, $this->siteConfig );
+		return new Parser(
+			$this->svcOptions,
+			$this->magicWordFactory,
+			$this->contLang,
+			$this,
+			$this->urlProtocols,
+			$this->specialPageFactory,
+			$this->linkRendererFactory,
+			$this->nsInfo,
+			$this->logger,
+			$this->badFileLookup,
+			$this->languageConverterFactory
+		);
 	}
 }

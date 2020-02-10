@@ -7,7 +7,7 @@ abstract class ApiUploadTestCase extends ApiTestCase {
 	/**
 	 * Fixture -- run before every test
 	 */
-	protected function setUp() {
+	protected function setUp() : void {
 		parent::setUp();
 
 		$this->setMwGlobals( [
@@ -94,7 +94,7 @@ abstract class ApiUploadTestCase extends ApiTestCase {
 	 * @throws Exception
 	 * @return bool
 	 */
-	function fakeUploadFile( $fieldName, $fileName, $type, $filePath ) {
+	protected function fakeUploadFile( $fieldName, $fileName, $type, $filePath ) {
 		$tmpName = $this->getNewTempFile();
 		if ( !file_exists( $filePath ) ) {
 			throw new Exception( "$filePath doesn't exist!" );
@@ -115,13 +115,13 @@ abstract class ApiUploadTestCase extends ApiTestCase {
 			'type' => $type,
 			'tmp_name' => $tmpName,
 			'size' => $size,
-			'error' => null
+			'error' => UPLOAD_ERR_OK,
 		];
 
 		return true;
 	}
 
-	function fakeUploadChunk( $fieldName, $fileName, $type, & $chunkData ) {
+	public function fakeUploadChunk( $fieldName, $fileName, $type, &$chunkData ) {
 		$tmpName = $this->getNewTempFile();
 		// copy the chunk data to temp location:
 		if ( !file_put_contents( $tmpName, $chunkData ) ) {
@@ -146,7 +146,7 @@ abstract class ApiUploadTestCase extends ApiTestCase {
 	/**
 	 * Remove traces of previous fake uploads
 	 */
-	function clearFakeUploads() {
+	public function clearFakeUploads() {
 		$_FILES = [];
 	}
 }

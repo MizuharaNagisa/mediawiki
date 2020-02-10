@@ -41,9 +41,20 @@ class BackupReader extends Maintenance {
 	public $uploads = false;
 	protected $uploadCount = 0;
 	public $imageBasePath = false;
+	/** @var array|false */
 	public $nsFilter = false;
+	/** @var bool|resource */
+	public $stderr;
+	/** @var callable|null */
+	protected $importCallback;
+	/** @var callable|null */
+	protected $logItemCallback;
+	/** @var callable|null */
+	protected $uploadCallback;
+	/** @var int */
+	protected $startTime;
 
-	function __construct() {
+	public function __construct() {
 		parent::__construct();
 		$gz = in_array( 'compress.zlib', stream_get_wrappers() )
 			? 'ok'
@@ -112,8 +123,8 @@ TEXT
 			$this->setNsfilter( explode( '|', $this->getOption( 'namespaces' ) ) );
 		}
 
-		if ( $this->hasArg() ) {
-			$this->importFromFile( $this->getArg() );
+		if ( $this->hasArg( 0 ) ) {
+			$this->importFromFile( $this->getArg( 0 ) );
 		} else {
 			$this->importFromStdin();
 		}
@@ -123,7 +134,7 @@ TEXT
 		$this->output( "and initSiteStats.php to update page and revision counts\n" );
 	}
 
-	function setNsfilter( array $namespaces ) {
+	private function setNsfilter( array $namespaces ) {
 		if ( count( $namespaces ) == 0 ) {
 			$this->nsFilter = false;
 
@@ -162,7 +173,7 @@ TEXT
 			throw new MWException( "Cannot get namespace of object in " . __METHOD__ );
 		}
 
-		if ( is_null( $title ) ) {
+		if ( $title === null ) {
 			// Probably a log entry
 			return false;
 		}
@@ -172,14 +183,14 @@ TEXT
 		return is_array( $this->nsFilter ) && !in_array( $ns, $this->nsFilter );
 	}
 
-	function reportPage( $page ) {
+	public function reportPage( $page ) {
 		$this->pageCount++;
 	}
 
 	/**
 	 * @param Revision $rev
 	 */
-	function handleRevision( $rev ) {
+	public function handleRevision( $rev ) {
 		$title = $rev->getTitle();
 		if ( !$title ) {
 			$this->progress( "Got bogus revision with null title!" );
@@ -203,13 +214,14 @@ TEXT
 	 * @param Revision $revision
 	 * @return bool
 	 */
-	function handleUpload( $revision ) {
+	public function handleUpload( $revision ) {
 		if ( $this->uploads ) {
 			if ( $this->skippedNamespace( $revision ) ) {
 				return false;
 			}
 			$this->uploadCount++;
 			// $this->report();
+			// @phan-suppress-next-line PhanUndeclaredMethod
 			$this->progress( "upload: " . $revision->getFilename() );
 
 			if ( !$this->dryRun ) {
@@ -224,7 +236,7 @@ TEXT
 		return false;
 	}
 
-	function handleLogItem( $rev ) {
+	public function handleLogItem( $rev ) {
 		if ( $this->skippedNamespace( $rev ) ) {
 			return;
 		}
@@ -236,13 +248,13 @@ TEXT
 		}
 	}
 
-	function report( $final = false ) {
+	private function report( $final = false ) {
 		if ( $final xor ( $this->pageCount % $this->reportingInterval == 0 ) ) {
 			$this->showReport();
 		}
 	}
 
-	function showReport() {
+	private function showReport() {
 		if ( !$this->mQuiet ) {
 			$delta = microtime( true ) - $this->startTime;
 			if ( $delta ) {
@@ -262,11 +274,11 @@ TEXT
 		wfWaitForSlaves();
 	}
 
-	function progress( $string ) {
+	private function progress( $string ) {
 		fwrite( $this->stderr, $string . "\n" );
 	}
 
-	function importFromFile( $filename ) {
+	private function importFromFile( $filename ) {
 		if ( preg_match( '/\.gz$/', $filename ) ) {
 			$filename = 'compress.zlib://' . $filename;
 		} elseif ( preg_match( '/\.bz2$/', $filename ) ) {
@@ -280,7 +292,7 @@ TEXT
 		return $this->importFromHandle( $file );
 	}
 
-	function importFromStdin() {
+	private function importFromStdin() {
 		$file = fopen( 'php://stdin', 'rt' );
 		if ( self::posix_isatty( $file ) ) {
 			$this->maybeHelp( true );
@@ -289,7 +301,7 @@ TEXT
 		return $this->importFromHandle( $file );
 	}
 
-	function importFromHandle( $handle ) {
+	private function importFromHandle( $handle ) {
 		$this->startTime = microtime( true );
 
 		$source = new ImportStreamSource( $handle );
@@ -314,7 +326,7 @@ TEXT
 			$statusRootPage = $importer->setTargetRootPage( $this->getOption( 'rootpage' ) );
 			if ( !$statusRootPage->isGood() ) {
 				// Die here so that it doesn't print "Done!"
-				$this->fatalError( $statusRootPage->getMessage()->text() );
+				$this->fatalError( $statusRootPage->getMessage( false, false, 'en' )->text() );
 				return false;
 			}
 		}

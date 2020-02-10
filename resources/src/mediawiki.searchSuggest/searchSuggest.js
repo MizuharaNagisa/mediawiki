@@ -2,7 +2,7 @@
  * Add search suggestions to the search form.
  */
 ( function () {
-	// eslint-disable-next-line jquery/no-map-util
+	// eslint-disable-next-line no-jquery/no-map-util
 	var searchNS = $.map( mw.config.get( 'wgFormattedNamespaces' ), function ( nsName, nsID ) {
 		if ( nsID >= 0 && mw.user.options.get( 'searchNs' + nsID ) ) {
 			// Cast string key to number
@@ -17,8 +17,7 @@
 				action: 'opensearch',
 				search: query,
 				namespace: namespace || searchNS,
-				limit: maxRows,
-				suggest: true
+				limit: maxRows
 			} ).done( function ( data, jqXHR ) {
 				response( data[ 1 ], {
 					type: jqXHR.getResponseHeader( 'X-OpenSearch-Type' ),
@@ -182,7 +181,7 @@
 				index: context.config.suggestions.indexOf( query )
 			} );
 
-			if ( $el.children().length === 0 ) {
+			if ( mw.user.options.get( 'search-match-redirect' ) && $el.children().length === 0 ) {
 				$el
 					.append(
 						$( '<div>' )
@@ -198,6 +197,7 @@
 					.text( query );
 			}
 
+			// eslint-disable-next-line no-jquery/no-class-state
 			if ( $el.parent().hasClass( 'mw-searchSuggest-link' ) ) {
 				$el.parent().attr( 'href', formData.baseHref + $.param( formData.linkParams ) + '&fulltext=1' );
 			} else {

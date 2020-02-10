@@ -16,7 +16,7 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup Deployment
+ * @ingroup Installer
  */
 
 abstract class WebInstallerDocument extends WebInstallerPage {
@@ -32,6 +32,7 @@ abstract class WebInstallerDocument extends WebInstallerPage {
 		$this->parent->output->addWikiTextAsInterface( $text );
 		$this->startForm();
 		$this->endForm( false );
+		return '';
 	}
 
 	/**

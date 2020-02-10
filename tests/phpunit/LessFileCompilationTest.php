@@ -10,7 +10,7 @@
 class LessFileCompilationTest extends ResourceLoaderTestCase {
 
 	/**
-	 * @var string $file
+	 * @var string
 	 */
 	protected $file;
 
@@ -34,10 +34,7 @@ class LessFileCompilationTest extends ResourceLoaderTestCase {
 
 	public function testLessFileCompilation() {
 		$thisString = $this->toString();
-		$this->assertTrue(
-			is_string( $this->file ) && is_file( $this->file ) && is_readable( $this->file ),
-			"$thisString must refer to a readable file"
-		);
+		$this->assertIsReadable( $this->file, "$thisString must refer to a readable file" );
 
 		$rlContext = $this->getResourceLoaderContext();
 
@@ -47,7 +44,7 @@ class LessFileCompilationTest extends ResourceLoaderTestCase {
 		$this->assertNotNull( $method->invoke( $this->module, $this->file, $rlContext ) );
 	}
 
-	public function toString() {
+	public function toString() : string {
 		$moduleName = $this->module->getName();
 
 		return "{$this->file} in the \"{$moduleName}\" module";

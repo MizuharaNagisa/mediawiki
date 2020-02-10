@@ -19,6 +19,8 @@
  * @ingroup Maintenance
  */
 
+use Wikimedia\AtEase\AtEase;
+
 /**
  * Manage foreign resources registered with ResourceLoader.
  *
@@ -30,10 +32,25 @@ class ForeignResourceManager {
 	private $registryFile;
 	private $libDir;
 	private $tmpParentDir;
+	private $cacheDir;
+	/**
+	 * @var callable|Closure
+	 * @phan-var callable(string):void
+	 */
 	private $infoPrinter;
+	/**
+	 * @var callable|Closure
+	 * @phan-var callable(string):void
+	 */
 	private $errorPrinter;
+	/**
+	 * @var callable|Closure
+	 * @phan-var callable(string):void
+	 */
 	private $verbosePrinter;
 	private $action;
+	/** @var array[] */
+	private $registry;
 
 	/**
 	 * @param string $registryFile Path to YAML file
@@ -52,35 +69,46 @@ class ForeignResourceManager {
 	) {
 		$this->registryFile = $registryFile;
 		$this->libDir = $libDir;
-		$this->infoPrinter = $infoPrinter ?? function () {
+		$this->infoPrinter = $infoPrinter ?? function ( $_ ) {
 		};
 		$this->errorPrinter = $errorPrinter ?? $this->infoPrinter;
-		$this->verbosePrinter = $verbosePrinter ?? function () {
+		$this->verbosePrinter = $verbosePrinter ?? function ( $_ ) {
 		};
 
 		// Use a temporary directory under the destination directory instead
 		// of wfTempDir() because PHP's rename() does not work across file
-		// systems, as the user's /tmp and $IP may be on different filesystems.
-		$this->tmpParentDir = "{$this->libDir}/.tmp";
+		// systems, and the user's /tmp and $IP may be on different filesystems.
+		$this->tmpParentDir = "{$this->libDir}/.foreign/tmp";
+
+		$cacheHome = getenv( 'XDG_CACHE_HOME' ) ? realpath( getenv( 'XDG_CACHE_HOME' ) ) : false;
+		$this->cacheDir = $cacheHome ? "$cacheHome/mw-foreign" : "{$this->libDir}/.foreign/cache";
 	}
 
 	/**
+	 * @param string $action
+	 * @param string $module
 	 * @return bool
 	 * @throws Exception
 	 */
 	public function run( $action, $module ) {
-		if ( !in_array( $action, [ 'update', 'verify', 'make-sri' ] ) ) {
-			throw new Exception( 'Invalid action parameter.' );
+		$actions = [ 'update', 'verify', 'make-sri' ];
+		if ( !in_array( $action, $actions ) ) {
+			$this->error( "Invalid action.\n\nMust be one of " . implode( ', ', $actions ) . '.' );
+			return false;
 		}
 		$this->action = $action;
 
-		$registry = $this->parseBasicYaml( file_get_contents( $this->registryFile ) );
+		$this->registry = $this->parseBasicYaml( file_get_contents( $this->registryFile ) );
 		if ( $module === 'all' ) {
-			$modules = $registry;
-		} elseif ( isset( $registry[ $module ] ) ) {
-			$modules = [ $module => $registry[ $module ] ];
+			$modules = $this->registry;
+		} elseif ( isset( $this->registry[ $module ] ) ) {
+			$modules = [ $module => $this->registry[ $module ] ];
 		} else {
-			throw new Exception( 'Unknown module name.' );
+			$this->error( "Unknown module name.\n\nMust be one of:\n" .
+				wordwrap( implode( ', ', array_keys( $this->registry ) ), 80 ) .
+				'.'
+			);
+			return false;
 		}
 
 		foreach ( $modules as $moduleName => $info ) {
@@ -121,8 +149,8 @@ class ForeignResourceManager {
 			}
 		}
 
-		$this->cleanUp();
 		$this->output( "\nDone!\n" );
+		$this->cleanUp();
 		if ( $this->hasErrors ) {
 			// The verify mode should check all modules/files and fail after, not during.
 			return false;
@@ -131,24 +159,52 @@ class ForeignResourceManager {
 		return true;
 	}
 
+	private function cacheKey( $src, $integrity ) {
+		$key = basename( $src ) . '_' . substr( $integrity, -12 );
+		$key = preg_replace( '/[.\/+?=_-]+/', '_', $key );
+		return rtrim( $key, '_' );
+	}
+
+	/**
+	 * @param string $key
+	 * @return string|false
+	 */
+	private function cacheGet( $key ) {
+		return AtEase::quietCall( 'file_get_contents', "{$this->cacheDir}/$key.data" );
+	}
+
+	private function cacheSet( $key, $data ) {
+		wfMkdirParents( $this->cacheDir );
+		file_put_contents( "{$this->cacheDir}/$key.data", $data, LOCK_EX );
+	}
+
 	private function fetch( $src, $integrity ) {
-		$data = Http::get( $src, [ 'followRedirects' => false ] );
-		if ( $data === false ) {
+		$key = $this->cacheKey( $src, $integrity );
+		$data = $this->cacheGet( $key );
+		if ( $data ) {
+			return $data;
+		}
+
+		$req = MWHttpRequest::factory( $src, [ 'method' => 'GET', 'followRedirects' => false ] );
+		if ( !$req->execute()->isOK() ) {
 			throw new Exception( "Failed to download resource at {$src}" );
 		}
+		if ( $req->getStatus() !== 200 ) {
+			throw new Exception( "Unexpected HTTP {$req->getStatus()} response from {$src}" );
+		}
+		$data = $req->getContent();
 		$algo = $integrity === null ? $this->defaultAlgo : explode( '-', $integrity )[0];
 		$actualIntegrity = $algo . '-' . base64_encode( hash( $algo, $data, true ) );
 		if ( $integrity === $actualIntegrity ) {
 			$this->verbose( "... passed integrity check for {$src}\n" );
+			$this->cacheSet( $key, $data );
+		} elseif ( $this->action === 'make-sri' ) {
+			$this->output( "Integrity for {$src}\n\tintegrity: ${actualIntegrity}\n" );
 		} else {
-			if ( $this->action === 'make-sri' ) {
-				$this->output( "Integrity for {$src}\n\tintegrity: ${actualIntegrity}\n" );
-			} else {
-				throw new Exception( "Integrity check failed for {$src}\n" .
-					"\tExpected: {$integrity}\n" .
-					"\tActual: {$actualIntegrity}"
-				);
-			}
+			throw new Exception( "Integrity check failed for {$src}\n" .
+				"\tExpected: {$integrity}\n" .
+				"\tActual: {$actualIntegrity}"
+			);
 		}
 		return $data;
 	}
@@ -230,6 +286,7 @@ class ForeignResourceManager {
 						$from,
 						RecursiveDirectoryIterator::SKIP_DOTS
 					) );
+					/** @var SplFileInfo $file */
 					foreach ( $rii as $file ) {
 						$remote = $file->getPathname();
 						$local = strtr( $remote, [ $from => $to ] );
@@ -266,6 +323,23 @@ class ForeignResourceManager {
 
 	private function cleanUp() {
 		wfRecursiveRemoveDir( $this->tmpParentDir );
+
+		// Prune the cache of files we don't recognise.
+		$knownKeys = [];
+		foreach ( $this->registry as $info ) {
+			if ( $info['type'] === 'file' || $info['type'] === 'tar' ) {
+				$knownKeys[] = $this->cacheKey( $info['src'], $info['integrity'] );
+			} elseif ( $info['type'] === 'multi-file' ) {
+				foreach ( $info['files'] as $file ) {
+					$knownKeys[] = $this->cacheKey( $file['src'], $file['integrity'] );
+				}
+			}
+		}
+		foreach ( glob( "{$this->cacheDir}/*" ) as $cacheFile ) {
+			if ( !in_array( basename( $cacheFile, '.data' ), $knownKeys ) ) {
+				unlink( $cacheFile );
+			}
+		}
 	}
 
 	/**

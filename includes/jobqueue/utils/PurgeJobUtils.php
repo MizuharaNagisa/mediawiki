@@ -20,8 +20,8 @@
  *
  * @file
  */
-use Wikimedia\Rdbms\IDatabase;
 use MediaWiki\MediaWikiServices;
+use Wikimedia\Rdbms\IDatabase;
 
 class PurgeJobUtils {
 	/**
@@ -30,7 +30,7 @@ class PurgeJobUtils {
 	 *
 	 * @param IDatabase $dbw
 	 * @param int $namespace Namespace number
-	 * @param array $dbkeys
+	 * @param string[] $dbkeys
 	 */
 	public static function invalidatePages( IDatabase $dbw, $namespace, array $dbkeys ) {
 		if ( $dbkeys === [] ) {
@@ -65,7 +65,8 @@ class PurgeJobUtils {
 
 				$batchSize = $services->getMainConfig()->get( 'UpdateRowsPerQuery' );
 				$ticket = $lbFactory->getEmptyTransactionTicket( $fname );
-				foreach ( array_chunk( $ids, $batchSize ) as $idBatch ) {
+				$idBatches = array_chunk( $ids, $batchSize );
+				foreach ( $idBatches as $idBatch ) {
 					$dbw->update(
 						'page',
 						[ 'page_touched' => $now ],
@@ -75,7 +76,9 @@ class PurgeJobUtils {
 						],
 						$fname
 					);
-					$lbFactory->commitAndWaitForReplication( $fname, $ticket );
+					if ( count( $idBatches ) > 1 ) {
+						$lbFactory->commitAndWaitForReplication( $fname, $ticket );
+					}
 				}
 			}
 		) );

@@ -32,14 +32,14 @@ class SpecialAllPages extends IncludableSpecialPage {
 	/**
 	 * Maximum number of pages to show on single subpage.
 	 *
-	 * @var int $maxPerPage
+	 * @var int
 	 */
 	protected $maxPerPage = 345;
 
 	/**
 	 * Determines, which message describes the input field 'nsfrom'.
 	 *
-	 * @var string $nsfromMsg
+	 * @var string
 	 */
 	protected $nsfromMsg = 'allpagesfrom';
 
@@ -169,8 +169,8 @@ class SpecialAllPages extends IncludableSpecialPage {
 
 	/**
 	 * @param int $namespace Namespace (Default NS_MAIN)
-	 * @param string $from List all pages from this name (default false)
-	 * @param string $to List all pages to this name (default false)
+	 * @param string|false $from List all pages from this name (default false)
+	 * @param string|false $to List all pages to this name (default false)
 	 * @param bool $hideredirects Don't show redirects (default false)
 	 */
 	function showChunk( $namespace = NS_MAIN, $from = false, $to = false, $hideredirects = false ) {

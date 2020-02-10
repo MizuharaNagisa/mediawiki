@@ -2,7 +2,7 @@
  * JavaScript for Special:RecentChanges
  */
 ( function () {
-	var rc, $checkboxes, $select;
+	var rc, $checkboxes, $select, namespaceDropdown;
 
 	/**
 	 * @class mw.special.recentchanges
@@ -10,24 +10,34 @@
 	 */
 	rc = {
 		/**
-		 * Handler to disable/enable the namespace selector checkboxes when the
+		 * Handler to hide/show the namespace selector checkboxes when the
 		 * special 'all' namespace is selected/unselected respectively.
 		 */
 		updateCheckboxes: function () {
 			// The option element for the 'all' namespace has an empty value
-			var isAllNS = $select.val() === '';
+			var value = $select.val(),
+				isAllNS = value === 'all' || value === '';
 
 			// Iterates over checkboxes and propagate the selected option
-			$checkboxes.prop( 'disabled', isAllNS );
+			$checkboxes.toggleClass( 'mw-input-hidden', isAllNS );
 		},
 
 		init: function () {
-			$select = $( '#namespace' );
-			$checkboxes = $( '#nsassociated, #nsinvert' );
+			$select = $( 'select#namespace' );
+			$checkboxes = $( '#nsassociated, #nsinvert, .contribs-ns-filters' )
+				.closest( '.mw-input-with-label' );
 
-			// Bind to change event, and trigger once to set the initial state of the checkboxes.
-			rc.updateCheckboxes();
-			$select.on( 'change', rc.updateCheckboxes );
+			if ( $select.length === 0 ) {
+				$select = $( '#namespace select' );
+				if ( $select.length > 0 ) {
+					namespaceDropdown = OO.ui.infuse( $( '#namespace' ).closest( '[data-ooui]' ) );
+					namespaceDropdown.on( 'change', rc.updateCheckboxes );
+				}
+			} else {
+				// Bind to change event of the checkboxes.
+				// The initial state is already set in HTML.
+				$select.on( 'change', rc.updateCheckboxes );
+			}
 		}
 	};
 

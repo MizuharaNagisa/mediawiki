@@ -19,6 +19,8 @@
  * @ingroup SpecialPage
  */
 
+use MediaWiki\Permissions\PermissionManager;
+
 /**
  * Special page for adding and removing change tags to individual revisions.
  * A lot of this is copied out of SpecialRevisiondelete.
@@ -51,8 +53,18 @@ class SpecialEditTags extends UnlistedSpecialPage {
 	/** @var string */
 	private $reason;
 
-	public function __construct() {
+	/** @var PermissionManager */
+	private $permissionManager;
+
+	/**
+	 * @inheritDoc
+	 *
+	 * @param PermissionManager $permissionManager
+	 */
+	public function __construct( PermissionManager $permissionManager ) {
 		parent::__construct( 'EditTags', 'changetags' );
+
+		$this->permissionManager = $permissionManager;
 	}
 
 	public function doesWrites() {
@@ -67,22 +79,20 @@ class SpecialEditTags extends UnlistedSpecialPage {
 		$user = $this->getUser();
 		$request = $this->getRequest();
 
-		// Check blocks
-		if ( $user->isBlocked() ) {
-			throw new UserBlockedError( $user->getBlock() );
-		}
-
 		$this->setHeaders();
 		$this->outputHeader();
 
-		$this->getOutput()->addModules( [ 'mediawiki.special.edittags',
-			'mediawiki.special' ] );
+		$output->addModules( [ 'mediawiki.special.edittags' ] );
+		$output->addModuleStyles( [
+			'mediawiki.interface.helpers.styles',
+			'mediawiki.special'
+		] );
 
 		$this->submitClicked = $request->wasPosted() && $request->getBool( 'wpSubmit' );
 
 		// Handle our many different possible input types
 		$ids = $request->getVal( 'ids' );
-		if ( !is_null( $ids ) ) {
+		if ( $ids !== null ) {
 			// Allow CSV from the form hidden field, or a single ID for show/hide links
 			$this->ids = explode( ',', $ids );
 		} else {
@@ -119,14 +129,25 @@ class SpecialEditTags extends UnlistedSpecialPage {
 			$this->ids
 		);
 
-		$this->isAllowed = $user->isAllowed( 'changetags' );
+		$this->isAllowed = $this->permissionManager->userHasRight( $user, 'changetags' );
 
 		$this->reason = $request->getVal( 'wpReason' );
 		// We need a target page!
-		if ( is_null( $this->targetObj ) ) {
+		if ( $this->targetObj === null ) {
 			$output->addWikiMsg( 'undelete-header' );
 			return;
 		}
+
+		// Check blocks
+		if ( $this->permissionManager->isBlockedFrom( $user, $this->targetObj ) ) {
+			throw new UserBlockedError(
+				$user->getBlock(),
+				$user,
+				$this->getLanguage(),
+				$request->getIP()
+			);
+		}
+
 		// Give a link to the logs/hist for this page
 		$this->showConvenienceLinks();
 
@@ -193,7 +214,7 @@ class SpecialEditTags extends UnlistedSpecialPage {
 	 * @return ChangeTagsList
 	 */
 	protected function getList() {
-		if ( is_null( $this->revList ) ) {
+		if ( $this->revList === null ) {
 			$this->revList = ChangeTagsList::factory( $this->typeName, $this->getContext(),
 				$this->targetObj, $this->ids );
 		}
@@ -206,8 +227,6 @@ class SpecialEditTags extends UnlistedSpecialPage {
 	 * the user to modify the tags applied to those items.
 	 */
 	protected function showForm() {
-		$userAllowed = true;
-
 		$out = $this->getOutput();
 		// Messages: tags-edit-revision-selected, tags-edit-logentry-selected
 		$out->wrapWikiMsg( "<strong>$1</strong>", [
@@ -224,6 +243,9 @@ class SpecialEditTags extends UnlistedSpecialPage {
 		$list = $this->getList();
 		for ( $list->reset(); $list->current(); $list->next() ) {
 			$item = $list->current();
+			if ( !$item->canView() ) {
+				throw new ErrorPageError( 'permissionserrors', 'tags-update-no-permission' );
+			}
 			$numRevisions++;
 			$out->addHTML( $item->getHTML() );
 		}
@@ -255,8 +277,7 @@ class SpecialEditTags extends UnlistedSpecialPage {
 							// HTML maxlength uses "UTF-16 code units", which means that characters outside BMP
 							// (e.g. emojis) count for two each. This limit is overridden in JS to instead count
 							// Unicode codepoints.
-							// "- 155" is to leave room for the auto-generated part of the log entry.
-							'maxlength' => CommentStore::COMMENT_CHARACTER_LIMIT - 155,
+							'maxlength' => CommentStore::COMMENT_CHARACTER_LIMIT,
 						] ) .
 					'</td>' .
 				"</tr><tr>\n" .
@@ -374,7 +395,6 @@ class SpecialEditTags extends UnlistedSpecialPage {
 
 	/**
 	 * UI entry point for form submission.
-	 * @throws PermissionsError
 	 * @return bool
 	 */
 	protected function submit() {
@@ -388,11 +408,11 @@ class SpecialEditTags extends UnlistedSpecialPage {
 
 		// Evaluate incoming request data
 		$tagList = $request->getArray( 'wpTagList' );
-		if ( is_null( $tagList ) ) {
+		if ( $tagList === null ) {
 			$tagList = [];
 		}
 		$existingTags = $request->getVal( 'wpExistingTags' );
-		if ( is_null( $existingTags ) || $existingTags === '' ) {
+		if ( $existingTags === null || $existingTags === '' ) {
 			$existingTags = [];
 		} else {
 			$existingTags = explode( ',', $existingTags );
@@ -450,7 +470,7 @@ class SpecialEditTags extends UnlistedSpecialPage {
 	protected function failure( $status ) {
 		$this->getOutput()->setPageTitle( $this->msg( 'actionfailed' ) );
 		$this->getOutput()->wrapWikiTextAsInterface(
-			'errorbox', $status->getWikiText( 'tags-edit-failure' )
+			'errorbox', $status->getWikiText( 'tags-edit-failure', false, $this->getLanguage() )
 		);
 		$this->showForm();
 	}

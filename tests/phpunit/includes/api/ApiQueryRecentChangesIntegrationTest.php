@@ -19,7 +19,7 @@ class ApiQueryRecentChangesIntegrationTest extends ApiTestCase {
 		$this->tablesUsed[] = 'page';
 	}
 
-	protected function setUp() {
+	protected function setUp() : void {
 		parent::setUp();
 
 		self::$users['ApiQueryRecentChangesIntegrationTestUser'] = $this->getMutableTestUser();
@@ -149,16 +149,8 @@ class ApiQueryRecentChangesIntegrationTest extends ApiTestCase {
 		return $response[0]['query']['recentchanges'];
 	}
 
-	private function getTitleFormatter() {
-		return new MediaWikiTitleCodec(
-			Language::factory( 'en' ),
-			MediaWikiServices::getInstance()->getGenderCache()
-		);
-	}
-
 	private function getPrefixedText( LinkTarget $target ) {
-		$formatter = $this->getTitleFormatter();
-		return $formatter->getPrefixedText( $target );
+		return MediaWikiServices::getInstance()->getTitleFormatter()->getPrefixedText( $target );
 	}
 
 	public function testListRecentChanges_returnsRCInfo() {
@@ -392,7 +384,7 @@ class ApiQueryRecentChangesIntegrationTest extends ApiTestCase {
 
 		$this->assertCount( 1, $items );
 		$this->assertArrayHasKey( 'timestamp', $items[0] );
-		$this->assertInternalType( 'string', $items[0]['timestamp'] );
+		$this->assertIsString( $items[0]['timestamp'] );
 	}
 
 	public function testSizesPropParameter() {

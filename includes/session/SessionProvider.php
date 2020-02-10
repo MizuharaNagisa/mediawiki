@@ -23,10 +23,10 @@
 
 namespace MediaWiki\Session;
 
-use Psr\Log\LoggerAwareInterface;
-use Psr\Log\LoggerInterface;
 use Config;
 use Language;
+use Psr\Log\LoggerAwareInterface;
+use Psr\Log\LoggerInterface;
 use User;
 use WebRequest;
 
@@ -141,9 +141,9 @@ abstract class SessionProvider implements SessionProviderInterface, LoggerAwareI
 	 * unless only max-priority makes sense.
 	 *
 	 * @warning This will be called early in the MediaWiki setup process,
-	 *  before $wgUser, $wgLang, $wgOut, $wgParser, $wgTitle, and corresponding
-	 *  pieces of the main RequestContext are set up! If you try to use these,
-	 *  things *will* break.
+	 *  before $wgUser, $wgLang, $wgOut, $wgTitle, the global parser, and
+	 *  corresponding pieces of the main RequestContext are set up! If you try
+	 *  to use these, things *will* break.
 	 * @note The SessionProvider must not attempt to auto-create users.
 	 *  MediaWiki will do this later (when it's safe) if the chosen session has
 	 *  a user with a valid name but no ID.
@@ -374,7 +374,7 @@ abstract class SessionProvider implements SessionProviderInterface, LoggerAwareI
 	public function preventSessionsForUser( $username ) {
 		if ( !$this->canChangeUser() ) {
 			throw new \BadMethodCallException(
-				__METHOD__ . ' must be implmented when canChangeUser() is false'
+				__METHOD__ . ' must be implemented when canChangeUser() is false'
 			);
 		}
 	}
@@ -401,6 +401,9 @@ abstract class SessionProvider implements SessionProviderInterface, LoggerAwareI
 	 *   $outputPage->addVaryHeader( $header, $options );
 	 * }
 	 * @endcode
+	 *
+	 * Note that the $options parameter to addVaryHeader has been deprecated
+	 * since 1.34, and should be `null` or an empty array.
 	 *
 	 * @protected For use by \MediaWiki\Session\SessionManager only
 	 * @return array
@@ -469,7 +472,7 @@ abstract class SessionProvider implements SessionProviderInterface, LoggerAwareI
 	 * @note If self::__toString() is overridden, this will likely need to be
 	 *  overridden as well.
 	 * @warning This will be called early during MediaWiki startup. Do not
-	 *  use $wgUser, $wgLang, $wgOut, $wgParser, or their equivalents via
+	 *  use $wgUser, $wgLang, $wgOut, the global Parser, or their equivalents via
 	 *  RequestContext from this method!
 	 * @return \Message
 	 */

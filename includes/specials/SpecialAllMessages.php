@@ -35,9 +35,7 @@ class SpecialAllMessages extends SpecialPage {
 	}
 
 	/**
-	 * Show the special page
-	 *
-	 * @param string $par Parameter passed to the page or null
+	 * @param string|null $par Parameter passed to the page or null
 	 */
 	public function execute( $par ) {
 		$out = $this->getOutput();
@@ -45,7 +43,7 @@ class SpecialAllMessages extends SpecialPage {
 		$this->setHeaders();
 
 		if ( !$this->getConfig()->get( 'UseDatabaseMessages' ) ) {
-			$out->addWikiMsg( 'allmessagesnotsupportedDB' );
+			$out->addWikiMsg( 'allmessages-not-supported-database' );
 
 			return;
 		}
@@ -66,7 +64,7 @@ class SpecialAllMessages extends SpecialPage {
 		$opts->fetchValuesFromRequest( $this->getRequest() );
 		$opts->validateIntBounds( 'limit', 0, 5000 );
 
-		$pager = new AllMessagesTablePager( $this->getContext(), $opts );
+		$pager = new AllMessagesTablePager( $this->getContext(), $opts, $this->getLinkRenderer() );
 
 		$formDescriptor = [
 			'prefix' => [
@@ -79,10 +77,10 @@ class SpecialAllMessages extends SpecialPage {
 				'type' => 'radio',
 				'name' => 'filter',
 				'label-message' => 'allmessages-filter',
-				'options' => [
-					$this->msg( 'allmessages-filter-unmodified' )->text() => 'unmodified',
-					$this->msg( 'allmessages-filter-all' )->text() => 'all',
-					$this->msg( 'allmessages-filter-modified' )->text() => 'modified',
+				'options-messages' => [
+					'allmessages-filter-unmodified' => 'unmodified',
+					'allmessages-filter-all' => 'all',
+					'allmessages-filter-modified' => 'modified',
 				],
 				'default' => 'all',
 				'flatlist' => true,

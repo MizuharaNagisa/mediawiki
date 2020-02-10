@@ -21,7 +21,10 @@
  * @author Niklas Laxström
  * @ingroup Cache
  */
+
 use MediaWiki\MediaWikiServices;
+use MediaWiki\User\UserIdentity;
+use Wikimedia\Rdbms\ILoadBalancer;
 
 /**
  * Caches user genders when needed to use correct namespace aliases.
@@ -33,6 +36,17 @@ class GenderCache {
 	protected $default;
 	protected $misses = 0;
 	protected $missLimit = 1000;
+
+	/** @var NamespaceInfo */
+	private $nsInfo;
+
+	/** @var ILoadBalancer|null */
+	private $loadBalancer;
+
+	public function __construct( NamespaceInfo $nsInfo = null, ILoadBalancer $loadBalancer = null ) {
+		$this->nsInfo = $nsInfo ?? MediaWikiServices::getInstance()->getNamespaceInfo();
+		$this->loadBalancer = $loadBalancer;
+	}
 
 	/**
 	 * @deprecated in 1.28 see MediaWikiServices::getInstance()->getGenderCache()
@@ -56,14 +70,14 @@ class GenderCache {
 
 	/**
 	 * Returns the gender for given username.
-	 * @param string|User $username
+	 * @param string|UserIdentity $username
 	 * @param string $caller The calling method
 	 * @return string
 	 */
 	public function getGenderOf( $username, $caller = '' ) {
 		global $wgUser;
 
-		if ( $username instanceof User ) {
+		if ( $username instanceof UserIdentity ) {
 			$username = $username->getName();
 		}
 
@@ -97,7 +111,7 @@ class GenderCache {
 	public function doLinkBatch( $data, $caller = '' ) {
 		$users = [];
 		foreach ( $data as $ns => $pagenames ) {
-			if ( !MWNamespace::hasGenderDistinction( $ns ) ) {
+			if ( !$this->nsInfo->hasGenderDistinction( $ns ) ) {
 				continue;
 			}
 			foreach ( array_keys( $pagenames ) as $username ) {
@@ -112,7 +126,7 @@ class GenderCache {
 	 * Wrapper for doQuery that processes a title or string array.
 	 *
 	 * @since 1.20
-	 * @param array $titles Array of Title objects or strings
+	 * @param array $titles Array of LinkTarget objects or strings
 	 * @param string $caller The calling method
 	 */
 	public function doTitlesArray( $titles, $caller = '' ) {
@@ -122,7 +136,7 @@ class GenderCache {
 			if ( !$titleObj ) {
 				continue;
 			}
-			if ( !MWNamespace::hasGenderDistinction( $titleObj->getNamespace() ) ) {
+			if ( !$this->nsInfo->hasGenderDistinction( $titleObj->getNamespace() ) ) {
 				continue;
 			}
 			$users[] = $titleObj->getText();
@@ -133,7 +147,7 @@ class GenderCache {
 
 	/**
 	 * Preloads genders for given list of users.
-	 * @param array|string $users Usernames
+	 * @param string[]|string $users Usernames
 	 * @param string $caller The calling method
 	 */
 	public function doQuery( $users, $caller = '' ) {
@@ -157,7 +171,13 @@ class GenderCache {
 			return;
 		}
 
-		$dbr = wfGetDB( DB_REPLICA );
+		// Only query database, when load balancer is provided by service wiring
+		// This maybe not happen when running as part of the installer
+		if ( $this->loadBalancer === null ) {
+			return;
+		}
+
+		$dbr = $this->loadBalancer->getConnectionRef( DB_REPLICA );
 		$table = [ 'user', 'user_properties' ];
 		$fields = [ 'user_name', 'up_value' ];
 		$conds = [ 'user_name' => $usersToCheck ];

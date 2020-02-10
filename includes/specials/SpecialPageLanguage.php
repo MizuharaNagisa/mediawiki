@@ -23,6 +23,8 @@
  * @since 1.24
  */
 
+use MediaWiki\MediaWikiServices;
+
 /**
  * Special page for changing the content language of a page
  *
@@ -43,7 +45,8 @@ class SpecialPageLanguage extends FormSpecialPage {
 	}
 
 	protected function preText() {
-		$this->getOutput()->addModules( 'mediawiki.special.pageLanguage' );
+		$this->getOutput()->addModules( 'mediawiki.misc-authed-ooui' );
+		return parent::preText();
 	}
 
 	protected function getFormFields() {
@@ -51,8 +54,11 @@ class SpecialPageLanguage extends FormSpecialPage {
 		$defaultName = $this->par;
 		$title = $defaultName ? Title::newFromText( $defaultName ) : null;
 		if ( $title ) {
-			$defaultPageLanguage =
-				ContentHandler::getForTitle( $title )->getPageLanguage( $title );
+			$defaultPageLanguage = MediaWikiServices::getInstance()
+				->getContentHandlerFactory()
+				->getContentHandler( $title->getContentModel() )
+				->getPageLanguage( $title );
+
 			$hasCustomLanguageSet = !$defaultPageLanguage->equals( $title->getPageLanguage() );
 		} else {
 			$hasCustomLanguageSet = false;
@@ -252,7 +258,7 @@ class SpecialPageLanguage extends FormSpecialPage {
 		$entry->setTarget( $title );
 		$entry->setParameters( $logParams );
 		$entry->setComment( $reason );
-		$entry->setTags( $tags );
+		$entry->addTags( $tags );
 
 		$logid = $entry->insert();
 		$entry->publish( $logid );

@@ -30,7 +30,7 @@ class McrUndoAction extends FormAction {
 
 	protected $undo = 0, $undoafter = 0, $cur = 0;
 
-	/** @param RevisionRecord|null */
+	/** @var RevisionRecord|null */
 	protected $curRev = null;
 
 	public function getName() {
@@ -289,8 +289,9 @@ class McrUndoAction extends FormAction {
 				'h2', [ 'id' => 'mw-previewheader' ],
 				$this->context->msg( 'preview' )->text()
 			) .
-			$out->parseAsInterface( $note ) .
-			"<hr />"
+			Html::rawElement( 'div', [ 'class' => 'warningbox' ],
+				$out->parseAsInterface( $note )
+			)
 		);
 
 		$pageViewLang = $this->getTitle()->getPageViewLanguage();
@@ -298,7 +299,7 @@ class McrUndoAction extends FormAction {
 			'class' => 'mw-content-' . $pageViewLang->getDir() ];
 		$previewHTML = Html::rawElement( 'div', $attribs, $previewHTML );
 
-		$out->addHtml( $previewhead . $previewHTML );
+		$out->addHTML( $previewhead . $previewHTML );
 	}
 
 	public function onSubmit( $data ) {
@@ -336,8 +337,14 @@ class McrUndoAction extends FormAction {
 			$updater->setOriginalRevisionId( false );
 			$updater->setUndidRevisionId( $this->undo );
 
+			$permissionManager = MediaWikiServices::getInstance()->getPermissionManager();
+
 			// TODO: Ugh.
-			if ( $wgUseRCPatrol && $this->getTitle()->userCan( 'autopatrol', $this->getUser() ) ) {
+			if ( $wgUseRCPatrol && $permissionManager->userCan(
+				'autopatrol',
+				$this->getUser(),
+				$this->getTitle() )
+			) {
 				$updater->setRcPatrolStatus( RecentChange::PRC_AUTOPATROLLED );
 			}
 

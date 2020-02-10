@@ -22,16 +22,15 @@
  */
 
 /**
- * Class to invalidate the HTML cache of all the pages linking to a given title.
+ * Class to invalidate the HTML/file cache of all the pages linking to a given title
  *
  * @ingroup Cache
  */
 class HTMLCacheUpdate extends DataUpdate {
 	/** @var Title */
-	public $mTitle;
-
+	private $title;
 	/** @var string */
-	public $mTable;
+	private $table;
 
 	/**
 	 * @param Title $titleTo
@@ -39,19 +38,19 @@ class HTMLCacheUpdate extends DataUpdate {
 	 * @param string $causeAction Triggering action
 	 * @param string $causeAgent Triggering user
 	 */
-	function __construct(
+	public function __construct(
 		Title $titleTo, $table, $causeAction = 'unknown', $causeAgent = 'unknown'
 	) {
-		$this->mTitle = $titleTo;
-		$this->mTable = $table;
+		$this->title = $titleTo;
+		$this->table = $table;
 		$this->causeAction = $causeAction;
 		$this->causeAgent = $causeAgent;
 	}
 
 	public function doUpdate() {
 		$job = HTMLCacheUpdateJob::newForBacklinks(
-			$this->mTitle,
-			$this->mTable,
+			$this->title,
+			$this->table,
 			[ 'causeAction' => $this->getCauseAction(), 'causeAgent' => $this->getCauseAgent() ]
 		);
 

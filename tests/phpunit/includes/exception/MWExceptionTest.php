@@ -9,10 +9,10 @@
 class MWExceptionTest extends MediaWikiTestCase {
 
 	/**
-	 * @expectedException MWException
 	 * @covers MWException
 	 */
 	public function testMwexceptionThrowing() {
+		$this->expectException( MWException::class );
 		throw new MWException();
 	}
 
@@ -136,7 +136,7 @@ class MWExceptionTest extends MediaWikiTestCase {
 		$this->assertObjectHasAttribute( $key, $json,
 			"JSON serialized exception is missing key '$key'"
 		);
-		$this->assertInternalType( $expectedKeyType, $json->$key,
+		$this->assertSame( $expectedKeyType, gettype( $json->$key ),
 			"JSON serialized key '$key' has type " . gettype( $json->$key )
 			. " (expected: $expectedKeyType)."
 		);
@@ -153,7 +153,7 @@ class MWExceptionTest extends MediaWikiTestCase {
 				[ 'string', $exClass, 'file' ],
 				[ 'integer', $exClass, 'line' ],
 				[ 'string', $exClass, 'message' ],
-				[ 'null', $exClass, 'url' ],
+				[ 'NULL', $exClass, 'url' ],
 				# Backtrace only enabled with wgLogExceptionBacktrace = true
 				[ 'array', $exClass, 'backtrace' ],
 			];

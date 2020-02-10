@@ -20,6 +20,10 @@
  * @file
  */
 
+use MediaWiki\Content\IContentHandlerFactory;
+use MediaWiki\MediaWikiServices;
+use MediaWiki\Revision\RevisionRecord;
+
 /**
  * A module that allows for editing and creating pages.
  *
@@ -52,17 +56,16 @@ class ApiEditPage extends ApiBase {
 				$oldTitle = $titleObj;
 
 				$titles = Revision::newFromTitle( $oldTitle, false, Revision::READ_LATEST )
-					->getContent( Revision::FOR_THIS_USER, $user )
+					->getContent( RevisionRecord::FOR_THIS_USER, $user )
 					->getRedirectChain();
 				// array_shift( $titles );
+				'@phan-var Title[] $titles';
 
 				$redirValues = [];
 
 				/** @var Title $newTitle */
 				foreach ( $titles as $id => $newTitle ) {
-					if ( !isset( $titles[$id - 1] ) ) {
-						$titles[$id - 1] = $oldTitle;
-					}
+					$titles[$id - 1] = $titles[$id - 1] ?? $oldTitle;
 
 					$redirValues[] = [
 						'from' => $titles[$id - 1]->getPrefixedText(),
@@ -70,6 +73,20 @@ class ApiEditPage extends ApiBase {
 					];
 
 					$titleObj = $newTitle;
+
+					// T239428: Check whether the new title is valid
+					if ( $titleObj->isExternal() || !$titleObj->canExist() ) {
+						$redirValues[count( $redirValues ) - 1]['to'] = $titleObj->getFullText();
+						$this->dieWithError(
+							[
+								'apierror-edit-invalidredirect',
+								Message::plaintextParam( $oldTitle->getPrefixedText() ),
+								Message::plaintextParam( $titleObj->getFullText() ),
+							],
+							'edit-invalidredirect',
+							[ 'redirects' => $redirValues ]
+						);
+					}
 				}
 
 				ApiResult::setIndexedTagName( $redirValues, 'r' );
@@ -83,7 +100,8 @@ class ApiEditPage extends ApiBase {
 		if ( !isset( $params['contentmodel'] ) || $params['contentmodel'] == '' ) {
 			$contentHandler = $pageObj->getContentHandler();
 		} else {
-			$contentHandler = ContentHandler::getForModelID( $params['contentmodel'] );
+			$contentHandler = $this->getContentHandlerFactory()
+				->getContentHandler( $params['contentmodel'] );
 		}
 		$contentModel = $contentHandler->getModelID();
 
@@ -116,11 +134,12 @@ class ApiEditPage extends ApiBase {
 		// Now let's check whether we're even allowed to do this
 		$this->checkTitleUserPermissions(
 			$titleObj,
-			$titleObj->exists() ? 'edit' : [ 'edit', 'create' ]
+			$titleObj->exists() ? 'edit' : [ 'edit', 'create' ],
+			[ 'autoblock' => true ]
 		);
 
 		$toMD5 = $params['text'];
-		if ( !is_null( $params['appendtext'] ) || !is_null( $params['prependtext'] ) ) {
+		if ( $params['appendtext'] !== null || $params['prependtext'] !== null ) {
 			$content = $pageObj->getContent();
 
 			if ( !$content ) {
@@ -153,7 +172,7 @@ class ApiEditPage extends ApiBase {
 				$this->dieWithError( [ 'apierror-appendnotsupported', $modelName ] );
 			}
 
-			if ( !is_null( $params['section'] ) ) {
+			if ( $params['section'] !== null ) {
 				if ( !$contentHandler->supportsSections() ) {
 					$modelName = $contentHandler->getModelID();
 					$this->dieWithError( [ 'apierror-sectionsnotsupported', $modelName ] );
@@ -192,14 +211,14 @@ class ApiEditPage extends ApiBase {
 				$undoafterRev = Revision::newFromId( $params['undoafter'] );
 			}
 			$undoRev = Revision::newFromId( $params['undo'] );
-			if ( is_null( $undoRev ) || $undoRev->isDeleted( Revision::DELETED_TEXT ) ) {
+			if ( $undoRev === null || $undoRev->isDeleted( RevisionRecord::DELETED_TEXT ) ) {
 				$this->dieWithError( [ 'apierror-nosuchrevid', $params['undo'] ] );
 			}
 
 			if ( $params['undoafter'] == 0 ) {
 				$undoafterRev = $undoRev->getPrevious();
 			}
-			if ( is_null( $undoafterRev ) || $undoafterRev->isDeleted( Revision::DELETED_TEXT ) ) {
+			if ( $undoafterRev === null || $undoafterRev->isDeleted( RevisionRecord::DELETED_TEXT ) ) {
 				$this->dieWithError( [ 'apierror-nosuchrevid', $params['undoafter'] ] );
 			}
 
@@ -238,16 +257,20 @@ class ApiEditPage extends ApiBase {
 			$params['text'] = $newContent->serialize( $contentFormat );
 			// If no summary was given and we only undid one rev,
 			// use an autosummary
-			if ( is_null( $params['summary'] ) &&
-				$titleObj->getNextRevisionID( $undoafterRev->getId() ) == $params['undo']
-			) {
-				$params['summary'] = wfMessage( 'undo-summary' )
-					->params( $params['undo'], $undoRev->getUserText() )->inContentLanguage()->text();
+
+			if ( $params['summary'] === null ) {
+				$nextRev = MediaWikiServices::getInstance()->getRevisionLookup()
+					->getNextRevision( $undoafterRev->getRevisionRecord() );
+				if ( $nextRev && $nextRev->getId() == $params['undo'] ) {
+					$params['summary'] = wfMessage( 'undo-summary' )
+						->params( $params['undo'], $undoRev->getUserText() )
+						->inContentLanguage()->text();
+				}
 			}
 		}
 
 		// See if the MD5 hash checks out
-		if ( !is_null( $params['md5'] ) && md5( $toMD5 ) !== $params['md5'] ) {
+		if ( $params['md5'] !== null && md5( $toMD5 ) !== $params['md5'] ) {
 			$this->dieWithError( 'apierror-badmd5' );
 		}
 
@@ -265,11 +288,11 @@ class ApiEditPage extends ApiBase {
 			'wpUnicodeCheck' => EditPage::UNICODE_CHECK,
 		];
 
-		if ( !is_null( $params['summary'] ) ) {
+		if ( $params['summary'] !== null ) {
 			$requestArray['wpSummary'] = $params['summary'];
 		}
 
-		if ( !is_null( $params['sectiontitle'] ) ) {
+		if ( $params['sectiontitle'] !== null ) {
 			$requestArray['wpSectionTitle'] = $params['sectiontitle'];
 		}
 
@@ -300,7 +323,7 @@ class ApiEditPage extends ApiBase {
 			$requestArray['wpRecreate'] = '';
 		}
 
-		if ( !is_null( $params['section'] ) ) {
+		if ( $params['section'] !== null ) {
 			$section = $params['section'];
 			if ( !preg_match( '/^((T-)?\d+|new)$/', $section ) ) {
 				$this->dieWithError( 'apierror-invalidsection' );
@@ -366,21 +389,6 @@ class ApiEditPage extends ApiBase {
 		$ep->importFormData( $req );
 		$content = $ep->textbox1;
 
-		// Run hooks
-		// Handle APIEditBeforeSave parameters
-		$r = [];
-		// Deprecated in favour of EditFilterMergedContent
-		if ( !Hooks::run( 'APIEditBeforeSave', [ $ep, $content, &$r ], '1.28' ) ) {
-			if ( count( $r ) ) {
-				$r['result'] = 'Failure';
-				$apiResult->addValue( null, $this->getModuleName(), $r );
-
-				return;
-			}
-
-			$this->dieWithError( 'hookaborted' );
-		}
-
 		// Do the actual save
 		$oldRevId = $articleObject->getRevIdFetched();
 		$result = null;
@@ -392,6 +400,7 @@ class ApiEditPage extends ApiBase {
 		$status = $ep->attemptSave( $result );
 		$wgRequest = $oldRequest;
 
+		$r = [];
 		switch ( $status->value ) {
 			case EditPage::AS_HOOK_ERROR:
 			case EditPage::AS_HOOK_ERROR_EXPECTED:
@@ -426,15 +435,15 @@ class ApiEditPage extends ApiBase {
 
 			case EditPage::AS_SUCCESS_UPDATE:
 				$r['result'] = 'Success';
-				$r['pageid'] = intval( $titleObj->getArticleID() );
+				$r['pageid'] = (int)$titleObj->getArticleID();
 				$r['title'] = $titleObj->getPrefixedText();
 				$r['contentmodel'] = $articleObject->getContentModel();
 				$newRevId = $articleObject->getLatest();
 				if ( $newRevId == $oldRevId ) {
 					$r['nochange'] = true;
 				} else {
-					$r['oldrevid'] = intval( $oldRevId );
-					$r['newrevid'] = intval( $newRevId );
+					$r['oldrevid'] = (int)$oldRevId;
+					$r['newrevid'] = (int)$newRevId;
 					$r['newtimestamp'] = wfTimestamp( TS_ISO_8601,
 						$pageObj->getTimestamp() );
 				}
@@ -466,7 +475,7 @@ class ApiEditPage extends ApiBase {
 							$status->fatal( 'apierror-pagedeleted' );
 							break;
 						case EditPage::AS_CONFLICT_DETECTED:
-							$status->fatal( 'editconflict' );
+							$status->fatal( 'edit-conflict' );
 							break;
 
 						// Currently shouldn't be needed, but here in case
@@ -585,10 +594,10 @@ class ApiEditPage extends ApiBase {
 				ApiBase::PARAM_DFLT => false,
 			],
 			'contentformat' => [
-				ApiBase::PARAM_TYPE => ContentHandler::getAllContentFormats(),
+				ApiBase::PARAM_TYPE => $this->getContentHandlerFactory()->getAllContentFormats(),
 			],
 			'contentmodel' => [
-				ApiBase::PARAM_TYPE => ContentHandler::getContentModels(),
+				ApiBase::PARAM_TYPE => $this->getContentHandlerFactory()->getContentModels(),
 			],
 			'token' => [
 				// Standard definition automatically inserted
@@ -617,5 +626,9 @@ class ApiEditPage extends ApiBase {
 
 	public function getHelpUrls() {
 		return 'https://www.mediawiki.org/wiki/Special:MyLanguage/API:Edit';
+	}
+
+	private function getContentHandlerFactory(): IContentHandlerFactory {
+		return MediaWikiServices::getInstance()->getContentHandlerFactory();
 	}
 }

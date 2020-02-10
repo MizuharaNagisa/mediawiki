@@ -22,7 +22,7 @@
 use MediaWiki\MediaWikiServices;
 
 /**
- * @defgroup Actions Action done on pages
+ * @defgroup Actions Actions
  */
 
 /**
@@ -41,21 +41,21 @@ abstract class Action implements MessageLocalizer {
 	/**
 	 * Page on which we're performing the action
 	 * @since 1.17
-	 * @var WikiPage|Article|ImagePage|CategoryPage|Page $page
+	 * @var WikiPage|Article|ImagePage|CategoryPage|Page
 	 */
 	protected $page;
 
 	/**
 	 * IContextSource if specified; otherwise we'll use the Context from the Page
 	 * @since 1.17
-	 * @var IContextSource $context
+	 * @var IContextSource
 	 */
 	protected $context;
 
 	/**
 	 * The fields used to create the HTMLForm
 	 * @since 1.17
-	 * @var array $fields
+	 * @var array
 	 */
 	protected $fields;
 
@@ -101,8 +101,7 @@ abstract class Action implements MessageLocalizer {
 			if ( !class_exists( $classOrCallable ) ) {
 				return false;
 			}
-			$obj = new $classOrCallable( $page, $context );
-			return $obj;
+			return new $classOrCallable( $page, $context );
 		}
 
 		if ( is_callable( $classOrCallable ) ) {
@@ -142,7 +141,7 @@ abstract class Action implements MessageLocalizer {
 			} else {
 				$actionName = 'view';
 			}
-		} elseif ( $actionName == 'editredlink' ) {
+		} elseif ( $actionName === 'editredlink' ) {
 			$actionName = 'edit';
 		}
 
@@ -253,11 +252,12 @@ abstract class Action implements MessageLocalizer {
 	 * Get a Message object with context set
 	 * Parameters are the same as wfMessage()
 	 *
+	 * @param string|string[]|MessageSpecifier $key
+	 * @param mixed ...$params
 	 * @return Message
 	 */
-	final public function msg( $key ) {
-		$params = func_get_args();
-		return $this->getContext()->msg( ...$params );
+	final public function msg( $key, ...$params ) {
+		return $this->getContext()->msg( $key, ...$params );
 	}
 
 	/**
@@ -318,7 +318,12 @@ abstract class Action implements MessageLocalizer {
 		if ( $this->requiresUnblock() && $user->isBlockedFrom( $this->getTitle() ) ) {
 			$block = $user->getBlock();
 			if ( $block ) {
-				throw new UserBlockedError( $block );
+				throw new UserBlockedError(
+					$block,
+					$user,
+					$this->getLanguage(),
+					$this->getRequest()->getIP()
+				);
 			}
 
 			throw new PermissionsError( $this->getName(), [ 'badaccess-group0' ] );
@@ -359,7 +364,7 @@ abstract class Action implements MessageLocalizer {
 	 */
 	protected function setHeaders() {
 		$out = $this->getOutput();
-		$out->setRobotPolicy( "noindex,nofollow" );
+		$out->setRobotPolicy( 'noindex,nofollow' );
 		$out->setPageTitle( $this->getPageTitle() );
 		$out->setSubtitle( $this->getDescription() );
 		$out->setArticleRelated( true );

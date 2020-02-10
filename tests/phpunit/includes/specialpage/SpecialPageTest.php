@@ -1,5 +1,8 @@
 <?php
 
+use MediaWiki\MediaWikiServices;
+use PHPUnit\Framework\Error\Notice;
+
 /**
  * @covers SpecialPage
  *
@@ -9,7 +12,7 @@
  */
 class SpecialPageTest extends MediaWikiTestCase {
 
-	protected function setUp() {
+	protected function setUp() : void {
 		parent::setUp();
 
 		$this->setContentLang( 'en' );
@@ -33,20 +36,18 @@ class SpecialPageTest extends MediaWikiTestCase {
 		];
 	}
 
-	/**
-	 * @expectedException PHPUnit_Framework_Error_Notice
-	 */
 	public function testInvalidGetTitleFor() {
+		$this->expectException( Notice::class );
 		$title = SpecialPage::getTitleFor( 'cat' );
 		$expected = Title::makeTitle( NS_SPECIAL, 'Cat' );
 		$this->assertEquals( $expected, $title );
 	}
 
 	/**
-	 * @expectedException PHPUnit_Framework_Error_Notice
 	 * @dataProvider getTitleForWithWarningProvider
 	 */
 	public function testGetTitleForWithWarning( $expected, $name ) {
+		$this->expectException( Notice::class );
 		$title = SpecialPage::getTitleFor( $name );
 		$this->assertEquals( $expected, $title );
 	}
@@ -65,9 +66,11 @@ class SpecialPageTest extends MediaWikiTestCase {
 
 		$user = User::newFromId( 0 );
 		$specialPage->getContext()->setUser( $user );
-		$specialPage->getContext()->setLanguage( Language::factory( 'en' ) );
+		$specialPage->getContext()->setLanguage(
+			MediaWikiServices::getInstance()->getLanguageFactory()->getLanguage( 'en' ) );
 
-		$this->setExpectedException( UserNotLoggedIn::class, $expected );
+		$this->expectException( UserNotLoggedIn::class );
+		$this->expectExceptionMessage( $expected );
 
 		// $specialPage->requireLogin( [ $reason [, $title ] ] )
 		call_user_func_array(
@@ -100,5 +103,4 @@ class SpecialPageTest extends MediaWikiTestCase {
 		// no exception thrown, logged in use can access special page
 		$this->assertTrue( true );
 	}
-
 }

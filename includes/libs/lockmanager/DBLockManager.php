@@ -22,8 +22,8 @@
  */
 
 use Wikimedia\Rdbms\Database;
-use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\Rdbms\DBError;
+use Wikimedia\Rdbms\IDatabase;
 
 /**
  * Version of LockManager based on using named/row DB locks.
@@ -150,12 +150,12 @@ abstract class DBLockManager extends QuorumLockManager {
 			} elseif ( is_array( $this->dbServers[$lockDb] ) ) {
 				// Parameters to construct a new database connection
 				$config = $this->dbServers[$lockDb];
+				$config['flags'] = ( $config['flags'] ?? 0 );
+				$config['flags'] &= ~( IDatabase::DBO_TRX | IDatabase::DBO_DEFAULT );
 				$db = Database::factory( $config['type'], $config );
 			} else {
 				throw new UnexpectedValueException( "No server called '$lockDb'." );
 			}
-
-			$db->clearFlag( DBO_TRX );
 			# If the connection drops, try to avoid letting the DB rollback
 			# and release the locks before the file operations are finished.
 			# This won't handle the case of DB server restarts however.
@@ -220,7 +220,7 @@ abstract class DBLockManager extends QuorumLockManager {
 	/**
 	 * Make sure remaining locks get cleared for sanity
 	 */
-	function __destruct() {
+	public function __destruct() {
 		$this->releaseAllLocks();
 		foreach ( $this->conns as $db ) {
 			$db->close();

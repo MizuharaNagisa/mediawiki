@@ -455,8 +455,7 @@ class Exif {
 			$val = substr( $this->mFilteredExifData[$prop], 8 );
 
 			switch ( $charCode ) {
-				case "\x4A\x49\x53\x00\x00\x00\x00\x00":
-					// JIS
+				case "JIS\x00\x00\x00\x00\x00":
 					$charset = "Shift-JIS";
 					break;
 				case "UNICODE\x00":
@@ -544,11 +543,12 @@ class Exif {
 		}
 	}
 
-	/**#@-*/
+	/** #@- */
 
-	/**#@+
+	/** #@+
 	 * @return array
 	 */
+
 	/**
 	 * Get $this->mRawExifData
 	 * @return array
@@ -565,7 +565,7 @@ class Exif {
 		return $this->mFilteredExifData;
 	}
 
-	/**#@-*/
+	/** #@- */
 
 	/**
 	 * The version of the output format
@@ -721,7 +721,7 @@ class Exif {
 		}
 	}
 
-	/**#@-*/
+	/** #@- */
 
 	/**
 	 * Validates if a tag has a legal value according to the Exif spec

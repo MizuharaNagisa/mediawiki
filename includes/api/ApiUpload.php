@@ -109,6 +109,7 @@ class ApiUpload extends ApiBase {
 
 		// Add 'imageinfo' in a separate addValue() call. File metadata can be unreasonably large,
 		// so otherwise when it exceeded $wgAPIMaxResultSize, no result would be returned (T143993).
+		// @phan-suppress-next-line PhanTypeArraySuspiciousNullable False positive
 		if ( $result['result'] === 'Success' ) {
 			$imageinfo = $this->mUpload->getImageInfo( $this->getResult() );
 			$this->getResult()->addValue( $this->getModuleName(), 'imageinfo', $imageinfo );
@@ -306,7 +307,7 @@ class ApiUpload extends ApiBase {
 	 *   - When 'optional', only add a 'stashfailed' key to the data and return null.
 	 *     Use this when some error happened for a non-stash upload and we're stashing the file
 	 *     only to save the client the trouble of re-uploading it.
-	 * @param array &$data API result to which to add the information
+	 * @param array|null &$data API result to which to add the information
 	 * @return string|null File key
 	 */
 	private function performStash( $failureMode, &$data = null ) {
@@ -403,6 +404,7 @@ class ApiUpload extends ApiBase {
 	 * otherwise true
 	 *
 	 * @return bool
+	 * @suppress PhanTypeArraySuspiciousNullable False positives
 	 */
 	protected function selectUploadModule() {
 		$request = $this->getMain()->getRequest();
@@ -417,7 +419,7 @@ class ApiUpload extends ApiBase {
 		if ( $this->mParams['filekey'] && $this->mParams['checkstatus'] ) {
 			$progress = UploadBase::getSessionStatus( $this->getUser(), $this->mParams['filekey'] );
 			if ( !$progress ) {
-				$this->dieWithError( 'api-upload-missingresult', 'missingresult' );
+				$this->dieWithError( 'apierror-upload-missingresult', 'missingresult' );
 			} elseif ( !$progress['status']->isGood() ) {
 				$this->dieStatusWithCode( $progress['status'], 'stashfailed' );
 			}
@@ -448,7 +450,7 @@ class ApiUpload extends ApiBase {
 		}
 
 		// The following modules all require the filename parameter to be set
-		if ( is_null( $this->mParams['filename'] ) ) {
+		if ( $this->mParams['filename'] === null ) {
 			$this->dieWithError( [ 'apierror-missingparam', 'filename' ] );
 		}
 
@@ -542,7 +544,7 @@ class ApiUpload extends ApiBase {
 		}
 
 		// Check blocks
-		if ( $user->isBlocked() ) {
+		if ( $user->isBlockedFromUpload() ) {
 			$this->dieBlocked( $user->getBlock() );
 		}
 
@@ -636,6 +638,7 @@ class ApiUpload extends ApiBase {
 				}
 				ApiResult::setIndexedTagName( $details, 'detail' );
 				$msg->setApiData( $msg->getApiData() + [ 'details' => $details ] );
+				// @phan-suppress-next-line PhanTypeMismatchArgument
 				$this->dieWithError( $msg );
 				break;
 
@@ -658,7 +661,7 @@ class ApiUpload extends ApiBase {
 	 * @return array
 	 */
 	protected function getApiWarnings() {
-		$warnings = $this->mUpload->checkWarnings();
+		$warnings = UploadBase::makeWarningsSerializable( $this->mUpload->checkWarnings() );
 
 		return $this->transformWarnings( $warnings );
 	}
@@ -670,9 +673,8 @@ class ApiUpload extends ApiBase {
 
 			if ( isset( $warnings['duplicate'] ) ) {
 				$dupes = [];
-				/** @var File $dupe */
 				foreach ( $warnings['duplicate'] as $dupe ) {
-					$dupes[] = $dupe->getName();
+					$dupes[] = $dupe['fileName'];
 				}
 				ApiResult::setIndexedTagName( $dupes, 'duplicate' );
 				$warnings['duplicate'] = $dupes;
@@ -681,27 +683,24 @@ class ApiUpload extends ApiBase {
 			if ( isset( $warnings['exists'] ) ) {
 				$warning = $warnings['exists'];
 				unset( $warnings['exists'] );
-				/** @var LocalFile $localFile */
 				$localFile = $warning['normalizedFile'] ?? $warning['file'];
-				$warnings[$warning['warning']] = $localFile->getName();
+				$warnings[$warning['warning']] = $localFile['fileName'];
 			}
 
 			if ( isset( $warnings['no-change'] ) ) {
-				/** @var File $file */
 				$file = $warnings['no-change'];
 				unset( $warnings['no-change'] );
 
 				$warnings['nochange'] = [
-					'timestamp' => wfTimestamp( TS_ISO_8601, $file->getTimestamp() )
+					'timestamp' => wfTimestamp( TS_ISO_8601, $file['timestamp'] )
 				];
 			}
 
 			if ( isset( $warnings['duplicate-version'] ) ) {
 				$dupes = [];
-				/** @var File $dupe */
 				foreach ( $warnings['duplicate-version'] as $dupe ) {
 					$dupes[] = [
-						'timestamp' => wfTimestamp( TS_ISO_8601, $dupe->getTimestamp() )
+						'timestamp' => wfTimestamp( TS_ISO_8601, $dupe['timestamp'] )
 					];
 				}
 				unset( $warnings['duplicate-version'] );
@@ -762,7 +761,7 @@ class ApiUpload extends ApiBase {
 	 */
 	protected function performUpload( $warnings ) {
 		// Use comment as initial page text by default
-		if ( is_null( $this->mParams['text'] ) ) {
+		if ( $this->mParams['text'] === null ) {
 			$this->mParams['text'] = $this->mParams['comment'];
 		}
 
@@ -798,6 +797,7 @@ class ApiUpload extends ApiBase {
 		}
 
 		// No errors, no warnings: do the upload
+		$result = [];
 		if ( $this->mParams['async'] ) {
 			$progress = UploadBase::getSessionStatus( $this->getUser(), $this->mParams['filekey'] );
 			if ( $progress && $progress['result'] === 'Poll' ) {

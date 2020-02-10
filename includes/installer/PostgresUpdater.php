@@ -18,7 +18,7 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup Deployment
+ * @ingroup Installer
  */
 
 use Wikimedia\Rdbms\DatabasePostgres;
@@ -26,7 +26,7 @@ use Wikimedia\Rdbms\DatabasePostgres;
 /**
  * Class for handling updates to Postgres databases.
  *
- * @ingroup Deployment
+ * @ingroup Installer
  * @since 1.17
  */
 class PostgresUpdater extends DatabaseUpdater {
@@ -78,7 +78,6 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'addTable', 'querycachetwo', 'patch-querycachetwo.sql' ],
 			[ 'addTable', 'page_props', 'patch-page_props.sql' ],
 			[ 'addTable', 'page_restrictions', 'patch-page_restrictions.sql' ],
-			[ 'addTable', 'profiling', 'patch-profiling.sql' ],
 			[ 'addTable', 'protected_titles', 'patch-protected_titles.sql' ],
 			[ 'addTable', 'redirect', 'patch-redirect.sql' ],
 			[ 'addTable', 'updatelog', 'patch-updatelog.sql' ],
@@ -110,7 +109,7 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'addPgField', 'image', 'img_sha1', "TEXT NOT NULL DEFAULT ''" ],
 			[ 'addPgField', 'ipblocks', 'ipb_allow_usertalk', 'SMALLINT NOT NULL DEFAULT 0' ],
 			[ 'addPgField', 'ipblocks', 'ipb_anon_only', 'SMALLINT NOT NULL DEFAULT 0' ],
-			[ 'addPgField', 'ipblocks', 'ipb_by_text', "TEXT NOT NULL DEFAULT ''" ],
+			[ 'ifNoActorTable', 'addPgField', 'ipblocks', 'ipb_by_text', "TEXT NOT NULL DEFAULT ''" ],
 			[ 'addPgField', 'ipblocks', 'ipb_block_email', 'SMALLINT NOT NULL DEFAULT 0' ],
 			[ 'addPgField', 'ipblocks', 'ipb_create_account', 'SMALLINT NOT NULL DEFAULT 1' ],
 			[ 'addPgField', 'ipblocks', 'ipb_deleted', 'SMALLINT NOT NULL DEFAULT 0' ],
@@ -135,7 +134,6 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'addPgField', 'page', 'page_content_model', 'TEXT' ],
 			[ 'addPgField', 'page_restrictions', 'pr_id',
 				"INTEGER NOT NULL UNIQUE DEFAULT nextval('page_restrictions_pr_id_seq')" ],
-			[ 'addPgField', 'profiling', 'pf_memory', 'NUMERIC(18,10) NOT NULL DEFAULT 0' ],
 			[ 'addPgField', 'recentchanges', 'rc_deleted', 'SMALLINT NOT NULL DEFAULT 0' ],
 			[ 'addPgField', 'recentchanges', 'rc_log_action', 'TEXT' ],
 			[ 'addPgField', 'recentchanges', 'rc_log_type', 'TEXT' ],
@@ -152,7 +150,7 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'addPgField', 'revision', 'rev_content_format', 'TEXT' ],
 			[ 'addPgField', 'site_stats', 'ss_active_users', "INTEGER DEFAULT '-1'" ],
 			[ 'addPgField', 'user_newtalk', 'user_last_timestamp', 'TIMESTAMPTZ' ],
-			[ 'addPgField', 'logging', 'log_user_text', "TEXT NOT NULL DEFAULT ''" ],
+			[ 'ifNoActorTable', 'addPgField', 'logging', 'log_user_text', "TEXT NOT NULL DEFAULT ''" ],
 			[ 'addPgField', 'logging', 'log_page', 'INTEGER' ],
 			[ 'addPgField', 'interwiki', 'iw_api', "TEXT NOT NULL DEFAULT ''" ],
 			[ 'addPgField', 'interwiki', 'iw_wikiid', "TEXT NOT NULL DEFAULT ''" ],
@@ -224,8 +222,6 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'changeField', 'templatelinks', 'tl_namespace', 'smallint', 'tl_namespace::smallint' ],
 			[ 'changeField', 'user_newtalk', 'user_ip', 'text', 'host(user_ip)' ],
 			[ 'changeField', 'uploadstash', 'us_image_bits', 'smallint', '' ],
-			[ 'changeField', 'profiling', 'pf_time', 'float', '' ],
-			[ 'changeField', 'profiling', 'pf_memory', 'float', '' ],
 
 			# null changes
 			[ 'changeNullableField', 'oldimage', 'oi_bits', 'NULL' ],
@@ -240,7 +236,7 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'checkOiDeleted' ],
 
 			# New indexes
-			[ 'addPgIndex', 'archive', 'archive_user_text', '(ar_user_text)' ],
+			[ 'ifNoActorTable', 'addPgIndex', 'archive', 'archive_user_text', '(ar_user_text)' ],
 			[ 'addPgIndex', 'image', 'img_sha1', '(img_sha1)' ],
 			[ 'addPgIndex', 'ipblocks', 'ipb_parent_block_id', '(ipb_parent_block_id)' ],
 			[ 'addPgIndex', 'oldimage', 'oi_sha1', '(oi_sha1)' ],
@@ -253,7 +249,7 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'addPgIndex', 'watchlist', 'wl_user', '(wl_user)' ],
 			[ 'addPgIndex', 'watchlist', 'wl_user_notificationtimestamp',
 				'(wl_user, wl_notificationtimestamp)' ],
-			[ 'addPgIndex', 'logging', 'logging_user_type_time',
+			[ 'ifNoActorTable', 'addPgIndex', 'logging', 'logging_user_type_time',
 				'(log_user, log_type, log_timestamp)' ],
 			[ 'addPgIndex', 'logging', 'logging_page_id_time', '(log_page,log_timestamp)' ],
 			[ 'addPgIndex', 'iwlinks', 'iwl_prefix_from_title', '(iwl_prefix, iwl_from, iwl_title)' ],
@@ -263,9 +259,10 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'addPgIndex', 'job', 'job_cmd_token', '(job_cmd, job_token, job_random)' ],
 			[ 'addPgIndex', 'job', 'job_cmd_token_id', '(job_cmd, job_token, job_id)' ],
 			[ 'addPgIndex', 'filearchive', 'fa_sha1', '(fa_sha1)' ],
-			[ 'addPgIndex', 'logging', 'logging_user_text_type_time',
+			[ 'ifNoActorTable', 'addPgIndex', 'logging', 'logging_user_text_type_time',
 				'(log_user_text, log_type, log_timestamp)' ],
-			[ 'addPgIndex', 'logging', 'logging_user_text_time', '(log_user_text, log_timestamp)' ],
+			[ 'ifNoActorTable', 'addPgIndex', 'logging', 'logging_user_text_time',
+				'(log_user_text, log_timestamp)' ],
 
 			[ 'checkIndex', 'pagelink_unique', [
 				[ 'pl_from', 'int4_ops', 'btree', 0 ],
@@ -363,30 +360,36 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'checkIwlPrefix' ],
 
 			# All FK columns should be deferred
-			[ 'changeFkeyDeferrable', 'archive', 'ar_user', 'mwuser(user_id) ON DELETE SET NULL' ],
+			[ 'ifNoActorTable', 'changeFkeyDeferrable', 'archive', 'ar_user',
+				'mwuser(user_id) ON DELETE SET NULL' ],
 			[ 'changeFkeyDeferrable', 'categorylinks', 'cl_from', 'page(page_id) ON DELETE CASCADE' ],
 			[ 'changeFkeyDeferrable', 'externallinks', 'el_from', 'page(page_id) ON DELETE CASCADE' ],
 			[ 'changeFkeyDeferrable', 'filearchive', 'fa_deleted_user',
 				'mwuser(user_id) ON DELETE SET NULL' ],
-			[ 'changeFkeyDeferrable', 'filearchive', 'fa_user', 'mwuser(user_id) ON DELETE SET NULL' ],
-			[ 'changeFkeyDeferrable', 'image', 'img_user', 'mwuser(user_id) ON DELETE SET NULL' ],
+			[ 'ifNoActorTable', 'changeFkeyDeferrable', 'filearchive', 'fa_user',
+				'mwuser(user_id) ON DELETE SET NULL' ],
+			[ 'ifNoActorTable', 'changeFkeyDeferrable', 'image', 'img_user',
+				'mwuser(user_id) ON DELETE SET NULL' ],
 			[ 'changeFkeyDeferrable', 'imagelinks', 'il_from', 'page(page_id) ON DELETE CASCADE' ],
-			[ 'changeFkeyDeferrable', 'ipblocks', 'ipb_by', 'mwuser(user_id) ON DELETE CASCADE' ],
+			[ 'ifNoActorTable', 'changeFkeyDeferrable', 'ipblocks', 'ipb_by',
+				'mwuser(user_id) ON DELETE CASCADE' ],
 			[ 'changeFkeyDeferrable', 'ipblocks', 'ipb_user', 'mwuser(user_id) ON DELETE SET NULL' ],
 			[ 'changeFkeyDeferrable', 'ipblocks', 'ipb_parent_block_id',
 				'ipblocks(ipb_id) ON DELETE SET NULL' ],
 			[ 'changeFkeyDeferrable', 'langlinks', 'll_from', 'page(page_id) ON DELETE CASCADE' ],
-			[ 'changeFkeyDeferrable', 'logging', 'log_user', 'mwuser(user_id) ON DELETE SET NULL' ],
+			[ 'ifNoActorTable', 'changeFkeyDeferrable', 'logging', 'log_user',
+				'mwuser(user_id) ON DELETE SET NULL' ],
 			[ 'changeFkeyDeferrable', 'oldimage', 'oi_name',
 				'image(img_name) ON DELETE CASCADE ON UPDATE CASCADE' ],
-			[ 'changeFkeyDeferrable', 'oldimage', 'oi_user', 'mwuser(user_id) ON DELETE SET NULL' ],
+			[ 'ifNoActorTable', 'changeFkeyDeferrable', 'oldimage', 'oi_user',
+				'mwuser(user_id) ON DELETE SET NULL' ],
 			[ 'changeFkeyDeferrable', 'pagelinks', 'pl_from', 'page(page_id) ON DELETE CASCADE' ],
 			[ 'changeFkeyDeferrable', 'page_props', 'pp_page', 'page (page_id) ON DELETE CASCADE' ],
 			[ 'changeFkeyDeferrable', 'page_restrictions', 'pr_page',
 				'page(page_id) ON DELETE CASCADE' ],
 			[ 'changeFkeyDeferrable', 'protected_titles', 'pt_user',
 				'mwuser(user_id) ON DELETE SET NULL' ],
-			[ 'changeFkeyDeferrable', 'recentchanges', 'rc_user',
+			[ 'ifNoActorTable', 'changeFkeyDeferrable', 'recentchanges', 'rc_user',
 				'mwuser(user_id) ON DELETE SET NULL' ],
 			[ 'changeFkeyDeferrable', 'redirect', 'rd_from', 'page(page_id) ON DELETE CASCADE' ],
 			[ 'changeFkeyDeferrable', 'revision', 'rev_page', 'page (page_id) ON DELETE CASCADE' ],
@@ -476,6 +479,11 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'changeNullableField', 'protected_titles', 'pt_reason', 'NOT NULL', true ],
 			[ 'addPgField', 'protected_titles', 'pt_reason_id', 'INTEGER NOT NULL DEFAULT 0' ],
 			[ 'addTable', 'comment', 'patch-comment-table.sql' ],
+			[ 'addTable', 'revision_comment_temp', 'patch-revision_comment_temp-table.sql' ],
+			// image_comment_temp is no longer needed when upgrading to MW 1.31 or newer,
+			// as it is dropped later in the update process as part of 'migrateImageCommentTemp'.
+			// File kept on disk and the updater entry here for historical purposes.
+			// [ 'addTable', 'image_comment_temp', 'patch-image_comment_temp-table.sql' ],
 
 			// This field was added in 1.31, but is put here so it can be used by 'migrateComments'
 			[ 'addPgField', 'image', 'img_description_id', 'INTEGER NOT NULL DEFAULT 0' ],
@@ -500,6 +508,7 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'addTable', 'slot_roles', 'patch-slot_roles-table.sql' ],
 			[ 'migrateArchiveText' ],
 			[ 'addTable', 'actor', 'patch-actor-table.sql' ],
+			[ 'addTable', 'revision_actor_temp', 'patch-revision_actor_temp-table.sql' ],
 			[ 'setDefault', 'revision', 'rev_user', 0 ],
 			[ 'setDefault', 'revision', 'rev_user_text', '' ],
 			[ 'setDefault', 'archive', 'ar_user', 0 ],
@@ -618,6 +627,38 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'dropDefault', 'logging', 'log_comment_id' ],
 			[ 'dropPgField', 'protected_titles', 'pt_reason' ],
 			[ 'dropDefault', 'protected_titles', 'pt_reason_id' ],
+
+			// 1.34
+			[ 'dropPgIndex', 'archive', 'archive_user_text' ],
+			[ 'dropPgField', 'archive', 'ar_user' ],
+			[ 'dropPgField', 'archive', 'ar_user_text' ],
+			[ 'dropDefault', 'archive', 'ar_actor' ],
+			[ 'dropPgField', 'ipblocks', 'ipb_by' ],
+			[ 'dropPgField', 'ipblocks', 'ipb_by_text' ],
+			[ 'dropDefault', 'ipblocks', 'ipb_by_actor' ],
+			[ 'dropPgField', 'image', 'img_user' ],
+			[ 'dropPgField', 'image', 'img_user_text' ],
+			[ 'dropDefault', 'image', 'img_actor' ],
+			[ 'dropPgField', 'oldimage', 'oi_user' ],
+			[ 'dropPgField', 'oldimage', 'oi_user_text' ],
+			[ 'dropDefault', 'oldimage', 'oi_actor' ],
+			[ 'dropPgField', 'filearchive', 'fa_user' ],
+			[ 'dropPgField', 'filearchive', 'fa_user_text' ],
+			[ 'dropDefault', 'filearchive', 'fa_actor' ],
+			[ 'dropPgField', 'recentchanges', 'rc_user' ],
+			[ 'dropPgField', 'recentchanges', 'rc_user_text' ],
+			[ 'dropDefault', 'recentchanges', 'rc_actor' ],
+			[ 'dropPgIndex', 'logging', 'logging_user_time' ],
+			[ 'dropPgIndex', 'logging', 'logging_user_type_time' ],
+			[ 'dropPgIndex', 'logging', 'logging_user_text_type_time' ],
+			[ 'dropPgIndex', 'logging', 'logging_user_text_time' ],
+			[ 'dropPgField', 'logging', 'log_user' ],
+			[ 'dropPgField', 'logging', 'log_user_text' ],
+			[ 'dropDefault', 'logging', 'log_actor' ],
+
+			// 1.35
+			[ 'addIndex', 'redirect', 'redirect_pkey', 'patch-redirect-pk.sql' ],
+			[ 'addTable', 'watchlist_expiry', 'patch-watchlist_expiry.sql' ],
 		];
 	}
 
@@ -839,7 +880,7 @@ END;
 		if ( !$this->db->tableExists( $table, __METHOD__ ) ) {
 			$this->output( "...skipping: '$table' table doesn't exist yet.\n" );
 
-			return;
+			return true;
 		}
 
 		// Second requirement: the new index must be missing
@@ -853,22 +894,23 @@ END;
 					"            $old should be manually removed if not needed anymore.\n" );
 			}
 
-			return;
+			return true;
 		}
 
 		// Third requirement: the old index must exist
 		if ( !$this->db->indexExists( $table, $old, __METHOD__ ) ) {
 			$this->output( "...skipping: index $old doesn't exist.\n" );
 
-			return;
+			return true;
 		}
 
 		$this->db->query( "ALTER INDEX $old RENAME TO $new" );
+		return true;
 	}
 
 	protected function dropPgField( $table, $field ) {
 		$fi = $this->db->fieldInfo( $table, $field );
-		if ( is_null( $fi ) ) {
+		if ( $fi === null ) {
 			$this->output( "...$table table does not contain $field field.\n" );
 
 			return;
@@ -880,7 +922,7 @@ END;
 
 	protected function addPgField( $table, $field, $type ) {
 		$fi = $this->db->fieldInfo( $table, $field );
-		if ( !is_null( $fi ) ) {
+		if ( $fi !== null ) {
 			$this->output( "...column '$table.$field' already exists\n" );
 
 			return;
@@ -892,7 +934,7 @@ END;
 
 	protected function changeField( $table, $field, $newtype, $default ) {
 		$fi = $this->db->fieldInfo( $table, $field );
-		if ( is_null( $fi ) ) {
+		if ( $fi === null ) {
 			$this->output( "...ERROR: expected column $table.$field to exist\n" );
 			exit( 1 );
 		}
@@ -919,7 +961,7 @@ END;
 		# # For a cache table, empty it if the field needs to be changed, because the old contents
 		# # may be corrupted.  If the column is already the desired type, refrain from purging.
 		$fi = $this->db->fieldInfo( $table, $field );
-		if ( is_null( $fi ) ) {
+		if ( $fi === null ) {
 			$this->output( "...ERROR: expected column $table.$field to exist\n" );
 			exit( 1 );
 		}
@@ -969,7 +1011,7 @@ END;
 
 	protected function changeNullableField( $table, $field, $null, $update = false ) {
 		$fi = $this->db->fieldInfo( $table, $field );
-		if ( is_null( $fi ) ) {
+		if ( $fi === null ) {
 			return;
 		}
 		if ( $fi->isNullable() ) {
@@ -1007,13 +1049,11 @@ END;
 	public function addPgExtIndex( $table, $index, $type ) {
 		if ( $this->db->indexExists( $table, $index ) ) {
 			$this->output( "...index '$index' on table '$table' already exists\n" );
+		} elseif ( preg_match( '/^\(/', $type ) ) {
+			$this->output( "Creating index '$index' on table '$table'\n" );
+			$this->db->query( "CREATE INDEX $index ON $table $type" );
 		} else {
-			if ( preg_match( '/^\(/', $type ) ) {
-				$this->output( "Creating index '$index' on table '$table'\n" );
-				$this->db->query( "CREATE INDEX $index ON $table $type" );
-			} else {
-				$this->applyPatch( $type, true, "Creating index '$index' on table '$table'" );
-			}
+			$this->applyPatch( $type, true, "Creating index '$index' on table '$table'" );
 		}
 	}
 
@@ -1059,7 +1099,7 @@ END;
 
 	protected function dropFkey( $table, $field ) {
 		$fi = $this->db->fieldInfo( $table, $field );
-		if ( is_null( $fi ) ) {
+		if ( $fi === null ) {
 			$this->output( "WARNING! Column '$table.$field' does not exist but it should! " .
 				"Please report this.\n" );
 			return;
@@ -1072,12 +1112,12 @@ END;
 			$this->db->query( $command );
 		} else {
 			$this->output( "...foreign key constraint on '$table.$field' already does not exist\n" );
-		};
+		}
 	}
 
 	protected function changeFkeyDeferrable( $table, $field, $clause ) {
 		$fi = $this->db->fieldInfo( $table, $field );
-		if ( is_null( $fi ) ) {
+		if ( $fi === null ) {
 			$this->output( "WARNING! Column '$table.$field' does not exist but it should! " .
 				"Please report this.\n" );
 
@@ -1236,7 +1276,7 @@ END;
 		if ( $this->updateRowExists( 'patch-textsearch_bug66650.sql' ) ) {
 			$this->output( "...T68650 already fixed or not applicable.\n" );
 			return;
-		};
+		}
 		$this->applyPatch( 'patch-textsearch_bug66650.sql', false,
 			'Rebuilding text search for T68650' );
 	}

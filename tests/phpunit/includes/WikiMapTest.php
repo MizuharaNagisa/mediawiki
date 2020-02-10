@@ -1,4 +1,5 @@
 <?php
+
 use Wikimedia\Rdbms\DatabaseDomain;
 
 /**
@@ -8,7 +9,7 @@ use Wikimedia\Rdbms\DatabaseDomain;
  */
 class WikiMapTest extends MediaWikiLangTestCase {
 
-	public function setUp() {
+	public function setUp() : void {
 		parent::setUp();
 
 		$conf = new SiteConfiguration();
@@ -235,23 +236,23 @@ class WikiMapTest extends MediaWikiLangTestCase {
 		$this->assertEquals( $wiki, WikiMap::getWikiFromUrl( $url ) );
 	}
 
-	public function provideGetWikiIdFromDomain() {
+	public function provideGetWikiIdFromDbDomain() {
 		return [
-			[ 'db-prefix', 'db-prefix' ],
+			[ 'db-prefix_', 'db-prefix_' ],
 			[ wfWikiID(), wfWikiID() ],
-			[ new DatabaseDomain( 'db-dash', null, 'prefix' ), 'db-dash-prefix' ],
+			[ new DatabaseDomain( 'db-dash', null, 'prefix_' ), 'db-dash-prefix_' ],
 			[ wfWikiID(), wfWikiID() ],
-			[ new DatabaseDomain( 'db-dash', null, 'prefix' ), 'db-dash-prefix' ],
-			[ new DatabaseDomain( 'db', 'mediawiki', 'prefix' ), 'db-prefix' ], // schema ignored
-			[ new DatabaseDomain( 'db', 'custom', 'prefix' ), 'db-custom-prefix' ],
+			[ new DatabaseDomain( 'db-dash', null, 'prefix_' ), 'db-dash-prefix_' ],
+			[ new DatabaseDomain( 'db', 'mediawiki', 'prefix_' ), 'db-prefix_' ], // schema ignored
+			[ new DatabaseDomain( 'db', 'custom', 'prefix_' ), 'db-custom-prefix_' ],
 		];
 	}
 
 	/**
-	 * @dataProvider provideGetWikiIdFromDomain
+	 * @dataProvider provideGetWikiIdFromDbDomain
 	 * @covers WikiMap::getWikiIdFromDbDomain()
 	 */
-	public function testGetWikiIdFromDomain( $domain, $wikiId ) {
+	public function testGetWikiIdFromDbDomain( $domain, $wikiId ) {
 		$this->assertEquals( $wikiId, WikiMap::getWikiIdFromDbDomain( $domain ) );
 	}
 
@@ -260,16 +261,19 @@ class WikiMapTest extends MediaWikiLangTestCase {
 	 * @covers WikiMap::getCurrentWikiDbDomain()
 	 */
 	public function testIsCurrentWikiDomain() {
-		$this->assertTrue( WikiMap::isCurrentWikiDbDomain( wfWikiID() ) );
+		$this->setMwGlobals( 'wgDBmwschema', 'mediawiki' );
 
-		$localDomain = DatabaseDomain::newFromId( wfWikiID() );
+		$localDomain = WikiMap::getCurrentWikiDbDomain()->getId();
+		$this->assertTrue( WikiMap::isCurrentWikiDbDomain( $localDomain ) );
+
+		$localDomain = DatabaseDomain::newFromId( $localDomain );
 		$domain1 = new DatabaseDomain(
 			$localDomain->getDatabase(), 'someschema', $localDomain->getTablePrefix() );
 		$domain2 = new DatabaseDomain(
 			$localDomain->getDatabase(), null, $localDomain->getTablePrefix() );
 
-		$this->assertTrue( WikiMap::isCurrentWikiDbDomain( $domain1 ), 'Schema ignored' );
-		$this->assertTrue( WikiMap::isCurrentWikiDbDomain( $domain2 ), 'Schema ignored' );
+		$this->assertFalse( WikiMap::isCurrentWikiDbDomain( $domain1 ), 'Schema not ignored' );
+		$this->assertFalse( WikiMap::isCurrentWikiDbDomain( $domain2 ), 'Null schema not ignored' );
 
 		$this->assertTrue( WikiMap::isCurrentWikiDbDomain( WikiMap::getCurrentWikiDbDomain() ) );
 	}
@@ -279,15 +283,15 @@ class WikiMapTest extends MediaWikiLangTestCase {
 			[ 'db', 'db', null, '' ],
 			[ 'db-schema-','db', 'schema', '' ],
 			[ 'db','db', 'mediawiki', '' ], // common b/c case
-			[ 'db-prefix', 'db', null, 'prefix' ],
-			[ 'db-schema-prefix', 'db', 'schema', 'prefix' ],
-			[ 'db-prefix', 'db', 'mediawiki', 'prefix' ], // common b/c case
+			[ 'db-prefix_', 'db', null, 'prefix_' ],
+			[ 'db-schema-prefix_', 'db', 'schema', 'prefix_' ],
+			[ 'db-prefix_', 'db', 'mediawiki', 'prefix_' ], // common b/c case
 			// Bad hyphen cases (best effort support)
 			[ 'db-stuff', 'db-stuff', null, '' ],
-			[ 'db-stuff-prefix', 'db-stuff', null, 'prefix' ],
+			[ 'db-stuff-prefix_', 'db-stuff', null, 'prefix_' ],
 			[ 'db-stuff-schema-', 'db-stuff', 'schema', '' ],
-			[ 'db-stuff-schema-prefix', 'db-stuff', 'schema', 'prefix' ],
-			[ 'db-stuff-prefix', 'db-stuff', 'mediawiki', 'prefix' ] // common b/c case
+			[ 'db-stuff-schema-prefix_', 'db-stuff', 'schema', 'prefix_' ],
+			[ 'db-stuff-prefix_', 'db-stuff', 'mediawiki', 'prefix_' ] // common b/c case
 		];
 	}
 

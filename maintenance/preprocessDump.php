@@ -25,6 +25,9 @@
  * @ingroup Maintenance
  */
 
+use MediaWiki\MediaWikiServices;
+use MediaWiki\Revision\RevisionRecord;
+
 require_once __DIR__ . '/dumpIterator.php';
 
 /**
@@ -38,17 +41,19 @@ class PreprocessDump extends DumpIterator {
 	/* Variables for dressing up as a parser */
 	public $mTitle = 'PreprocessDump';
 	public $mPPNodeCount = 0;
+	/** @var Preprocessor */
+	public $mPreprocessor;
 
 	public function getStripList() {
-		global $wgParser;
+		$parser = MediaWikiServices::getInstance()->getParser();
 
-		return $wgParser->getStripList();
+		return $parser->getStripList();
 	}
 
 	public function __construct() {
 		parent::__construct();
 		$this->addOption( 'cache', 'Use and populate the preprocessor cache.', false, false );
-		$this->addOption( 'preprocessor', 'Preprocessor to use.', false, false );
+		$this->addOption( 'preprocessor', 'This option is ignored', false, false );
 	}
 
 	public function getDbType() {
@@ -56,22 +61,15 @@ class PreprocessDump extends DumpIterator {
 	}
 
 	public function checkOptions() {
-		global $wgParser, $wgParserConf, $wgPreprocessorCacheThreshold;
+		global $wgPreprocessorCacheThreshold;
 
 		if ( !$this->hasOption( 'cache' ) ) {
 			$wgPreprocessorCacheThreshold = false;
 		}
 
-		if ( $this->hasOption( 'preprocessor' ) ) {
-			$name = $this->getOption( 'preprocessor' );
-		} elseif ( isset( $wgParserConf['preprocessorClass'] ) ) {
-			$name = $wgParserConf['preprocessorClass'];
-		} else {
-			$name = Preprocessor_DOM::class;
-		}
-
-		$wgParser->firstCallInit();
-		$this->mPreprocessor = new $name( $this );
+		$parser = MediaWikiServices::getInstance()->getParser();
+		$parser->firstCallInit();
+		$this->mPreprocessor = new Preprocessor_Hash( $parser );
 	}
 
 	/**
@@ -79,14 +77,16 @@ class PreprocessDump extends DumpIterator {
 	 * @param Revision $rev
 	 */
 	public function processRevision( $rev ) {
-		$content = $rev->getContent( Revision::RAW );
+		$content = $rev->getContent( RevisionRecord::RAW );
 
 		if ( $content->getModel() !== CONTENT_MODEL_WIKITEXT ) {
 			return;
 		}
+		/** @var WikitextContent $content */
+		'@phan-var WikitextContent $content';
 
 		try {
-			$this->mPreprocessor->preprocessToObj( strval( $content->getNativeData() ), 0 );
+			$this->mPreprocessor->preprocessToObj( strval( $content->getText() ), 0 );
 		} catch ( Exception $e ) {
 			$this->error( "Caught exception " . $e->getMessage() . " in "
 				. $rev->getTitle()->getPrefixedText() );

@@ -37,18 +37,18 @@ use MediaWiki\MediaWikiServices;
 class AjaxDispatcher {
 	/**
 	 * The way the request was made, either a 'get' or a 'post'
-	 * @var string $mode
+	 * @var string
 	 */
 	private $mode;
 
 	/**
 	 * Name of the requested handler
-	 * @var string $func_name
+	 * @var string
 	 */
 	private $func_name;
 
 	/** Arguments passed
-	 * @var array $args
+	 * @var array
 	 */
 	private $args;
 
@@ -61,7 +61,7 @@ class AjaxDispatcher {
 	 * Load up our object with user supplied data
 	 * @param Config $config
 	 */
-	function __construct( Config $config ) {
+	public function __construct( Config $config ) {
 		$this->config = $config;
 
 		$this->mode = "";
@@ -109,11 +109,12 @@ class AjaxDispatcher {
 	 * @suppress SecurityCheck-XSS
 	 * @param User $user
 	 */
-	function performAction( User $user ) {
+	public function performAction( User $user ) {
 		if ( empty( $this->mode ) ) {
 			return;
 		}
 
+		$permissionManager = MediaWikiServices::getInstance()->getPermissionManager();
 		if ( !in_array( $this->func_name, $this->config->get( 'AjaxExportList' ) ) ) {
 			wfDebug( __METHOD__ . ' Bad Request for unknown function ' . $this->func_name . "\n" );
 			wfHttpError(
@@ -121,7 +122,8 @@ class AjaxDispatcher {
 				'Bad Request',
 				"unknown function " . $this->func_name
 			);
-		} elseif ( !User::isEveryoneAllowed( 'read' ) && !$user->isAllowed( 'read' ) ) {
+		} elseif ( !$permissionManager->isEveryoneAllowed( 'read' ) &&
+				   !$permissionManager->userHasRight( $user, 'read' ) ) {
 			wfHttpError(
 				403,
 				'Forbidden',

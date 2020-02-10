@@ -42,6 +42,7 @@ class ApiDelete extends ApiBase {
 		$pageObj = $this->getTitleOrPageId( $params, 'fromdbmaster' );
 		$titleObj = $pageObj->getTitle();
 		if ( !$pageObj->exists() &&
+			// @phan-suppress-next-line PhanUndeclaredMethod
 			!( $titleObj->getNamespace() == NS_FILE && self::canDeleteFile( $pageObj->getFile() ) )
 		) {
 			$this->dieWithError( 'apierror-missingtitle' );
@@ -75,7 +76,7 @@ class ApiDelete extends ApiBase {
 			$status = self::delete( $pageObj, $user, $reason, $params['tags'] );
 		}
 
-		if ( !$status->isOk() ) {
+		if ( !$status->isOK() ) {
 			$this->dieStatus( $status );
 		}
 		$this->addMessagesFromStatus( $status, [ 'warning' ], [ 'delete-scheduled' ] );
@@ -117,7 +118,7 @@ class ApiDelete extends ApiBase {
 		$title = $page->getTitle();
 
 		// Auto-generate a summary, if necessary
-		if ( is_null( $reason ) ) {
+		if ( $reason === null ) {
 			// Need to pass a throwaway variable because generateReason expects
 			// a reference
 			$hasHistory = false;
@@ -156,6 +157,7 @@ class ApiDelete extends ApiBase {
 	) {
 		$title = $page->getTitle();
 
+		// @phan-suppress-next-line PhanUndeclaredMethod There's no right typehint for it
 		$file = $page->getFile();
 		if ( !self::canDeleteFile( $file ) ) {
 			return self::delete( $page, $user, $reason, $tags );
@@ -171,7 +173,7 @@ class ApiDelete extends ApiBase {
 			}
 		}
 
-		if ( is_null( $reason ) ) { // Log and RC don't like null reasons
+		if ( $reason === null ) { // Log and RC don't like null reasons
 			$reason = '';
 		}
 
