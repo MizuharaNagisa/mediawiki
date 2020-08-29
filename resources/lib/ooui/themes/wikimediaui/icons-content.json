@@ -61,6 +61,12 @@
 		"articleSearch": {
 			"file": "images/icons/articleSearch.svg"
 		},
+		"articlesSearch": {
+			"file": {
+				"ltr": "images/icons/articlesSearch-ltr.svg",
+				"rtl": "images/icons/articlesSearch-rtl.svg"
+			}
+		},
 		"articleRedirect": {
 			"file": {
 				"ltr": "images/icons/articleRedirect-ltr.svg",
@@ -100,6 +106,12 @@
 		},
 		"robot": {
 			"file": "images/icons/robot.svg"
+		},
+		"specialPages": {
+			"file": {
+				"ltr": "images/icons/specialPages-ltr.svg",
+				"rtl": "images/icons/specialPages-rtl.svg"
+			}
 		},
 		"tag": {
 			"file": {

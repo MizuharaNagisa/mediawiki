@@ -23,6 +23,8 @@
 use MediaWiki\Auth\AuthManager;
 use MediaWiki\Auth\TemporaryPasswordAuthenticationRequest;
 use MediaWiki\Config\ServiceOptions;
+use MediaWiki\HookContainer\HookContainer;
+use MediaWiki\HookContainer\HookRunner;
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Permissions\PermissionManager;
@@ -53,6 +55,12 @@ class PasswordReset implements LoggerAwareInterface {
 	/** @var ILoadBalancer */
 	protected $loadBalancer;
 
+	/** @var HookContainer */
+	private $hookContainer;
+
+	/** @var HookRunner */
+	private $hookRunner;
+
 	/**
 	 * In-process cache for isAllowed lookups, by username.
 	 * Contains a StatusValue object
@@ -60,6 +68,9 @@ class PasswordReset implements LoggerAwareInterface {
 	 */
 	private $permissionCache;
 
+	/**
+	 * @internal For use by ServiceWiring
+	 */
 	public const CONSTRUCTOR_OPTIONS = [
 		'AllowRequiringEmailForResets',
 		'EnableEmail',
@@ -74,29 +85,39 @@ class PasswordReset implements LoggerAwareInterface {
 	 * @param PermissionManager $permissionManager
 	 * @param ILoadBalancer|null $loadBalancer
 	 * @param LoggerInterface|null $logger
+	 * @param HookContainer|null $hookContainer
 	 */
 	public function __construct(
 		$config,
 		AuthManager $authManager,
 		PermissionManager $permissionManager,
 		ILoadBalancer $loadBalancer = null,
-		LoggerInterface $logger = null
+		LoggerInterface $logger = null,
+		HookContainer $hookContainer = null
 	) {
 		$this->config = $config;
 		$this->authManager = $authManager;
 		$this->permissionManager = $permissionManager;
 
 		if ( !$loadBalancer ) {
-			wfDeprecated( 'Not passing LoadBalancer to ' . __METHOD__, '1.34' );
+			wfDeprecatedMsg( 'Not passing LoadBalancer to ' . __METHOD__ .
+				' was deprecated in MediaWiki 1.34', '1.34' );
 			$loadBalancer = MediaWikiServices::getInstance()->getDBLoadBalancer();
 		}
 		$this->loadBalancer = $loadBalancer;
 
 		if ( !$logger ) {
-			wfDeprecated( 'Not passing LoggerInterface to ' . __METHOD__, '1.34' );
+			wfDeprecatedMsg( 'Not passing LoggerInterface to ' . __METHOD__ .
+				' was deprecated in MediaWiki 1.34', '1.34' );
 			$logger = LoggerFactory::getInstance( 'authentication' );
 		}
 		$this->logger = $logger;
+
+		if ( !$hookContainer ) {
+			$hookContainer = MediaWikiServices::getInstance()->getHookContainer();
+		}
+		$this->hookContainer = $hookContainer;
+		$this->hookRunner = new HookRunner( $hookContainer );
 
 		$this->permissionCache = new MapCacheLRU( 1 );
 	}
@@ -154,8 +175,7 @@ class PasswordReset implements LoggerAwareInterface {
 	 * @param User $performingUser The user that does the password reset
 	 * @param string|null $username The user whose password is reset
 	 * @param string|null $email Alternative way to specify the user
-	 * @return StatusValue Will contain the passwords as a username => password array if the
-	 *   $displayPassword flag was set
+	 * @return StatusValue
 	 * @throws LogicException When the user is not allowed to perform the action
 	 * @throws MWException On unexpected DB errors
 	 */
@@ -165,6 +185,19 @@ class PasswordReset implements LoggerAwareInterface {
 		if ( !$this->isAllowed( $performingUser )->isGood() ) {
 			throw new LogicException( 'User ' . $performingUser->getName()
 				. ' is not allowed to reset passwords' );
+		}
+
+		// Check against the rate limiter. If the $wgRateLimit is reached, we want to pretend
+		// that the request was good to avoid displaying an error message.
+		if ( $performingUser->pingLimiter( 'mailpassword' ) ) {
+			return StatusValue::newGood();
+		}
+
+		// We need to have a valid IP address for the hook 'User::mailPasswordInternal', but per T20347,
+		// we should send the user's name if they're logged in.
+		$ip = $performingUser->getRequest()->getIP();
+		if ( !$ip ) {
+			return StatusValue::newFatal( 'badipaddress' );
 		}
 
 		$username = $username ?? '';
@@ -177,7 +210,8 @@ class PasswordReset implements LoggerAwareInterface {
 			$users = [ $this->lookupUser( $username ) ];
 		} elseif ( $resetRoutes['email'] && $email ) {
 			if ( !Sanitizer::validateEmail( $email ) ) {
-				return StatusValue::newFatal( 'passwordreset-invalidemail' );
+				// Only email was supplied but not valid: pretend everything's fine.
+				return StatusValue::newGood();
 			}
 			// Only email was provided
 			$method = 'email';
@@ -196,6 +230,11 @@ class PasswordReset implements LoggerAwareInterface {
 			return StatusValue::newFatal( 'passwordreset-nodata' );
 		}
 
+		// If the username is not valid, tell the user.
+		if ( $username && !User::getCanonicalName( $username ) ) {
+			return StatusValue::newFatal( 'noname' );
+		}
+
 		// Check for hooks (captcha etc), and allow them to modify the users list
 		$error = [];
 		$data = [
@@ -203,56 +242,43 @@ class PasswordReset implements LoggerAwareInterface {
 			// Email gets set to null for backward compatibility
 			'Email' => $method === 'email' ? $email : null,
 		];
-		if ( !Hooks::run( 'SpecialPasswordResetOnSubmit', [ &$users, $data, &$error ] ) ) {
+
+		// Recreate the $users array with its values so that we reset the numeric keys since
+		// the key '0' might have been unset from $users array. 'SpecialPasswordResetOnSubmit'
+		// hook assumes that index '0' is defined if $users is not empty.
+		$users = array_values( $users );
+
+		if ( !$this->hookRunner->onSpecialPasswordResetOnSubmit( $users, $data, $error ) ) {
 			return StatusValue::newFatal( Message::newFromSpecifier( $error ) );
 		}
-		// Use 'reset' since users[ 0 ] might not exist because users with 'requireemail' option
-		// turned on might have been unset from users array
+
+		// Get the first element in $users by using `reset` function just in case $users is changed
+		// in 'SpecialPasswordResetOnSubmit' hook.
 		$firstUser = reset( $users ) ?? null;
+
 		$requireEmail = $this->config->get( 'AllowRequiringEmailForResets' )
 			&& $method === 'username'
 			&& $firstUser
 			&& $firstUser->getBoolOption( 'requireemail' );
-		if ( $requireEmail ) {
-			if ( $email === '' ) {
-				return StatusValue::newFatal( 'passwordreset-username-email-required' );
-			}
-
-			if ( !Sanitizer::validateEmail( $email ) ) {
-				return StatusValue::newFatal( 'passwordreset-invalidemail' );
-			}
-		}
-
-		// Check against the rate limiter
-		if ( $performingUser->pingLimiter( 'mailpassword' ) ) {
-			return StatusValue::newFatal( 'actionthrottledtext' );
+		if ( $requireEmail && ( $email === '' || !Sanitizer::validateEmail( $email ) ) ) {
+			// Email is required, and not supplied or not valid: pretend everything's fine.
+			return StatusValue::newGood();
 		}
 
 		if ( !$users ) {
 			if ( $method === 'email' ) {
 				// Don't reveal whether or not an email address is in use
-				return StatusValue::newGood( [] );
+				return StatusValue::newGood();
 			} else {
 				return StatusValue::newFatal( 'noname' );
 			}
 		}
 
-		// If the username is not valid, tell the user.
-		if ( $username && !User::getCanonicalName( $username ) ) {
-			return StatusValue::newFatal( 'noname' );
-		}
-
-		// If the username doesn't exist, don't tell the user.
-		// This is not to avoid disclosure, as this information is available elsewhere,
-		// but it simplifies the password reset UX. T238961.
-		if ( !$firstUser instanceof User || !$firstUser->getId() ) {
-			return StatusValue::newGood();
-		}
-
-		// The user doesn't have an email address, but pretend everything's fine to avoid
-		// disclosing this fact. Note that all the users will have the same email address (or none),
+		// If the user doesn't exist, or if the user doesn't have an email address,
+		// don't disclose the information. We want to pretend everything is ok per T238961.
+		// Note that all the users will have the same email address (or none),
 		// so there's no need to check more than the first.
-		if ( !$firstUser->getEmail() ) {
+		if ( !$firstUser instanceof User || !$firstUser->getId() || !$firstUser->getEmail() ) {
 			return StatusValue::newGood();
 		}
 
@@ -261,14 +287,7 @@ class PasswordReset implements LoggerAwareInterface {
 			return StatusValue::newGood();
 		}
 
-		// We need to have a valid IP address for the hook, but per T20347, we should
-		// send the user's name if they're logged in.
-		$ip = $performingUser->getRequest()->getIP();
-		if ( !$ip ) {
-			return StatusValue::newFatal( 'badipaddress' );
-		}
-
-		Hooks::run( 'User::mailPasswordInternal', [ &$performingUser, &$ip, &$firstUser ] );
+		$this->hookRunner->onUser__mailPasswordInternal( $performingUser, $ip, $firstUser );
 
 		$result = StatusValue::newGood();
 		$reqs = [];
@@ -277,7 +296,15 @@ class PasswordReset implements LoggerAwareInterface {
 			$req->username = $user->getName();
 			$req->mailpassword = true;
 			$req->caller = $performingUser->getName();
+
 			$status = $this->authManager->allowsAuthenticationDataChange( $req, true );
+			// If status is good and the value is 'throttled-mailpassword', we want to pretend
+			// that the request was good to avoid displaying an error message and disclose
+			// if a reset password was previously sent.
+			if ( $status->isGood() && $status->getValue() === 'throttled-mailpassword' ) {
+				return StatusValue::newGood();
+			}
+
 			if ( $status->isGood() && $status->getValue() !== 'ignored' ) {
 				$reqs[] = $req;
 			} elseif ( $result->isGood() ) {
@@ -295,7 +322,6 @@ class PasswordReset implements LoggerAwareInterface {
 			'requestingUser' => $performingUser->getName(),
 			'targetUsername' => $username,
 			'targetEmail' => $email,
-			'actualUser' => $firstUser->getName(),
 		];
 
 		if ( !$result->isGood() ) {
@@ -306,19 +332,12 @@ class PasswordReset implements LoggerAwareInterface {
 			return $result;
 		}
 
-		$passwords = [];
-		foreach ( $reqs as $req ) {
-			// This is adding a new temporary password, not intentionally changing anything
-			// (even though it might technically invalidate an old temporary password).
-			$this->authManager->changeAuthenticationData( $req, /* $isAddition */ true );
-		}
-
-		$this->logger->info(
-			"{requestingUser} did password reset of {actualUser}",
-			$logContext
+		DeferredUpdates::addUpdate(
+			new SendPasswordResetEmailUpdate( $this->authManager, $reqs, $logContext ),
+			DeferredUpdates::POSTSEND
 		);
 
-		return StatusValue::newGood( $passwords );
+		return StatusValue::newGood();
 	}
 
 	/**

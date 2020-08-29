@@ -16,7 +16,7 @@ class ApiUnblockTest extends ApiTestCase {
 	/** @var User */
 	private $blockee;
 
-	public function setUp() : void {
+	protected function setUp() : void {
 		parent::setUp();
 
 		$this->tablesUsed = array_merge(
@@ -45,7 +45,7 @@ class ApiUnblockTest extends ApiTestCase {
 		if ( array_key_exists( 'userid', $params ) ) {
 			return DatabaseBlock::newFromTarget( User::newFromId( $params['userid'] ) );
 		}
-		return DatabaseBlock::newFromId( $params['id'] );
+		return DatabaseBlock::newFromID( $params['id'] );
 	}
 
 	/**
@@ -154,7 +154,7 @@ class ApiUnblockTest extends ApiTestCase {
 	}
 
 	public function testUnblockNonexistentBlock() {
-		$this->setExpectedAPIException( [ 'ipb_cant_unblock', $this->blocker->getName() ] );
+		$this->setExpectedApiException( [ 'ipb_cant_unblock', $this->blocker->getName() ] );
 
 		$this->doUnblock( [ 'user' => $this->blocker ] );
 	}

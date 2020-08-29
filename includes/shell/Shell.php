@@ -139,7 +139,7 @@ class Shell {
 
 		if ( $disabled === null ) {
 			if ( !function_exists( 'proc_open' ) ) {
-				wfDebug( "proc_open() is disabled\n" );
+				wfDebug( "proc_open() is disabled" );
 				$disabled = true;
 			} else {
 				$disabled = false;
@@ -239,7 +239,7 @@ class Shell {
 		global $wgPhpCli;
 		// Give site config file a chance to run the script in a wrapper.
 		// The caller may likely want to call wfBasename() on $script.
-		Hooks::run( 'wfShellWikiCmd', [ &$script, &$parameters, &$options ] );
+		Hooks::runner()->onWfShellWikiCmd( $script, $parameters, $options );
 		$cmd = [ $options['php'] ?? $wgPhpCli ];
 		if ( isset( $options['wrapper'] ) ) {
 			$cmd[] = $options['wrapper'];

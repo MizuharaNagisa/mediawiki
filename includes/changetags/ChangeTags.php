@@ -21,6 +21,7 @@
  * @ingroup Change tagging
  */
 
+use MediaWiki\HookContainer\HookRunner;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Storage\NameTableAccessException;
 use Wikimedia\Rdbms\Database;
@@ -32,7 +33,7 @@ class ChangeTags {
 	 * the bigdelete user right
 	 * @todo Use the job queue for tag deletion to avoid this restriction
 	 */
-	const MAX_DELETE_USES = 5000;
+	private const MAX_DELETE_USES = 5000;
 
 	/**
 	 * Flag for canDeleteTag().
@@ -51,7 +52,20 @@ class ChangeTags {
 		'mw-replace',
 		'mw-rollback',
 		'mw-undo',
+		'mw-manual-revert',
 	];
+
+	/**
+	 * If true, this class attempts to avoid reopening database tables within the same query,
+	 * to avoid the "Can't reopen table" error when operating on temporary tables while running
+	 * tests.
+	 *
+	 * @see https://phabricator.wikimedia.org/T256006
+	 * @see 1.35
+	 *
+	 * @var bool
+	 */
+	public static $avoidReopeningTablesForTesting = false;
 
 	/**
 	 * Loads defined core tags, checks for invalid types (if not array),
@@ -131,7 +145,7 @@ class ChangeTags {
 
 		$markers = $context->msg( 'tag-list-wrapper' )
 			->numParams( count( $displayTags ) )
-			->rawParams( implode( ' ',  $displayTags ) )
+			->rawParams( implode( ' ', $displayTags ) )
 			->parse();
 		$markers = Xml::tags( 'span', [ 'class' => 'mw-tag-markers' ], $markers );
 
@@ -222,10 +236,12 @@ class ChangeTags {
 	 * @param string $tag Tag name.
 	 * @param int $length Maximum length of truncated message, including ellipsis.
 	 * @param IContextSource $context
+	 * @deprecated since 1.35
 	 *
 	 * @return string Truncated long tag description.
 	 */
 	public static function truncateTagDescription( $tag, $length, IContextSource $context ) {
+		wfDeprecated( __METHOD__, '1.35' );
 		// FIXME: Make this accept MessageLocalizer and Language instead of IContextSource
 
 		$originalDesc = self::tagLongDescriptionMessage( $tag, $context );
@@ -395,7 +411,7 @@ class ChangeTags {
 					[ 'ctd_name' => $tagsToAdd ],
 					$fname
 				);
-			} );
+			}, $fname );
 
 			$tagsRows = [];
 			foreach ( $tagsToAdd as $tag ) {
@@ -446,13 +462,13 @@ class ChangeTags {
 							[ 'ctd_name' => $tag, 'ctd_count' => 0, 'ctd_user_defined' => 0 ],
 							$fname
 						);
-					} );
+					}, $fname );
 				}
 			}
 		}
 
-		Hooks::run( 'ChangeTagsAfterUpdateTags', [ $tagsToAdd, $tagsToRemove, $prevTags,
-			$rc_id, $rev_id, $log_id, $params, $rc, $user ] );
+		Hooks::runner()->onChangeTagsAfterUpdateTags( $tagsToAdd, $tagsToRemove, $prevTags,
+			$rc_id, $rev_id, $log_id, $params, $rc, $user );
 
 		return [ $tagsToAdd, $tagsToRemove, $prevTags ];
 	}
@@ -538,7 +554,7 @@ class ChangeTags {
 
 		// to be applied, a tag has to be explicitly defined
 		$allowedTags = self::listExplicitlyDefinedTags();
-		Hooks::run( 'ChangeTagsAllowedAdd', [ &$allowedTags, $tags, $user ] );
+		Hooks::runner()->onChangeTagsAllowedAdd( $allowedTags, $tags, $user );
 		$disallowedTags = array_diff( $tags, $allowedTags );
 		if ( $disallowedTags ) {
 			return self::restrictedTagError( 'tags-apply-not-allowed-one',
@@ -716,9 +732,11 @@ class ChangeTags {
 
 		// find the appropriate target page
 		if ( $rev_id ) {
-			$rev = Revision::newFromId( $rev_id );
-			if ( $rev ) {
-				$logEntry->setTarget( $rev->getTitle() );
+			$revisionRecord = MediaWikiServices::getInstance()
+				->getRevisionLookup()
+				->getRevisionById( $rev_id );
+			if ( $revisionRecord ) {
+				$logEntry->setTarget( $revisionRecord->getPageAsLinkTarget() );
 			}
 		} elseif ( $log_id ) {
 			// This function is from revision deletion logic and has nothing to do with
@@ -806,8 +824,33 @@ class ChangeTags {
 			// Somebody wants to filter on a tag.
 			// Add an INNER JOIN on change_tag
 
-			$tables[] = 'change_tag';
-			$join_conds['change_tag'] = [ 'JOIN', $join_cond ];
+			$tagTable = 'change_tag';
+			if ( self::$avoidReopeningTablesForTesting && defined( 'MW_PHPUNIT_TEST' ) ) {
+				$db = wfGetDB( DB_REPLICA );
+
+				if ( $db->getType() === 'mysql' ) {
+					// When filtering by tag, we are using the change_tag table twice:
+					// Once in a join for filtering, and once in a sub-query to list all
+					// tags for each revision. This does not work with temporary tables
+					// on some versions of MySQL, which causes phpunit tests to fail.
+					// As a hacky workaround, we copy the temporary table, and join
+					// against the copy. It is acknowledge that this is quite horrific.
+					// Discuss at T256006.
+
+					$tagTable = 'change_tag_for_display_query';
+					$db->query(
+						'CREATE TEMPORARY TABLE IF NOT EXISTS ' . $db->tableName( $tagTable )
+						. ' LIKE ' . $db->tableName( 'change_tag' )
+					);
+					$db->query(
+						'INSERT IGNORE INTO ' . $db->tableName( $tagTable )
+						. ' SELECT * FROM ' . $db->tableName( 'change_tag' )
+					);
+				}
+			}
+
+			$tables[] = $tagTable;
+			$join_conds[$tagTable] = [ 'JOIN', $join_cond ];
 			$filterTagIds = [];
 			$changeTagDefStore = MediaWikiServices::getInstance()->getChangeTagDefStore();
 			foreach ( (array)$filter_tag as $filterTagName ) {
@@ -935,7 +978,7 @@ class ChangeTags {
 		$dbw->upsert(
 			'change_tag_def',
 			$tagDef,
-			[ 'ctd_name' ],
+			'ctd_name',
 			[ 'ctd_user_defined' => 1 ],
 			__METHOD__
 		);
@@ -1217,7 +1260,7 @@ class ChangeTags {
 
 		// check with hooks
 		$canCreateResult = Status::newGood();
-		Hooks::run( 'ChangeTagCanCreate', [ $tag, $user, &$canCreateResult ] );
+		Hooks::runner()->onChangeTagCanCreate( $tag, $user, $canCreateResult );
 		return $canCreateResult;
 	}
 
@@ -1289,7 +1332,7 @@ class ChangeTags {
 
 		// give extensions a chance
 		$status = Status::newGood();
-		Hooks::run( 'ChangeTagAfterDelete', [ $tag, &$status ] );
+		Hooks::runner()->onChangeTagAfterDelete( $tag, $status );
 		// let's not allow error results, as the actual tag deletion succeeded
 		if ( !$status->isOK() ) {
 			wfDebug( 'ChangeTagAfterDelete error condition downgraded to warning' );
@@ -1348,7 +1391,7 @@ class ChangeTags {
 			$status = Status::newGood();
 		}
 
-		Hooks::run( 'ChangeTagCanDelete', [ $tag, $user, &$status ] );
+		Hooks::runner()->onChangeTagCanDelete( $tag, $user, $status );
 		return $status;
 	}
 
@@ -1406,18 +1449,20 @@ class ChangeTags {
 	public static function listSoftwareActivatedTags() {
 		// core active tags
 		$tags = self::getSoftwareTags();
-		if ( !Hooks::isRegistered( 'ChangeTagsListActive' ) ) {
+		$hookContainer = MediaWikiServices::getInstance()->getHookContainer();
+		if ( !$hookContainer->isRegistered( 'ChangeTagsListActive' ) ) {
 			return $tags;
 		}
+		$hookRunner = new HookRunner( $hookContainer );
 		$cache = MediaWikiServices::getInstance()->getMainWANObjectCache();
 		return $cache->getWithSetCallback(
 			$cache->makeKey( 'active-tags' ),
 			WANObjectCache::TTL_MINUTE * 5,
-			function ( $oldValue, &$ttl, array &$setOpts ) use ( $tags ) {
+			function ( $oldValue, &$ttl, array &$setOpts ) use ( $tags, $hookRunner ) {
 				$setOpts += Database::getCacheSetOptions( wfGetDB( DB_REPLICA ) );
 
 				// Ask extensions which tags they consider active
-				Hooks::run( 'ChangeTagsListActive', [ &$tags ] );
+				$hookRunner->onChangeTagsListActive( $tags );
 				return $tags;
 			},
 			[
@@ -1489,17 +1534,19 @@ class ChangeTags {
 	public static function listSoftwareDefinedTags() {
 		// core defined tags
 		$tags = self::getSoftwareTags( true );
-		if ( !Hooks::isRegistered( 'ListDefinedTags' ) ) {
+		$hookContainer = MediaWikiServices::getInstance()->getHookContainer();
+		if ( !$hookContainer->isRegistered( 'ListDefinedTags' ) ) {
 			return $tags;
 		}
+		$hookRunner = new HookRunner( $hookContainer );
 		$cache = MediaWikiServices::getInstance()->getMainWANObjectCache();
 		return $cache->getWithSetCallback(
 			$cache->makeKey( 'valid-tags-hook' ),
 			WANObjectCache::TTL_MINUTE * 5,
-			function ( $oldValue, &$ttl, array &$setOpts ) use ( $tags ) {
+			function ( $oldValue, &$ttl, array &$setOpts ) use ( $tags, $hookRunner ) {
 				$setOpts += Database::getCacheSetOptions( wfGetDB( DB_REPLICA ) );
 
-				Hooks::run( 'ListDefinedTags', [ &$tags ] );
+				$hookRunner->onListDefinedTags( $tags );
 				return array_filter( array_unique( $tags ) );
 			},
 			[

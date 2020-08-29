@@ -70,7 +70,7 @@ class FileOpPerfTest extends Maintenance {
 			return;
 		}
 
-		while ( $dir && ( $file = readdir( $dir ) ) !== false ) {
+		while ( ( $file = readdir( $dir ) ) !== false ) {
 			if ( $file[0] != '.' ) {
 				$this->output( "Using '$dirname/$file' in operations.\n" );
 				$dst = $baseDir . '/' . wfBaseName( $file );
@@ -84,7 +84,7 @@ class FileOpPerfTest extends Maintenance {
 				$ops5[] = [ 'op' => 'delete', 'src' => "$dst-2" ];
 			}
 			if ( count( $ops1 ) >= $this->getOption( 'maxfiles', 20 ) ) {
-				break; // enough
+				break;
 			}
 		}
 		closedir( $dir );

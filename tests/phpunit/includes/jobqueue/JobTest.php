@@ -3,7 +3,7 @@
 /**
  * @author Addshore
  */
-class JobTest extends MediaWikiTestCase {
+class JobTest extends MediaWikiIntegrationTestCase {
 
 	/**
 	 * @dataProvider provideTestToString
@@ -44,7 +44,7 @@ class JobTest extends MediaWikiTestCase {
 				'someCommand Special: 0=val1 1=val2 ' . $requestId
 			],
 			[
-				$this->getMockJob( [ new stdClass() ] ),
+				$this->getMockJob( [ (object)[] ] ),
 				'someCommand Special: 0=object(stdClass) ' . $requestId
 			],
 			[

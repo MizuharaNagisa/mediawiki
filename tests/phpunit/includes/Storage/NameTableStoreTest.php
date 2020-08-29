@@ -8,7 +8,7 @@ use HashBagOStuff;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Storage\NameTableAccessException;
 use MediaWiki\Storage\NameTableStore;
-use MediaWikiTestCase;
+use MediaWikiIntegrationTestCase;
 use PHPUnit\Framework\MockObject\MockObject;
 use Psr\Log\NullLogger;
 use RuntimeException;
@@ -23,9 +23,9 @@ use Wikimedia\TestingAccessWrapper;
  * @group Database
  * @covers \MediaWiki\Storage\NameTableStore
  */
-class NameTableStoreTest extends MediaWikiTestCase {
+class NameTableStoreTest extends MediaWikiIntegrationTestCase {
 
-	public function setUp() : void {
+	protected function setUp() : void {
 		$this->tablesUsed[] = 'slot_roles';
 		parent::setUp();
 	}
@@ -90,7 +90,7 @@ class NameTableStoreTest extends MediaWikiTestCase {
 			$mock->expects( is_int( $count ) ? $this->exactly( $count ) : $this->any() )
 				->method( $method )
 				->willReturnCallback( function ( ...$args ) use ( $method ) {
-					return call_user_func_array( [ $this->db, $method ], $args );
+					return $this->db->$method( ...$args );
 				} );
 		}
 		return $mock;
@@ -424,6 +424,9 @@ class NameTableStoreTest extends MediaWikiTestCase {
 	}
 
 	public function testTransactionRollbackWithInterference() {
+		// FIXME: https://phabricator.wikimedia.org/T259085
+		$this->markTestSkippedIfDbType( 'sqlite' );
+
 		$lb = MediaWikiServices::getInstance()->getDBLoadBalancer();
 
 		// Two instances hitting the real database using separate caches.

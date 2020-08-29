@@ -1,8 +1,8 @@
 {
 	"@metadata": {
 		"authors": [
-			"Grkn gll",
-			"BaRaN6161 TURK"
+			"BaRaN6161 TURK",
+			"Grkn gll"
 		]
 	},
 	"rest-prefix-mismatch": "İstenen yol ($1), REST API kök yolunun içinde değildi ($2)",
@@ -10,7 +10,10 @@
 	"rest-no-match": "İstenen göreceli yol ($1) bilinen herhangi bir işleyiciyle eşleşmedi",
 	"rest-nonexistent-title": "Belirtilen başlık ($1) mevcut değil",
 	"rest-nonexistent-title-revision": "Belirtilen revizyon ($1) belirtilen sayfa için mevcut değil ($2)",
-	"rest-nonexistent-revision": "İstenen revizyon ($1) mevcut değil.",
+	"rest-nonexistent-revision": "İstenen revizyon ($1) mevcut değil",
+	"rest-nonexistent-user": "Belirtilen kullanıcı ($1) mevcut değil",
+	"rest-invalid-user": "Belirtilen kullanıcı adı ($1) geçersiz",
+	"rest-permission-denied-anon": "Anonim kullanıcı tarafından erişilemiyor",
 	"rest-permission-denied-title": "Kullanıcının başlık okuma hakkı yok ($1)",
 	"rest-permission-denied-revision": "Kullanıcının istenen revizyona erişimi yok ($1).",
 	"rest-pagehistory-incompatible-params": "\"older_than\" ve \"newer_than\" parametrelerinin her ikisi de belirtilemez",
@@ -29,5 +32,12 @@
 	"rest-page-source-type-error": "İstenen sayfa kaynağının içerik türü desteklenmiyor",
 	"rest-no-revision": "$1 başlık için düzeltme alınamadı",
 	"rest-media-too-many-links": "$1 başlığında çok fazla medya bağlantısı bulundu ($2 izin verilir)",
-	"rest-html-backend-error": "Parsoid HTML getirilemedi"
+	"rest-html-backend-error": "Parsoid HTML getirilemedi",
+	"rest-bad-json-body": "Bozuk istek gövdesi, bir JSON nesnesi olmalıdır.",
+	"rest-json-body-parse-error": "İstek gövdesi JSON olarak ayrıştırılamadı: $1",
+	"rest-missing-body-field": "İstek gövdesinde \"$1\" zorunlu alanı eksik.",
+	"rest-bad-content-model": "Kötü içerik modeli: $1",
+	"rest-update-cannot-create-page": "\"$1\" sayfası zaten mevcut olduğundan oluşturulamıyor. Mevcut sayfayı güncellemek için, istek gövdesinde \"en son\" tuşu altındaki yapıda temel düzeltme kimliğini girin.",
+	"rest-extraneous-csrf-token": "Yabancı CSRF jetonu bulundu. CSRF saldırılarına karşı güvenli olan OAuth gibi kimlik doğrulama mekanizmaları kullanılırken CSRF belirteçleri kullanılmamalıdır.",
+	"rest-cannot-load-file": "\"$1\" başlıklı dosya yüklenemiyor."
 }

@@ -202,32 +202,32 @@ trait LanguageNameUtilsTestTrait {
 		$this->setTemporaryHook( 'LanguageGetTranslatedLanguageNames',
 			function ( &$names, $inLanguage ) {
 				switch ( $inLanguage ) {
-				case 'de':
-					$names = [
-						'de' => 'Deutsch',
-						'en' => 'Englisch',
-						'fr' => 'Französisch',
-					];
-					break;
+					case 'de':
+						$names = [
+							'de' => 'Deutsch',
+							'en' => 'Englisch',
+							'fr' => 'Französisch',
+						];
+						break;
 
-				case 'en':
-					$names = [
-						'de' => 'German',
-						'en' => 'English',
-						'fr' => 'French',
-						'sqsqsqsq' => '!!?!',
-						'bat-smg' => 'Samogitian',
-					];
-					break;
+					case 'en':
+						$names = [
+							'de' => 'German',
+							'en' => 'English',
+							'fr' => 'French',
+							'sqsqsqsq' => '!!?!',
+							'bat-smg' => 'Samogitian',
+						];
+						break;
 
-				case 'fr':
-					$names = [
-						'de' => 'allemand',
-						'en' => 'anglais',
-						// Deliberate mistake (no cedilla)
-						'fr' => 'francais',
-					];
-					break;
+					case 'fr':
+						$names = [
+							'de' => 'allemand',
+							'en' => 'anglais',
+							// Deliberate mistake (no cedilla)
+							'fr' => 'francais',
+						];
+						break;
 				}
 			}
 		);
@@ -274,7 +274,7 @@ trait LanguageNameUtilsTestTrait {
 		);
 	}
 
-	public static function provideGetLanguageNames_ExtraLanguageNames() {
+	public function provideGetLanguageNames_ExtraLanguageNames() {
 		return [
 			'Simple extra language name' => [ '!!?!', 'sqsqsqsq' ],
 			'Extra language is defined' => [ '!!?!', 'sqsqsqsq', AUTONYMS, DEFINED ],
@@ -325,7 +325,7 @@ trait LanguageNameUtilsTestTrait {
 		$this->assertSame( $sortedNames, $names );
 	}
 
-	public static function provideGetLanguageNames_sorted() {
+	public function provideGetLanguageNames_sorted() {
 		return [
 			[],
 			[ AUTONYMS ],
@@ -375,14 +375,14 @@ trait LanguageNameUtilsTestTrait {
 		$this->setTemporaryHook( 'LanguageGetTranslatedLanguageNames',
 			function ( &$names, $inLanguage ) {
 				switch ( $inLanguage ) {
-				case 'fr':
-					$names = [ 'en-x-piglatin' => 'latin de cochons' ];
-					break;
+					case 'fr':
+						$names = [ 'en-x-piglatin' => 'latin de cochons' ];
+						break;
 
-				case 'en-x-piglatin':
-					// Deliberately lowercase
-					$names = [ 'en-x-piglatin' => 'igpay atinlay' ];
-					break;
+					case 'en-x-piglatin':
+						// Deliberately lowercase
+						$names = [ 'en-x-piglatin' => 'igpay atinlay' ];
+						break;
 				}
 			}
 		);
@@ -391,7 +391,7 @@ trait LanguageNameUtilsTestTrait {
 			[ 'UsePigLatinVariant' => true ], $expected, 'en-x-piglatin', ...$otherArgs );
 	}
 
-	public static function provideGetLanguageNames_pigLatin() {
+	public function provideGetLanguageNames_pigLatin() {
 		return [
 			'Simple test' => [ 'Igpay Atinlay' ],
 			'Not supported' => [ '', AUTONYMS, SUPPORTED ],
@@ -423,7 +423,7 @@ trait LanguageNameUtilsTestTrait {
 		);
 	}
 
-	abstract protected static function getFileName( ...$args );
+	abstract protected function getFileName( ...$args );
 
 	/**
 	 * @dataProvider provideGetFileName
@@ -437,7 +437,7 @@ trait LanguageNameUtilsTestTrait {
 		$this->assertSame( $expected, $this->getFileName( ...$args ) );
 	}
 
-	public static function provideGetFileName() {
+	public function provideGetFileName() {
 		return [
 			'Simple case' => [ 'MessagesXx.php', 'Messages', 'xx' ],
 			'With extension' => [ 'MessagesXx.ext', 'Messages', 'xx', '.ext' ],
@@ -461,7 +461,7 @@ trait LanguageNameUtilsTestTrait {
 		$this->assertSame( $expected, $this->getMessagesFileName( $code ) );
 	}
 
-	public static function provideGetMessagesFileName() {
+	public function provideGetMessagesFileName() {
 		global $IP;
 		return [
 			'Simple case' => [ 'en', "$IP/languages/messages/MessagesEn.php" ],
@@ -529,7 +529,7 @@ trait LanguageNameUtilsTestTrait {
 		$callback( $code );
 	}
 
-	public static function provideExceptionFromInvalidCode() {
+	public function provideExceptionFromInvalidCode() {
 		$ret = [];
 		foreach ( static::provideIsValidBuiltInCode() as $desc => list( $code, $valid ) ) {
 			if ( $valid ) {
@@ -540,16 +540,16 @@ trait LanguageNameUtilsTestTrait {
 			// For getFileName, we define an anonymous function because of the extra first param
 			$ret["getFileName: $desc"] = [
 				function ( $code ) {
-					return static::getFileName( 'Messages', $code );
+					return $this->getFileName( 'Messages', $code );
 				},
 				$code
 			];
 
 			$ret["getMessagesFileName: $desc"] =
-				[ [ static::class, 'getMessagesFileName' ], $code ];
+				[ [ $this, 'getMessagesFileName' ], $code ];
 
 			$ret["getJsonMessagesFileName: $desc"] =
-				[ [ static::class, 'getJsonMessagesFileName' ], $code ];
+				[ [ $this, 'getJsonMessagesFileName' ], $code ];
 		}
 		return $ret;
 	}

@@ -1,8 +1,10 @@
+'use strict';
+
 const { action, assert, REST, utils } = require( 'api-testing' );
 
 describe( 'Page HTML Bare', () => {
 	const page = utils.title( 'PageHTMLBare ' );
-	const client = new REST( 'rest.php/coredev/v0' );
+	const client = new REST();
 	const anon = action.getAnon();
 
 	before( async () => {
@@ -37,7 +39,7 @@ describe( 'Page HTML Bare', () => {
 
 			assert.containsAllKeys( postEditHeaders, [ 'etag' ] );
 			assert.deepEqual( postEditHeaders[ 'last-modified' ], postEditDate.toGMTString() );
-			assert.match( postEditHeaders[ 'cache-control' ], /^maxage=\d/ );
+			assert.match( postEditHeaders[ 'cache-control' ], /^max-age=\d/ );
 			assert.strictEqual( isNaN( preEditDate.getTime() ), false );
 			assert.strictEqual( isNaN( postEditDate.getTime() ), false );
 			assert.notStrictEqual( preEditDate, postEditDate );

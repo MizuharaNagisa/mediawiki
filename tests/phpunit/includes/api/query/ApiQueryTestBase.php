@@ -27,7 +27,7 @@ use SebastianBergmann\Comparator\ComparisonFailure;
  */
 abstract class ApiQueryTestBase extends ApiTestCase {
 
-	const PARAM_ASSERT = <<<STR
+	private const PARAM_ASSERT = <<<STR
 Each parameter must be an array of two elements,
 first - an array of params to the API call,
 and the second array - expected results as returned by the API
@@ -58,7 +58,7 @@ STR;
 	 */
 	private function validateRequestExpectedPair( $v ) {
 		$this->assertIsArray( $v, self::PARAM_ASSERT );
-		$this->assertEquals( 2, count( $v ), self::PARAM_ASSERT );
+		$this->assertCount( 2, $v, self::PARAM_ASSERT );
 		$this->assertArrayHasKey( 0, $v, self::PARAM_ASSERT );
 		$this->assertArrayHasKey( 1, $v, self::PARAM_ASSERT );
 		$this->assertIsArray( $v[0], self::PARAM_ASSERT );

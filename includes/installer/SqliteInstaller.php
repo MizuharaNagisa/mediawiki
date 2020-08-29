@@ -55,7 +55,6 @@ class SqliteInstaller extends DatabaseInstaller {
 	}
 
 	/**
-	 *
 	 * @return Status
 	 */
 	public function checkPrerequisites() {
@@ -269,9 +268,9 @@ class SqliteInstaller extends DatabaseInstaller {
 		PRIMARY KEY (lc_lang, lc_key)
 	);
 EOT;
-			$conn->query( $sql );
-			$conn->query( "PRAGMA journal_mode=WAL" ); // this is permanent
-			$conn->close();
+			$conn->query( $sql, __METHOD__ );
+			$conn->query( "PRAGMA journal_mode=WAL", __METHOD__ ); // this is permanent
+			$conn->close( __METHOD__ );
 		} catch ( DBConnectionError $e ) {
 			return Status::newFatal( 'config-sqlite-connection-error', $e->getMessage() );
 		}
@@ -302,9 +301,9 @@ EOT;
 	CREATE INDEX job_cmd ON job (job_cmd, job_namespace, job_title, job_params);
 	CREATE INDEX job_timestamp ON job (job_timestamp);
 EOT;
-			$conn->query( $sql );
-			$conn->query( "PRAGMA journal_mode=WAL" ); // this is permanent
-			$conn->close();
+			$conn->query( $sql, __METHOD__ );
+			$conn->query( "PRAGMA journal_mode=WAL", __METHOD__ ); // this is permanent
+			$conn->close( __METHOD__ );
 		} catch ( DBConnectionError $e ) {
 			return Status::newFatal( 'config-sqlite-connection-error', $e->getMessage() );
 		}
@@ -336,6 +335,9 @@ EOT;
 	 */
 	public function createTables() {
 		$status = parent::createTables();
+		if ( $status->isGood() ) {
+			$status = parent::createManualTables();
+		}
 
 		return $this->setupSearchIndex( $status );
 	}

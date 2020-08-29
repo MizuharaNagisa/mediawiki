@@ -77,7 +77,7 @@ class UpdateMediaWiki extends Maintenance {
 	}
 
 	public function execute() {
-		global $wgVersion, $wgLang, $wgAllowSchemaUpdates, $wgMessagesDirs;
+		global $wgLang, $wgAllowSchemaUpdates, $wgMessagesDirs;
 
 		if ( !$wgAllowSchemaUpdates
 			&& !( $this->hasOption( 'force' )
@@ -109,13 +109,15 @@ class UpdateMediaWiki extends Maintenance {
 		$lang = MediaWikiServices::getInstance()->getLanguageFactory()->getLanguage( 'en' );
 		// Set global language to ensure localised errors are in English (T22633)
 		RequestContext::getMain()->setLanguage( $lang );
-		$wgLang = $lang; // BackCompat
+
+		// BackCompat
+		$wgLang = $lang;
 
 		define( 'MW_UPDATER', true );
 
-		$this->output( "MediaWiki {$wgVersion} Updater\n\n" );
+		$this->output( 'MediaWiki ' . MW_VERSION . " Updater\n\n" );
 
-		wfWaitForSlaves();
+		MediaWikiServices::getInstance()->getDBLoadBalancerFactory()->waitForReplication();
 
 		if ( !$this->hasOption( 'skip-compat-checks' ) ) {
 			$this->compatChecks();
@@ -164,24 +166,6 @@ class UpdateMediaWiki extends Maintenance {
 		}
 
 		$time1 = microtime( true );
-
-		$badPhpUnit = dirname( __DIR__ ) . '/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php';
-		if ( file_exists( $badPhpUnit ) ) {
-			// Bad versions of the file are:
-			// https://raw.githubusercontent.com/sebastianbergmann/phpunit/c820f915bfae34e5a836f94967a2a5ea5ef34f21/src/Util/PHP/eval-stdin.php
-			// https://raw.githubusercontent.com/sebastianbergmann/phpunit/3aaddb1c5bd9b9b8d070b4cf120e71c36fd08412/src/Util/PHP/eval-stdin.php
-			$md5 = md5_file( $badPhpUnit );
-			if ( $md5 === '120ac49800671dc383b6f3709c25c099'
-				|| $md5 === '28af792cb38fc9a1b236b91c1aad2876'
-			) {
-				$success = unlink( $badPhpUnit );
-				if ( $success ) {
-					$this->output( "Removed PHPUnit eval-stdin.php to protect against CVE-2017-9841\n" );
-				} else {
-					$this->error( "Unable to remove $badPhpUnit, you should manually. See CVE-2017-9841" );
-				}
-			}
-		}
 
 		$shared = $this->hasOption( 'doshared' );
 
@@ -245,12 +229,11 @@ class UpdateMediaWiki extends Maintenance {
 	public function validateParamsAndArgs() {
 		// Allow extensions to add additional params.
 		$params = [];
-		Hooks::run( 'MaintenanceUpdateAddParams', [ &$params ] );
+		$this->getHookRunner()->onMaintenanceUpdateAddParams( $params );
 
 		// This executes before the PHP version check, so don't use null coalesce (??).
 		// Keeping this compatible with older PHP versions lets us reach the code that
 		// displays a more helpful error.
-		// @phan-suppress-next-line PhanEmptyForeach False positive
 		foreach ( $params as $name => $param ) {
 			$this->addOption(
 				$name,

@@ -6,11 +6,11 @@ use Wikimedia\TestingAccessWrapper;
 /**
  * @covers ExtensionRegistry
  */
-class ExtensionRegistryTest extends MediaWikiTestCase {
+class ExtensionRegistryTest extends MediaWikiIntegrationTestCase {
 
 	private $dataDir;
 
-	public function setUp() : void {
+	protected function setUp() : void {
 		parent::setUp();
 		$this->dataDir = __DIR__ . '/../../data/registration';
 	}
@@ -32,13 +32,13 @@ class ExtensionRegistryTest extends MediaWikiTestCase {
 			$registry->getQueue()
 		);
 		$registry->clearQueue();
-		$this->assertEmpty( $registry->getQueue() );
+		$this->assertSame( [], $registry->getQueue() );
 	}
 
 	public function testLoadFromQueue_empty() {
 		$registry = new ExtensionRegistry();
 		$registry->loadFromQueue();
-		$this->assertEmpty( $registry->getAllThings() );
+		$this->assertSame( [], $registry->getAllThings() );
 	}
 
 	public function testLoadFromQueue_late() {
@@ -97,6 +97,17 @@ class ExtensionRegistryTest extends MediaWikiTestCase {
 		);
 	}
 
+	public function testExportExtractedDataNamespaceAlreadyDefined() {
+		define( 'FOO_VALUE', 123 ); // Emulates overriding a namespace set in LocalSettings.php
+		$registry = new ExtensionRegistry();
+		$info = [ 'defines' => [ 'FOO_VALUE' => 456 ], 'globals' => [] ];
+		$this->expectException( Exception::class );
+		$this->expectExceptionMessage(
+			"FOO_VALUE cannot be re-defined with 456 it has already been set with 123"
+		);
+		TestingAccessWrapper::newFromObject( $registry )->exportExtractedData( $info );
+	}
+
 	/**
 	 * @dataProvider provideExportExtractedDataGlobals
 	 */
@@ -122,10 +133,7 @@ class ExtensionRegistryTest extends MediaWikiTestCase {
 			'autoloaderPaths' => []
 		];
 		$registry = new ExtensionRegistry();
-		$class = new ReflectionClass( ExtensionRegistry::class );
-		$method = $class->getMethod( 'exportExtractedData' );
-		$method->setAccessible( true );
-		$method->invokeArgs( $registry, [ $info ] );
+		TestingAccessWrapper::newFromObject( $registry )->exportExtractedData( $info );
 		foreach ( $expected as $name => $value ) {
 			$this->assertArrayHasKey( $name, $GLOBALS, $desc );
 			$this->assertEquals( $value, $GLOBALS[$name], $desc );
@@ -423,7 +431,6 @@ class ExtensionRegistryTest extends MediaWikiTestCase {
 			new ExtensionRegistry()
 		);
 		// Verify the registry is absolutely empty
-		$this->assertSame( [], $registry->getAttribute( 'FooBarBaz' ) );
 		$this->assertSame( [], $registry->getLazyLoadedAttribute( 'FooBarBaz' ) );
 		// Indicate what paths should be checked for the lazy attributes
 		$registry->loaded = [

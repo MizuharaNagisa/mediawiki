@@ -1,3 +1,5 @@
+'use strict';
+
 const { action, assert, utils } = require( 'api-testing' );
 
 describe( 'The parse action', function () {
@@ -32,7 +34,7 @@ describe( 'The parse action', function () {
 		assert.include( result.parse.text[ '*' ], 'another <i>test</i>' );
 	} );
 
-	describe( 'with magic words', async () => {
+	describe( 'with magic words', () => {
 		it( 'supports __FORCETOC__', async () => {
 			const result = await alice.action( 'parse', {
 				title: pageTitle,
@@ -58,7 +60,7 @@ describe( 'The parse action', function () {
 		} );
 	} );
 
-	describe( 'with variables', async () => {
+	describe( 'with variables', () => {
 		it( 'supports {{PAGENAMEE}}', async () => {
 			const result = await alice.action( 'parse', {
 				title: pageTitle,
@@ -97,7 +99,7 @@ describe( 'The parse action', function () {
 		} );
 	} );
 
-	describe( 'with templates', async () => {
+	describe( 'with templates', () => {
 		const templateTitle = utils.title( 'Template:Parsing_' );
 		const templateText = '{{{greeting|Hello}}} {{{1|world}}}!';
 
@@ -133,7 +135,7 @@ describe( 'The parse action', function () {
 		} );
 	} );
 
-	describe( 'with parser functions', async () => {
+	describe( 'with parser functions', () => {
 		it( 'supports {{plural}}', async () => {
 			const result = await alice.action( 'parse', {
 				title: pageTitle,

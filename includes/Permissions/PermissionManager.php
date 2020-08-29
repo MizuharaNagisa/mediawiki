@@ -20,15 +20,17 @@
 namespace MediaWiki\Permissions;
 
 use Action;
+use Article;
 use Exception;
-use Hooks;
 use MediaWiki\Block\BlockErrorFormatter;
 use MediaWiki\Config\ServiceOptions;
+use MediaWiki\HookContainer\HookContainer;
+use MediaWiki\HookContainer\HookRunner;
 use MediaWiki\Linker\LinkTarget;
 use MediaWiki\Revision\RevisionLookup;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Session\SessionManager;
-use MediaWiki\Special\SpecialPageFactory;
+use MediaWiki\SpecialPage\SpecialPageFactory;
 use MediaWiki\User\UserIdentity;
 use MessageSpecifier;
 use NamespaceInfo;
@@ -37,7 +39,6 @@ use SpecialPage;
 use Title;
 use User;
 use Wikimedia\ScopedCallback;
-use WikiPage;
 
 /**
  * A service class for checking permissions
@@ -57,8 +58,7 @@ class PermissionManager {
 	public const RIGOR_SECURE = 'secure';
 
 	/**
-	 * @since 1.34
-	 * @var array
+	 * @internal For use by ServiceWiring
 	 */
 	public const CONSTRUCTOR_OPTIONS = [
 		'WhitelistRead',
@@ -89,6 +89,9 @@ class PermissionManager {
 
 	/** @var BlockErrorFormatter */
 	private $blockErrorFormatter;
+
+	/** @var HookRunner */
+	private $hookRunner;
 
 	/** @var string[][] Cached user rights */
 	private $usersRights = null;
@@ -197,13 +200,15 @@ class PermissionManager {
 	 * @param RevisionLookup $revisionLookup
 	 * @param NamespaceInfo $nsInfo
 	 * @param BlockErrorFormatter $blockErrorFormatter
+	 * @param HookContainer $hookContainer
 	 */
 	public function __construct(
 		ServiceOptions $options,
 		SpecialPageFactory $specialPageFactory,
 		RevisionLookup $revisionLookup,
 		NamespaceInfo $nsInfo,
-		BlockErrorFormatter $blockErrorFormatter
+		BlockErrorFormatter $blockErrorFormatter,
+		HookContainer $hookContainer
 	) {
 		$options->assertRequiredOptions( self::CONSTRUCTOR_OPTIONS );
 		$this->options = $options;
@@ -211,16 +216,15 @@ class PermissionManager {
 		$this->revisionLookup = $revisionLookup;
 		$this->nsInfo = $nsInfo;
 		$this->blockErrorFormatter = $blockErrorFormatter;
+		$this->hookRunner = new HookRunner( $hookContainer );
 	}
 
 	/**
 	 * Can $user perform $action on a page?
 	 *
-	 * The method is intended to replace Title::userCan()
+	 * The method replaced Title::userCan()
 	 * The $user parameter need to be superseded by UserIdentity value in future
 	 * The $title parameter need to be superseded by PageIdentity value in future
-	 *
-	 * @see Title::userCan()
 	 *
 	 * @param string $action
 	 * @param User $user
@@ -330,7 +334,7 @@ class PermissionManager {
 		$allowUsertalk = $user->isAllowUsertalk();
 
 		// Allow extensions to let a blocked user access a particular page
-		Hooks::run( 'UserIsBlockedFrom', [ $user, $title, &$blocked, &$allowUsertalk ] );
+		$this->hookRunner->onUserIsBlockedFrom( $user, $title, $blocked, $allowUsertalk );
 
 		return $blocked;
 	}
@@ -437,18 +441,19 @@ class PermissionManager {
 		$title = Title::newFromLinkTarget( $page );
 		// Use getUserPermissionsErrors instead
 		$result = '';
-		if ( !Hooks::run( 'userCan', [ &$title, &$user, $action, &$result ] ) ) {
+		if ( !$this->hookRunner->onUserCan( $title, $user, $action, $result ) ) {
 			return $result ? [] : [ [ 'badaccess-group0' ] ];
 		}
 		// Check getUserPermissionsErrors hook
-		if ( !Hooks::run( 'getUserPermissionsErrors', [ &$title, &$user, $action, &$result ] ) ) {
+		if ( !$this->hookRunner->onGetUserPermissionsErrors( $title, $user, $action, $result ) ) {
 			$errors = $this->resultToError( $errors, $result );
 		}
 		// Check getUserPermissionsErrorsExpensive hook
 		if (
 			$rigor !== self::RIGOR_QUICK
 			&& !( $short && count( $errors ) > 0 )
-			&& !Hooks::run( 'getUserPermissionsErrorsExpensive', [ &$title, &$user, $action, &$result ] )
+			&& !$this->hookRunner->onGetUserPermissionsErrorsExpensive(
+				$title, $user, $action, $result )
 		) {
 			$errors = $this->resultToError( $errors, $result );
 		}
@@ -520,8 +525,8 @@ class PermissionManager {
 			# If the user is allowed to read pages, he is allowed to read all pages
 			$whitelisted = true;
 		} elseif ( $this->isSameSpecialPage( 'Userlogin', $title )
-				   || $this->isSameSpecialPage( 'PasswordReset', $title )
-				   || $this->isSameSpecialPage( 'Userlogout', $title )
+			|| $this->isSameSpecialPage( 'PasswordReset', $title )
+			|| $this->isSameSpecialPage( 'Userlogout', $title )
 		) {
 			# Always grant access to the login page.
 			# Even anons need to be able to log in.
@@ -536,7 +541,7 @@ class PermissionManager {
 			if ( in_array( $name, $whiteListRead, true )
 				 || in_array( $dbName, $whiteListRead, true ) ) {
 				$whitelisted = true;
-			} elseif ( $title->getNamespace() == NS_MAIN ) {
+			} elseif ( $title->getNamespace() === NS_MAIN ) {
 				# Old settings might have the title prefixed with
 				# a colon for main-namespace pages
 				if ( in_array( ':' . $name, $whiteListRead ) ) {
@@ -571,7 +576,7 @@ class PermissionManager {
 
 		if ( !$whitelisted ) {
 			# If the title is not whitelisted, give extensions a chance to do so...
-			Hooks::run( 'TitleReadWhitelist', [ $title, $user, &$whitelisted ] );
+			$this->hookRunner->onTitleReadWhitelist( $title, $user, $whitelisted );
 			if ( !$whitelisted ) {
 				$errors[] = $this->missingPermissionError( $action, $short );
 			}
@@ -608,7 +613,7 @@ class PermissionManager {
 	 * @return bool
 	 */
 	private function isSameSpecialPage( $name, LinkTarget $page ) {
-		if ( $page->getNamespace() == NS_SPECIAL ) {
+		if ( $page->getNamespace() === NS_SPECIAL ) {
 			list( $thisName, /* $subpage */ ) =
 				$this->specialPageFactory->resolveAlias( $page->getDBkey() );
 			if ( $name == $thisName ) {
@@ -676,15 +681,20 @@ class PermissionManager {
 		// in actions being blocked that shouldn't be.
 		$actionObj = null;
 		if ( Action::exists( $action ) ) {
-			// TODO: this drags a ton of dependencies in, would be good to avoid WikiPage
+			// TODO: this drags a ton of dependencies in, would be good to avoid Article
 			//  instantiation and decouple it creating an ActionPermissionChecker interface
-			$wikiPage = WikiPage::factory( Title::newFromLinkTarget( $page, 'clone' ) );
 			// Creating an action will perform several database queries to ensure that
 			// the action has not been overridden by the content type.
 			// FIXME: avoid use of RequestContext since it drags in User and Title dependencies
 			//  probably we may use fake context object since it's unlikely that Action uses it
 			//  anyway. It would be nice if we could avoid instantiating the Action at all.
-			$actionObj = Action::factory( $action, $wikiPage, RequestContext::getMain() );
+			$title = Title::newFromLinkTarget( $page, 'clone' );
+			$context = RequestContext::getMain();
+			$actionObj = Action::factory(
+				$action,
+				Article::newFromTitle( $title, $context ),
+				$context
+			);
 			// Ensure that the retrieved action matches the restriction.
 			if ( $actionObj && $actionObj->getRestriction() !== $action ) {
 				$actionObj = null;
@@ -737,8 +747,8 @@ class PermissionManager {
 		// TODO: remove when LinkTarget usage will expand further
 		$title = Title::newFromLinkTarget( $page );
 
-		if ( !Hooks::run( 'TitleQuickPermissions',
-			[ $title, $user, $action, &$errors, ( $rigor !== self::RIGOR_QUICK ), $short ] )
+		if ( !$this->hookRunner->onTitleQuickPermissions( $title, $user, $action,
+			$errors, $rigor !== self::RIGOR_QUICK, $short )
 		) {
 			return $errors;
 		}
@@ -757,19 +767,19 @@ class PermissionManager {
 			}
 		} elseif ( $action == 'move' ) {
 			if ( !$this->userHasRight( $user, 'move-rootuserpages' )
-				 && $title->getNamespace() == NS_USER && !$isSubPage ) {
+				 && $title->getNamespace() === NS_USER && !$isSubPage ) {
 				// Show user page-specific message only if the user can move other pages
 				$errors[] = [ 'cant-move-user-page' ];
 			}
 
 			// Check if user is allowed to move files if it's a file
-			if ( $title->getNamespace() == NS_FILE &&
+			if ( $title->getNamespace() === NS_FILE &&
 					!$this->userHasRight( $user, 'movefile' ) ) {
 				$errors[] = [ 'movenotallowedfile' ];
 			}
 
 			// Check if user is allowed to move category pages if it's a category page
-			if ( $title->getNamespace() == NS_CATEGORY &&
+			if ( $title->getNamespace() === NS_CATEGORY &&
 					!$this->userHasRight( $user, 'move-categorypages' ) ) {
 				$errors[] = [ 'cant-move-category-page' ];
 			}
@@ -790,11 +800,14 @@ class PermissionManager {
 				// User can't move anything
 				$errors[] = [ 'movenotallowed' ];
 			} elseif ( !$this->userHasRight( $user, 'move-rootuserpages' )
-					   && $title->getNamespace() == NS_USER && !$isSubPage ) {
+				&& $title->getNamespace() === NS_USER
+				&& !$isSubPage
+			) {
 				// Show user page-specific message only if the user can move other pages
 				$errors[] = [ 'cant-move-to-user-page' ];
 			} elseif ( !$this->userHasRight( $user, 'move-categorypages' )
-					   && $title->getNamespace() == NS_CATEGORY ) {
+				&& $title->getNamespace() === NS_CATEGORY
+			) {
 				// Show category page-specific message only if the user can move other pages
 				$errors[] = [ 'cant-move-to-category-page' ];
 			}
@@ -848,7 +861,8 @@ class PermissionManager {
 			if ( !$this->userHasRight( $user, $right ) ) {
 				$errors[] = [ 'protectedpagetext', $right, $action ];
 			} elseif ( $title->areRestrictionsCascading() &&
-					   !$this->userHasRight( $user, 'protect' ) ) {
+				!$this->userHasRight( $user, 'protect' )
+			) {
 				$errors[] = [ 'protectedpagetext', 'protect', $action ];
 			}
 		}
@@ -965,14 +979,22 @@ class PermissionManager {
 			// Check for immobile pages
 			if ( !$this->nsInfo->isMovable( $title->getNamespace() ) ) {
 				// Specific message for this case
-				$errors[] = [ 'immobile-source-namespace', $title->getNsText() ];
+				$nsText = $title->getNsText();
+				if ( $nsText === '' ) {
+					$nsText = wfMessage( 'blanknamespace' )->text();
+				}
+				$errors[] = [ 'immobile-source-namespace', $nsText ];
 			} elseif ( !$title->isMovable() ) {
 				// Less specific message for rarer cases
 				$errors[] = [ 'immobile-source-page' ];
 			}
 		} elseif ( $action == 'move-target' ) {
 			if ( !$this->nsInfo->isMovable( $title->getNamespace() ) ) {
-				$errors[] = [ 'immobile-target-namespace', $title->getNsText() ];
+				$nsText = $title->getNsText();
+				if ( $nsText === '' ) {
+					$nsText = wfMessage( 'blanknamespace' )->text();
+				}
+				$errors[] = [ 'immobile-target-namespace', $nsText ];
 			} elseif ( !$title->isMovable() ) {
 				$errors[] = [ 'immobile-target-page' ];
 			}
@@ -1035,15 +1057,15 @@ class PermissionManager {
 
 		# Only 'createaccount' can be performed on special pages,
 		# which don't actually exist in the DB.
-		if ( $title->getNamespace() == NS_SPECIAL && $action !== 'createaccount' ) {
+		if ( $title->getNamespace() === NS_SPECIAL && $action !== 'createaccount' ) {
 			$errors[] = [ 'ns-specialprotected' ];
 		}
 
 		# Check $wgNamespaceProtection for restricted namespaces
 		if ( $this->isNamespaceProtected( $title->getNamespace(), $user ) ) {
-			$ns = $title->getNamespace() == NS_MAIN ?
+			$ns = $title->getNamespace() === NS_MAIN ?
 				wfMessage( 'nstab-main' )->text() : $title->getNsText();
-			$errors[] = $title->getNamespace() == NS_MEDIAWIKI ?
+			$errors[] = $title->getNamespace() === NS_MEDIAWIKI ?
 				[ 'protectedinterface', $action ] : [ 'namespaceprotected', $ns, $action ];
 		}
 
@@ -1269,7 +1291,7 @@ class PermissionManager {
 			$this->usersRights[ $rightsCacheKey ] = $this->getGroupPermissions(
 				$user->getEffectiveGroups()
 			);
-			Hooks::run( 'UserGetRights', [ $user, &$this->usersRights[ $rightsCacheKey ] ] );
+			$this->hookRunner->onUserGetRights( $user, $this->usersRights[ $rightsCacheKey ] );
 
 			// Deny any rights denied by the user's session, unless this
 			// endpoint has no sessions.
@@ -1284,7 +1306,8 @@ class PermissionManager {
 				}
 			}
 
-			Hooks::run( 'UserGetRightsRemove', [ $user, &$this->usersRights[ $rightsCacheKey ] ] );
+			$this->hookRunner->onUserGetRightsRemove(
+				$user, $this->usersRights[ $rightsCacheKey ] );
 			// Force reindexation of rights when a hook has unset one of them
 			$this->usersRights[ $rightsCacheKey ] = array_values(
 				array_unique( $this->usersRights[ $rightsCacheKey ] )
@@ -1315,7 +1338,7 @@ class PermissionManager {
 	 *
 	 * @since 1.34
 	 *
-	 * @param User|null $user
+	 * @param UserIdentity|null $user
 	 */
 	public function invalidateUsersRightsCache( $user = null ) {
 		if ( $user !== null ) {
@@ -1355,7 +1378,7 @@ class PermissionManager {
 		$groupPermissions = $this->options->get( 'GroupPermissions' );
 		$revokePermissions = $this->options->get( 'RevokePermissions' );
 		return isset( $groupPermissions[$group][$role] ) && $groupPermissions[$group][$role] &&
-			   !( isset( $revokePermissions[$group][$role] ) && $revokePermissions[$group][$role] );
+			!( isset( $revokePermissions[$group][$role] ) && $revokePermissions[$group][$role] );
 	}
 
 	/**
@@ -1453,7 +1476,7 @@ class PermissionManager {
 		}
 
 		// Allow extensions to say false
-		if ( !Hooks::run( 'UserIsEveryoneAllowed', [ $right ] ) ) {
+		if ( !$this->hookRunner->onUserIsEveryoneAllowed( $right ) ) {
 			$this->cachedRights[$right] = false;
 			return false;
 		}
@@ -1479,7 +1502,7 @@ class PermissionManager {
 			} else {
 				$this->allRights = $this->coreRights;
 			}
-			Hooks::run( 'UserGetAllRights', [ &$this->allRights ] );
+			$this->hookRunner->onUserGetAllRights( $this->allRights );
 		}
 		return $this->allRights;
 	}

@@ -10,7 +10,7 @@ use Wikimedia\TestingAccessWrapper;
  * @covers SpecialWatchlist
  */
 class SpecialWatchlistTest extends SpecialPageTestBase {
-	public function setUp() : void {
+	protected function setUp() : void {
 		parent::setUp();
 		$this->tablesUsed = [ 'watchlist' ];
 		$this->setTemporaryHook(
@@ -18,22 +18,23 @@ class SpecialWatchlistTest extends SpecialPageTestBase {
 			null
 		);
 
-		$this->setMwGlobals(
-			'wgDefaultUserOptions',
-			[
-				'extendwatchlist' => 1,
-				'watchlistdays' => 3.0,
-				'watchlisthideanons' => 0,
-				'watchlisthidebots' => 0,
-				'watchlisthideliu' => 0,
-				'watchlisthideminor' => 0,
-				'watchlisthideown' => 0,
-				'watchlisthidepatrolled' => 0,
-				'watchlisthidecategorization' => 1,
-				'watchlistreloadautomatically' => 0,
-				'watchlistunwatchlinks' => 0,
-			]
-		);
+		$this->setMwGlobals( [
+			'wgDefaultUserOptions' =>
+				[
+					'extendwatchlist' => 1,
+					'watchlistdays' => 3.0,
+					'watchlisthideanons' => 0,
+					'watchlisthidebots' => 0,
+					'watchlisthideliu' => 0,
+					'watchlisthideminor' => 0,
+					'watchlisthideown' => 0,
+					'watchlisthidepatrolled' => 1,
+					'watchlisthidecategorization' => 0,
+					'watchlistreloadautomatically' => 0,
+					'watchlistunwatchlinks' => 0,
+				],
+			'wgWatchlistExpiry' => true
+		] );
 	}
 
 	/**
@@ -75,26 +76,26 @@ class SpecialWatchlistTest extends SpecialPageTestBase {
 		$wikiDefaults = $page->getDefaultOptions()->getAllValues();
 
 		switch ( $expectedValuesDefaults ) {
-		case 'allFalse':
-			$allFalse = $wikiDefaults;
+			case 'allFalse':
+				$allFalse = $wikiDefaults;
 
-			foreach ( $allFalse as $key => $value ) {
-				if ( $value === true ) {
-					$allFalse[$key] = false;
+				foreach ( $allFalse as $key => $value ) {
+					if ( $value === true ) {
+						$allFalse[$key] = false;
+					}
 				}
-			}
 
-			// This is not exposed on the form (only in preferences) so it
-			// respects the preference.
-			$allFalse['extended'] = true;
+				// This is not exposed on the form (only in preferences) so it
+				// respects the preference.
+				$allFalse['extended'] = true;
 
-			$expectedValues += $allFalse;
-			break;
-		case 'wikiDefaults':
-			$expectedValues += $wikiDefaults;
-			break;
-		default:
-			$this->fail( "Unknown \$expectedValuesDefaults: $expectedValuesDefaults" );
+				$expectedValues += $allFalse;
+				break;
+			case 'wikiDefaults':
+				$expectedValues += $wikiDefaults;
+				break;
+			default:
+				$this->fail( "Unknown \$expectedValuesDefaults: $expectedValuesDefaults" );
 		}
 
 		$page = TestingAccessWrapper::newFromObject(

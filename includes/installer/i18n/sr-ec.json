@@ -1,16 +1,16 @@
 {
 	"@metadata": {
 		"authors": [
-			"Rancher",
-			"Михајло Анђелковић",
-			"Milicevic01",
-			"Aktron",
-			"Сербијана",
-			"Zoranzoki21",
 			"Acamicamacaraca",
-			"Obsuser",
+			"Aktron",
 			"BadDog",
-			"Prevodim"
+			"Milicevic01",
+			"Obsuser",
+			"Prevodim",
+			"Rancher",
+			"Zoranzoki21",
+			"Михајло Анђелковић",
+			"Сербијана"
 		]
 	},
 	"config-desc": "Инсталациони програм за MediaWiki",
@@ -42,7 +42,6 @@
 	"config-page-install": "Инсталирај",
 	"config-page-complete": "Завршено!",
 	"config-page-restart": "Поновно покретање инсталације",
-	"config-page-readme": "Прочитај ме",
 	"config-page-releasenotes": "Напомене о издању",
 	"config-page-copying": "Копирање",
 	"config-page-upgradedoc": "Надоградња",
@@ -50,7 +49,7 @@
 	"config-help-restart": "Желите ли да обришете све сачуване податке које сте унели и поново покренете процес инсталације?",
 	"config-restart": "Да, покрени поново",
 	"config-welcome": "=== Провера окружења ===\nСада ће се извршити основна провера како би се утврдило да ли је ово окружење погодно за инсталацију MediaWiki-ја.\nНе заборавите да укључите ове информације ако тражите подршку како завршити инсталацију.",
-	"config-sidebar": "* [https://www.mediawiki.org Почетна страна MediaWiki-ја]\n* [https://www.mediawiki.org/wiki/Special:MyLanguage/Help:Contents Водич за кориснике]\n* [https://www.mediawiki.org/wiki/Special:MyLanguage/Manual:Contents Водич за администраторе]\n* [https://www.mediawiki.org/wiki/Special:MyLanguage/Manual:FAQ ЧПП]",
+	"config-sidebar": "* [https://www.mediawiki.org Почетна страница MediaWiki-ја]\n* [https://www.mediawiki.org/wiki/Special:MyLanguage/Help:Contents Водич за кориснике]\n* [https://www.mediawiki.org/wiki/Special:MyLanguage/Manual:Contents Водич за администраторе]\n* [https://www.mediawiki.org/wiki/Special:MyLanguage/Manual:FAQ Честа питања]",
 	"config-env-good": "Окружење је проверено.\nМожете да инсталирате Медијавики.",
 	"config-env-bad": "Окружење је проверено.\nНе можете да инсталирате Медијавики.",
 	"config-env-php": "PHP $1 је инсталиран.",
@@ -78,7 +77,7 @@
 	"config-uploads-not-safe": "<strong>Упозорење:</strong> Ваш подразумевани директоријум за отпремања <code>$1</code> је подложан извршењу произвољних скрипти.\nИако MediaWiki проверава све отпремљене датотеке за безбедоносне претње, препоручује се [https://www.mediawiki.org/wiki/Special:MyLanguage/Manual:Security#Upload_security да затворите ову безбедоносну рањивост] пре омогућавања отпремања.",
 	"config-no-cli-uploads-check": "<strong>Упозорење:</strong> Ваш подразумевани директоријум за отпремање (<code>$1</code>) није проверен на рањивост\nна произвољно извршавање скрипте током CLI инсталације.",
 	"config-using-32bit": "<strong>Упозорење:</strong> изгледа да ваш систем ради са 32-битним целим бројевима. Ово се [https://www.mediawiki.org/wiki/Special:MyLanguage/Manual:32-bit не препоручује].",
-	"config-db-type": "Тип базе података:",
+	"config-db-type": "Врста базе података:",
 	"config-db-host": "Хост базе података",
 	"config-db-wiki-settings": "Идентификуј овај вики",
 	"config-db-name": "Име базе података (без цртица):",
@@ -107,7 +106,7 @@
 	"config-header-mysql": "Подешавања MariaDB/MySQL-а",
 	"config-header-postgres": "Подешавања PostgreSQL-а",
 	"config-header-sqlite": "Подешавања SQLite-а",
-	"config-invalid-db-type": "Тип базе података није важећи.",
+	"config-invalid-db-type": "Врста базе података није важећа.",
 	"config-missing-db-name": "Морате да унесете вредност за „{{int:config-db-name}}”.",
 	"config-missing-db-host": "Морате да унесете вредност за „{{int:config-db-host}}”.",
 	"config-invalid-db-name": "Име базе података „$1” није важеће.\nКористите само ASCII слова (a-z, A-Z), бројеве (0-9) и подвлаке (_).",
@@ -123,7 +122,7 @@
 	"config-sqlite-cant-create-db": "Није могуће направити датотеку базе података <code>$1</code>.",
 	"config-sqlite-fts3-downgrade": "PHP-у недостаје FTS3 подршка, поништавање надоградње табела.",
 	"config-can-upgrade": "Постоје MediaWiki табеле у овој бази података.\nДа бисте их надоградили на MediaWiki $1, кликните на <strong>Настави</strong>.",
-	"config-upgrade-error": "Дошло је до грешке при надоградњи MediaWiki табела у бази података.\n\nЗа више информација, погледајте евиденцију изнад, да бисте покушали поново, кликните на <strong>Настави</strong>.",
+	"config-upgrade-error": "Дошло је до грешке при надоградњи MediaWiki табела у бази података.\n\nЗа више информација погледајте дневник изнад. Кликните на <strong>Настави</strong> да бисте покушали поново.",
 	"config-upgrade-done": "Надоградња је завршена.\n\nСада можете да [$1 почнете да користите свој вики].\n\nАко желите да поново генеришете датотеку <code>LocalSettings.php</code>, кликните на дугме испод.\nОво се <strong>не препоручује</strong> осим ако имате проблеме са викијем.",
 	"config-upgrade-done-no-regenerate": "Надоградња је завршена.\n\nСада можете да [$1 почнете да користите свој вики].",
 	"config-regenerate": "Регенериши LocalSettings.php →",
@@ -158,7 +157,7 @@
 	"config-admin-email": "Адреса е-поште:",
 	"config-admin-error-user": "Дошло је до унутрашње грешке при прављењу администратора под именом „<nowiki>$1</nowiki>”.",
 	"config-admin-error-password": "Дошло је до унутрашње грешке при постављању лозинке за администратора „<nowiki>$1</nowiki>”: <pre>$2</pre>",
-	"config-admin-error-bademail": "Унели сте неважећу адресу е-поште.",
+	"config-admin-error-bademail": "Унели сте неважећу имејл-адресу.",
 	"config-subscribe": "Претплатите се на [https://lists.wikimedia.org/mailman/listinfo/mediawiki-announce release announcements дописну листу].",
 	"config-subscribe-noemail": "Покушали сте да се претплатите на дописну листу за објаве о новим издањима без пружања адресе е-поште.\nПружите адресу е-поште ако желите да се претплатите на њу.",
 	"config-pingback": "Дели податке о овој инсталацији са MediaWiki програмерима.",
@@ -183,7 +182,7 @@
 	"config-email-settings": "Подешавања е-поште",
 	"config-enable-email": "Омогући одлазну е-пошту",
 	"config-email-user": "Омогући слање е-порука међу корисницима",
-	"config-email-user-help": "Дозволи свим корисницима да међусобно шаљу е-поруке ако имају омогућено одговарајуће подешавање.",
+	"config-email-user-help": "Дозволи свим корисницима да међусобно шаљу имејлове ако имају омогућено одговарајуће подешавање.",
 	"config-email-usertalk": "Омогући обавештење о корисничкој страници за разговор",
 	"config-email-usertalk-help": "Дозволи корисницима да примају обавештења о променама корисничких страница за разговор, ако су то омогућили у својим подешавањима.",
 	"config-email-watchlist": "Омогући обавештења о списку надгледања",
@@ -270,5 +269,5 @@
 	"config-extension-not-found": "Није могуће пронаћи датотеку регистрације за додатак „$1”",
 	"config-extension-dependency": "Дошло је до грешке зависности при инсталирању додатка „$1”: $2",
 	"mainpagetext": "<strong>MediaWiki је инсталиран.</strong>",
-	"mainpagedocfooter": "Погледајте [https://www.mediawiki.org/wiki/Special:MyLanguage/Help:Contents Водич за кориснике] за информације о томе како користити вики софтвер.\n\n== Увод ==\n* [https://www.mediawiki.org/wiki/Special:MyLanguage/Manual:Configuration_settings Листа поставки конфигурације]\n* [https://www.mediawiki.org/wiki/Special:MyLanguage/Manual:FAQ MediaWiki ЧПП]\n* [https://lists.wikimedia.org/mailman/listinfo/mediawiki-announce Дописна листа о MediaWiki издањима]\n* [https://www.mediawiki.org/wiki/Special:MyLanguage/Manual:Combating_spam Научите како да се борите против непожељног садржаја на свом викију]"
+	"mainpagedocfooter": "Погледајте [https://www.mediawiki.org/wiki/Special:MyLanguage/Help:Contents Водич за кориснике] за више информација о томе како користити вики софтвер.\n\n== Увод ==\n* [https://www.mediawiki.org/wiki/Special:MyLanguage/Manual:Configuration_settings Списак поставки конфигурације]\n* [https://www.mediawiki.org/wiki/Special:MyLanguage/Manual:FAQ Честа питања о MediaWiki-ју]\n* [https://lists.wikimedia.org/mailman/listinfo/mediawiki-announce Дописна листа о издањима софтвера MediaWiki]\n* [https://www.mediawiki.org/wiki/Special:MyLanguage/Localisation#Translation_resources Локализујте MediaWiki на ваш језик]\n* [https://www.mediawiki.org/wiki/Special:MyLanguage/Manual:Combating_spam Сазнајте како да се борите против непожељног садржаја на свом викију]"
 }

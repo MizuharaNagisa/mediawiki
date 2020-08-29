@@ -12,6 +12,7 @@ use MediaWiki\Widget\UsersMultiselectWidget;
  *
  * The result is the array of usernames
  *
+ * @stable to extend
  * @note This widget is not likely to remain functional in non-OOUI forms.
  */
 class HTMLUsersMultiselectField extends HTMLUserTextField {
@@ -93,6 +94,10 @@ class HTMLUsersMultiselectField extends HTMLUserTextField {
 
 		if ( isset( $this->mParams['iprangelimits'] ) ) {
 			$params['ipRangeLimits'] = $this->mParams['iprangelimits'];
+		}
+
+		if ( isset( $this->mParams['input'] ) ) {
+			$params['input'] = $this->mParams['input'];
 		}
 
 		if ( $value !== null ) {

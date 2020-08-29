@@ -27,6 +27,8 @@
  * @internal
  */
 class ResourceLoaderSiteModule extends ResourceLoaderWikiModule {
+	/** @var string[] What client platforms the module targets (e.g. desktop, mobile) */
+	protected $targets = [ 'desktop', 'mobile' ];
 
 	/**
 	 * Get list of pages used by this module
@@ -40,7 +42,7 @@ class ResourceLoaderSiteModule extends ResourceLoaderWikiModule {
 			$skin = $context->getSkin();
 			$pages['MediaWiki:Common.js'] = [ 'type' => 'script' ];
 			$pages['MediaWiki:' . ucfirst( $skin ) . '.js'] = [ 'type' => 'script' ];
-			Hooks::run( 'ResourceLoaderSiteModulePages', [ $skin, &$pages ] );
+			$this->getHookRunner()->onResourceLoaderSiteModulePages( $skin, $pages );
 		}
 		return $pages;
 	}

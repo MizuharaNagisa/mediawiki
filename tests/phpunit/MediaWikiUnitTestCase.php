@@ -20,6 +20,7 @@
  */
 
 use MediaWiki\Logger\LoggerFactory;
+use MediaWiki\MediaWikiServices;
 use PHPUnit\Framework\Exception;
 use PHPUnit\Framework\TestCase;
 use Wikimedia\ObjectFactory;
@@ -30,6 +31,7 @@ use Wikimedia\ObjectFactory;
  * Extend this class if you are testing classes which use dependency injection and do not access
  * global functions, variables, services or a storage backend.
  *
+ * @stable for subclassing
  * @since 1.34
  */
 abstract class MediaWikiUnitTestCase extends TestCase {
@@ -38,6 +40,7 @@ abstract class MediaWikiUnitTestCase extends TestCase {
 
 	private static $originalGlobals;
 	private static $unitGlobals;
+	private static $temporaryHooks;
 
 	/**
 	 * Whitelist of globals to allow in MediaWikiUnitTestCase.
@@ -60,12 +63,15 @@ abstract class MediaWikiUnitTestCase extends TestCase {
 		];
 	}
 
+	/**
+	 * @stable for overriding
+	 */
 	public static function setUpBeforeClass() : void {
 		parent::setUpBeforeClass();
 
 		$reflection = new ReflectionClass( static::class );
 		$dirSeparator = DIRECTORY_SEPARATOR;
-		if ( stripos( $reflection->getFilename(), "${dirSeparator}unit${dirSeparator}" ) === false ) {
+		if ( stripos( $reflection->getFileName(), "${dirSeparator}unit${dirSeparator}" ) === false ) {
 			self::fail( 'This unit test needs to be in "tests/phpunit/unit"!' );
 		}
 
@@ -74,9 +80,10 @@ abstract class MediaWikiUnitTestCase extends TestCase {
 		foreach ( self::getGlobalsWhitelist() as $global ) {
 			self::$unitGlobals[ $global ] =& $GLOBALS[ $global ];
 		}
+		self::$temporaryHooks = [];
 
-		// Would be nice if we coud simply replace $GLOBALS as a whole,
-		// but unsetting or re-assigning that breaks the reference of this magic
+		// Would be nice if we could simply replace $GLOBALS as a whole,
+		// but un-setting or re-assigning that breaks the reference of this magic
 		// variable. Thus we have to modify it in place.
 		self::$originalGlobals = [];
 		foreach ( $GLOBALS as $key => $_ ) {
@@ -116,6 +123,9 @@ abstract class MediaWikiUnitTestCase extends TestCase {
 		] ) );
 	}
 
+	/**
+	 * @stable for overriding
+	 */
 	protected function tearDown() : void {
 		// Quick reset between tests
 		foreach ( $GLOBALS as $key => $_ ) {
@@ -126,10 +136,14 @@ abstract class MediaWikiUnitTestCase extends TestCase {
 		foreach ( self::$unitGlobals as $key => $value ) {
 			$GLOBALS[ $key ] = $value;
 		}
+		self::$temporaryHooks = [];
 
 		parent::tearDown();
 	}
 
+	/**
+	 * @stable for overriding
+	 */
 	public static function tearDownAfterClass() : void {
 		// Remove globals created by the test
 		foreach ( $GLOBALS as $key => $_ ) {
@@ -147,46 +161,16 @@ abstract class MediaWikiUnitTestCase extends TestCase {
 
 	/**
 	 * Create a temporary hook handler which will be reset by tearDown.
-	 * This replaces other handlers for the same hook.
 	 * @param string $hookName Hook name
 	 * @param mixed $handler Value suitable for a hook handler
 	 * @since 1.34
 	 */
 	protected function setTemporaryHook( $hookName, $handler ) {
-		// This will be reset by tearDown() when it restores globals. We don't want to use
-		// Hooks::register()/clear() because they won't replace other handlers for the same hook,
-		// which doesn't match behavior of MediaWikiIntegrationTestCase.
-		global $wgHooks;
-		$wgHooks[$hookName] = [ $handler ];
+		// Adds handler to list of hook handlers
+		$hookContainer = MediaWikiServices::getInstance()->getHookContainer();
+		$hookToRemove = $hookContainer->scopedRegister( $hookName, $handler, true );
+		// Keep reference to the ScopedCallback
+		self::$temporaryHooks[] = $hookToRemove;
 	}
 
-	protected function getMockMessage( $text, ...$params ) {
-		if ( isset( $params[0] ) && is_array( $params[0] ) ) {
-			$params = $params[0];
-		}
-
-		$msg = $this->getMockBuilder( Message::class )
-			->disableOriginalConstructor()
-			->setMethods( [] )
-			->getMock();
-
-		$msg->method( 'toString' )->willReturn( $text );
-		$msg->method( '__toString' )->willReturn( $text );
-		$msg->method( 'text' )->willReturn( $text );
-		$msg->method( 'parse' )->willReturn( $text );
-		$msg->method( 'plain' )->willReturn( $text );
-		$msg->method( 'parseAsBlock' )->willReturn( $text );
-		$msg->method( 'escaped' )->willReturn( $text );
-
-		$msg->method( 'title' )->willReturn( $msg );
-		$msg->method( 'inLanguage' )->willReturn( $msg );
-		$msg->method( 'inContentLanguage' )->willReturn( $msg );
-		$msg->method( 'useDatabase' )->willReturn( $msg );
-		$msg->method( 'setContext' )->willReturn( $msg );
-
-		$msg->method( 'exists' )->willReturn( true );
-		$msg->method( 'content' )->willReturn( new MessageContent( $msg ) );
-
-		return $msg;
-	}
 }

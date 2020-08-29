@@ -24,7 +24,9 @@
 use MediaWiki\MediaWikiServices;
 
 /**
- * Content handler for code content such as CSS, JavaScript, JSON, etc
+ * Content handler for code content such as CSS, JavaScript, JSON, etc.
+ *
+ * @stable to extend
  * @since 1.24
  * @ingroup Content
  */
@@ -32,6 +34,8 @@ abstract class CodeContentHandler extends TextContentHandler {
 
 	/**
 	 * Returns the English language, because code is English, and should be handled as such.
+	 *
+	 * @stable to override
 	 *
 	 * @param Title $title
 	 * @param Content|null $content
@@ -47,6 +51,8 @@ abstract class CodeContentHandler extends TextContentHandler {
 	/**
 	 * Returns the English language, because code is English, and should be handled as such.
 	 *
+	 * @stable to override
+	 *
 	 * @param Title $title
 	 * @param Content|null $content
 	 *
@@ -59,6 +65,8 @@ abstract class CodeContentHandler extends TextContentHandler {
 	}
 
 	/**
+	 * @stable to override
+	 *
 	 * @return string
 	 * @throws MWException
 	 */

@@ -19,7 +19,10 @@
  */
 
 use GuzzleHttp\Client;
+use GuzzleHttp\HandlerStack;
+use GuzzleHttp\Middleware;
 use GuzzleHttp\Psr7\Request;
+use Psr\Http\Message\RequestInterface;
 
 /**
  * MWHttpRequest implemented using the Guzzle library
@@ -37,7 +40,7 @@ use GuzzleHttp\Psr7\Request;
  * @since 1.33
  */
 class GuzzleHttpRequest extends MWHttpRequest {
-	const SUPPORTS_FILE_POSTS = true;
+	public const SUPPORTS_FILE_POSTS = true;
 
 	protected $handler = null;
 	protected $sink = null;
@@ -45,6 +48,8 @@ class GuzzleHttpRequest extends MWHttpRequest {
 	protected $guzzleOptions = [ 'http_errors' => false ];
 
 	/**
+	 * @internal Use HttpRequestFactory
+	 *
 	 * @param string $url Url to use. If protocol-relative, will be expanded to an http:// URL
 	 * @param array $options (optional) extra params to pass (see HttpRequestFactory::create())
 	 * @param string $caller The method making this request, for profiling
@@ -154,9 +159,32 @@ class GuzzleHttpRequest extends MWHttpRequest {
 
 		$this->guzzleOptions['headers'] = $this->reqHeaders;
 
-		if ( $this->handler ) {
-			$this->guzzleOptions['handler'] = $this->handler;
-		}
+		// Create Middleware to use cookies from $this->getCookieJar(),
+		// which is in MediaWiki CookieJar format, not in Guzzle-specific CookieJar format.
+		// Note: received cookies (from HTTP response) don't need to be handled here,
+		// they will be added back into the CookieJar by MWHttpRequest::parseCookies().
+		$stack = HandlerStack::create( $this->handler );
+
+		// @phan-suppress-next-line PhanUndeclaredFunctionInCallable
+		$stack->remove( 'cookies' );
+
+		$mwCookieJar = $this->getCookieJar();
+		$stack->push( Middleware::mapRequest(
+			function ( RequestInterface $request ) use ( $mwCookieJar ) {
+				$uri = $request->getUri();
+				$cookieHeader = $mwCookieJar->serializeToHttpRequest(
+					$uri->getPath() ?: '/',
+					$uri->getHost()
+				);
+				if ( !$cookieHeader ) {
+					return $request;
+				}
+
+				return $request->withHeader( 'Cookie', $cookieHeader );
+			}
+		), 'cookies' );
+
+		$this->guzzleOptions['handler'] = $stack;
 
 		if ( $this->sink ) {
 			$this->guzzleOptions['sink'] = $this->sink;
@@ -207,6 +235,7 @@ class GuzzleHttpRequest extends MWHttpRequest {
 				}
 			}
 		} catch ( GuzzleHttp\Exception\GuzzleException $e ) {
+			// @phan-suppress-previous-line PhanRedefinedClassReference False positive
 			$this->status->fatal( 'http-internal-error' );
 		}
 

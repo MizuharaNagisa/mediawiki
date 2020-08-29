@@ -29,6 +29,15 @@ use Wikimedia\Rdbms\IDatabase;
  * @defgroup Constants MediaWiki constants
  */
 
+/**
+ * The running version of MediaWiki.
+ *
+ * This replaces the $wgVersion global found in earlier versions.
+ *
+ * @since 1.35
+ */
+define( 'MW_VERSION', '1.36.0-alpha' );
+
 # Obsolete aliases
 
 /** @{
@@ -179,8 +188,8 @@ define( 'SFH_OBJECT_ARGS', 2 );
 /** @} */
 
 /** @{
- * Autopromote conditions (must be here and not in Autopromote.php, so that
- * they're loaded for DefaultSettings.php before AutoLoader.php)
+ * Autopromote conditions ( must be here, so that they're loaded for
+ * DefaultSettings.php before AutoLoader.php)
  */
 define( 'APCOND_EDITCOUNT', 1 );
 define( 'APCOND_AGE', 2 );
@@ -217,6 +226,7 @@ define( 'CONTENT_MODEL_JAVASCRIPT', 'javascript' );
 define( 'CONTENT_MODEL_CSS', 'css' );
 define( 'CONTENT_MODEL_TEXT', 'text' );
 define( 'CONTENT_MODEL_JSON', 'json' );
+define( 'CONTENT_MODEL_UNKNOWN', 'unknown' );
 /** @} */
 
 /** @{

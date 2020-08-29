@@ -44,7 +44,10 @@ class BenchIfSwitch extends Benchmarker {
 		] );
 	}
 
-	// bench function 1
+	/**
+	 * bench function 1
+	 * @suppress PhanSuspiciousValueComparison
+	 */
 	protected function doElseIf() {
 		$a = 'z';
 		if ( $a == 'a' ) {
@@ -67,7 +70,9 @@ class BenchIfSwitch extends Benchmarker {
 		}
 	}
 
-	// bench function 2
+	/**
+	 * bench function 2
+	 */
 	protected function doSwitch() {
 		$a = 'z';
 		switch ( $a ) {

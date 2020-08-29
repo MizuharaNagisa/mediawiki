@@ -29,16 +29,20 @@ use MediaWiki\MediaWikiServices;
  * Class to simplify the use of log pages.
  * The logs are now kept in a table which is easier to manage and trim
  * than ever-growing wiki pages.
+ *
+ * @newable
+ * @note marked as newable in 1.35 for lack of a better alternative,
+ *       but should become a stateless service, use use the command pattern.
  */
 class LogPage {
-	const DELETED_ACTION = 1;
-	const DELETED_COMMENT = 2;
-	const DELETED_USER = 4;
-	const DELETED_RESTRICTED = 8;
+	public const DELETED_ACTION = 1;
+	public const DELETED_COMMENT = 2;
+	public const DELETED_USER = 4;
+	public const DELETED_RESTRICTED = 8;
 
 	// Convenience fields
-	const SUPPRESSED_USER = self::DELETED_USER | self::DELETED_RESTRICTED;
-	const SUPPRESSED_ACTION = self::DELETED_ACTION | self::DELETED_RESTRICTED;
+	public const SUPPRESSED_USER = self::DELETED_USER | self::DELETED_RESTRICTED;
+	public const SUPPRESSED_ACTION = self::DELETED_ACTION | self::DELETED_RESTRICTED;
 
 	/** @var bool */
 	public $updateRecentChanges;
@@ -75,6 +79,7 @@ class LogPage {
 	private $target;
 
 	/**
+	 * @stable to call
 	 * @param string $type One of '', 'block', 'protect', 'rights', 'delete',
 	 *   'upload', 'move'
 	 * @param bool $rc Whether to update recent changes as well as the logging table
@@ -229,17 +234,18 @@ class LogPage {
 	) {
 		global $wgLang, $wgLogActions;
 
-		if ( $skin === null ) {
-			$langObj = MediaWikiServices::getInstance()->getContentLanguage();
-			$langObjOrNull = null;
-		} else {
-			$langObj = $wgLang;
-			$langObjOrNull = $wgLang;
-		}
-
 		$key = "$type/$action";
 
 		if ( isset( $wgLogActions[$key] ) ) {
+			if ( $skin === null ) {
+				$langObj = MediaWikiServices::getInstance()->getContentLanguage();
+				$langObjOrNull = null;
+			} else {
+				// TODO Is $skin->getLanguage() safe here?
+				StubUserLang::unstub( $wgLang );
+				$langObj = $wgLang;
+				$langObjOrNull = $wgLang;
+			}
 			if ( $title === null ) {
 				$rv = wfMessage( $wgLogActions[$key] )->inLanguage( $langObj )->escaped();
 			} else {
@@ -262,7 +268,7 @@ class LogPage {
 				$args = func_get_args();
 				$rv = call_user_func_array( $wgLogActionsHandlers[$key], $args );
 			} else {
-				wfDebug( "LogPage::actionText - unknown action $key\n" );
+				wfDebug( "LogPage::actionText - unknown action $key" );
 				$rv = "$action";
 			}
 		}
@@ -321,11 +327,12 @@ class LogPage {
 	 * @param Title $target
 	 * @param string $comment Description associated
 	 * @param array $params Parameters passed later to wfMessage function
-	 * @param null|int|User $doer The user doing the action. null for $wgUser
+	 * @param int|User $doer The user doing the action, or their user id
 	 *
 	 * @return int The log_id of the inserted log entry
 	 */
-	public function addEntry( $action, $target, $comment, $params = [], $doer = null ) {
+	public function addEntry( $action, $target, $comment, $params, $doer ) {
+		// FIXME $params is only documented to accept an array
 		if ( !is_array( $params ) ) {
 			$params = [ $params ];
 		}
@@ -342,10 +349,7 @@ class LogPage {
 		$this->comment = $comment;
 		$this->params = self::makeParamBlob( $params );
 
-		if ( $doer === null ) {
-			global $wgUser;
-			$doer = $wgUser;
-		} elseif ( !is_object( $doer ) ) {
+		if ( !is_object( $doer ) ) {
 			$doer = User::newFromId( $doer );
 		}
 

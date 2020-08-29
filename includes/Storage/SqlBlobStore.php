@@ -345,8 +345,17 @@ class SqlBlobStore implements IDBAccessObject, BlobStore {
 		$result = [];
 		$errors = [];
 		foreach ( $blobAddresses as $blobAddress ) {
-			list( $schema, $id ) = self::splitBlobAddress( $blobAddress );
-			//TODO: MCR: also support 'ex' schema with ExternalStore URLs, plus flags encoded in the URL!
+			try {
+				list( $schema, $id ) = self::splitBlobAddress( $blobAddress );
+			} catch ( InvalidArgumentException $ex ) {
+				throw new BlobAccessException(
+					$ex->getMessage() . '. Use findBadBlobs.php to remedy.',
+					0,
+					$ex
+				);
+			}
+
+			// TODO: MCR: also support 'ex' schema with ExternalStore URLs, plus flags encoded in the URL!
 			if ( $schema === 'bad' ) {
 				// Database row was marked as "known bad", no need to trigger an error.
 				wfDebug(
@@ -359,13 +368,15 @@ class SqlBlobStore implements IDBAccessObject, BlobStore {
 				$textId = intval( $id );
 
 				if ( $textId < 1 || $id !== (string)$textId ) {
-					$errors[$blobAddress] = "Bad blob address: $blobAddress";
+					$errors[$blobAddress] = "Bad blob address: $blobAddress."
+						. ' Use findBadBlobs.php to remedy.';
 					$result[$blobAddress] = false;
 				}
 
 				$textIdToBlobAddress[$textId] = $blobAddress;
 			} else {
-				$errors[$blobAddress] = "Unknown blob address schema: $schema";
+				$errors[$blobAddress] = "Unknown blob address schema: $schema."
+					. ' Use findBadBlobs.php to remedy.';
 				$result[$blobAddress] = false;
 				continue;
 			}
@@ -418,7 +429,8 @@ class SqlBlobStore implements IDBAccessObject, BlobStore {
 			$blobAddress = $textIdToBlobAddress[$row->old_id];
 			$blob = $this->expandBlob( $row->old_text, $row->old_flags, $blobAddress );
 			if ( $blob === false ) {
-				$errors[$blobAddress] = "Bad data in text row {$row->old_id}.";
+				$errors[$blobAddress] = "Bad data in text row {$row->old_id}."
+					. ' Use findBadBlobs.php to remedy.';
 			}
 			$result[$blobAddress] = $blob;
 		}
@@ -427,7 +439,8 @@ class SqlBlobStore implements IDBAccessObject, BlobStore {
 		if ( count( $result ) !== count( $blobAddresses ) ) {
 			foreach ( $blobAddresses as $blobAddress ) {
 				if ( !isset( $result[$blobAddress ] ) ) {
-					$errors[$blobAddress] = "Unable to fetch blob at $blobAddress";
+					$errors[$blobAddress] = "Unable to fetch blob at $blobAddress."
+						. ' Use findBadBlobs.php to remedy.';
 					$result[$blobAddress] = false;
 				}
 			}
@@ -520,7 +533,7 @@ class SqlBlobStore implements IDBAccessObject, BlobStore {
 	 * @note direct use is deprecated!
 	 * @todo make this private, there should be no need to use this method outside this class.
 	 *
-	 * @param mixed &$blob Reference to a text
+	 * @param string &$blob
 	 *
 	 * @return string
 	 */
@@ -543,7 +556,7 @@ class SqlBlobStore implements IDBAccessObject, BlobStore {
 					$blobFlags[] = 'gzip';
 				}
 			} else {
-				wfDebug( __METHOD__ . " -- no zlib support, not compressing\n" );
+				wfDebug( __METHOD__ . " -- no zlib support, not compressing" );
 			}
 		}
 		return implode( ',', $blobFlags );
@@ -676,8 +689,9 @@ class SqlBlobStore implements IDBAccessObject, BlobStore {
 	 * The address schema for blobs stored in the text table is "tt:" followed by an integer
 	 * that corresponds to a value of the old_id field.
 	 *
-	 * @deprecated since 1.31. This method should become private once the relevant refactoring
-	 * in WikiPage is complete.
+	 * @internal
+	 * @note This method should not be used by regular application logic. It is public so
+	 *       maintenance scripts can use it for bulk operations on the text table.
 	 *
 	 * @param int $id
 	 *

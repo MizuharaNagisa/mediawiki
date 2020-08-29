@@ -24,12 +24,12 @@ namespace Wikimedia\Rdbms;
 use ArrayUtils;
 use BagOStuff;
 use EmptyBagOStuff;
-use Exception;
 use InvalidArgumentException;
 use LogicException;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use RuntimeException;
+use Throwable;
 use UnexpectedValueException;
 use WANObjectCache;
 use Wikimedia\ScopedCallback;
@@ -53,11 +53,11 @@ class LoadBalancer implements ILoadBalancer {
 	/** @var TransactionProfiler */
 	private $trxProfiler;
 	/** @var LoggerInterface */
-	private $replLogger;
-	/** @var LoggerInterface */
 	private $connLogger;
 	/** @var LoggerInterface */
 	private $queryLogger;
+	/** @var LoggerInterface */
+	private $replLogger;
 	/** @var LoggerInterface */
 	private $perfLogger;
 	/** @var callable Exception logger */
@@ -83,9 +83,7 @@ class LoadBalancer implements ILoadBalancer {
 	private $waitTimeout;
 	/** @var array The LoadMonitor configuration */
 	private $loadMonitorConfig;
-	/** @var string Alternate local DB domain instead of DatabaseDomain::getId() */
-	private $localDomainIdAlias;
-	/** @var int Amount of replication lag, in seconds, that is considered "high" */
+	/** @var int */
 	private $maxLag;
 	/** @var string|null Default query group to use with getConnection() */
 	private $defaultGroup;
@@ -101,6 +99,8 @@ class LoadBalancer implements ILoadBalancer {
 	private $tableAliases = [];
 	/** @var string[] Map of (index alias => index) */
 	private $indexAliases = [];
+	/** @var DatabaseDomain[]|string[] Map of (domain alias => DB domain) */
+	private $domainAliases = [];
 	/** @var callable[] Map of (name => callable) */
 	private $trxRecurringCallbacks = [];
 	/** @var bool[] Map of (domain => whether to use "temp tables only" mode) */
@@ -136,41 +136,44 @@ class LoadBalancer implements ILoadBalancer {
 	/** @var int|null Integer ID of the managing LBFactory instance or null if none */
 	private $ownerId;
 
+	/** @var DatabaseDomain[] Map of (domain ID => domain instance) */
+	private $nonLocalDomainCache = [];
+
 	private static $INFO_SERVER_INDEX = 'serverIndex';
 	private static $INFO_AUTOCOMMIT_ONLY = 'autoCommitOnly';
 	private static $INFO_FORIEGN = 'foreign';
 	private static $INFO_FOREIGN_REF_COUNT = 'foreignPoolRefCount';
 
 	/** @var int Warn when this many connection are held */
-	const CONN_HELD_WARN_THRESHOLD = 10;
+	private const CONN_HELD_WARN_THRESHOLD = 10;
 
 	/** @var int Default 'maxLag' when unspecified */
-	const MAX_LAG_DEFAULT = 6;
+	private const MAX_LAG_DEFAULT = 6;
 	/** @var int Default 'waitTimeout' when unspecified */
-	const MAX_WAIT_DEFAULT = 10;
+	private const MAX_WAIT_DEFAULT = 10;
 	/** @var int Seconds to cache master DB server read-only status */
-	const TTL_CACHE_READONLY = 5;
+	private const TTL_CACHE_READONLY = 5;
 
-	const KEY_LOCAL = 'local';
-	const KEY_FOREIGN_FREE = 'foreignFree';
-	const KEY_FOREIGN_INUSE = 'foreignInUse';
+	private const KEY_LOCAL = 'local';
+	private const KEY_FOREIGN_FREE = 'foreignFree';
+	private const KEY_FOREIGN_INUSE = 'foreignInUse';
 
-	const KEY_LOCAL_NOROUND = 'localAutoCommit';
-	const KEY_FOREIGN_FREE_NOROUND = 'foreignFreeAutoCommit';
-	const KEY_FOREIGN_INUSE_NOROUND = 'foreignInUseAutoCommit';
+	private const KEY_LOCAL_NOROUND = 'localAutoCommit';
+	private const KEY_FOREIGN_FREE_NOROUND = 'foreignFreeAutoCommit';
+	private const KEY_FOREIGN_INUSE_NOROUND = 'foreignInUseAutoCommit';
 
 	/** @var string Transaction round, explicit or implicit, has not finished writing */
-	const ROUND_CURSORY = 'cursory';
+	private const ROUND_CURSORY = 'cursory';
 	/** @var string Transaction round writes are complete and ready for pre-commit checks */
-	const ROUND_FINALIZED = 'finalized';
+	private const ROUND_FINALIZED = 'finalized';
 	/** @var string Transaction round passed final pre-commit checks */
-	const ROUND_APPROVED = 'approved';
+	private const ROUND_APPROVED = 'approved';
 	/** @var string Transaction round was committed and post-commit callbacks must be run */
-	const ROUND_COMMIT_CALLBACKS = 'commit-callbacks';
+	private const ROUND_COMMIT_CALLBACKS = 'commit-callbacks';
 	/** @var string Transaction round was rolled back and post-rollback callbacks must be run */
-	const ROUND_ROLLBACK_CALLBACKS = 'rollback-callbacks';
+	private const ROUND_ROLLBACK_CALLBACKS = 'rollback-callbacks';
 	/** @var string Transaction round encountered an error */
-	const ROUND_ERROR = 'error';
+	private const ROUND_ERROR = 'error';
 
 	public function __construct( array $params ) {
 		if ( !isset( $params['servers'] ) || !count( $params['servers'] ) ) {
@@ -215,7 +218,7 @@ class LoadBalancer implements ILoadBalancer {
 		$this->profiler = $params['profiler'] ?? null;
 		$this->trxProfiler = $params['trxProfiler'] ?? new TransactionProfiler();
 
-		$this->errorLogger = $params['errorLogger'] ?? function ( Exception $e ) {
+		$this->errorLogger = $params['errorLogger'] ?? function ( Throwable $e ) {
 			trigger_error( get_class( $e ) . ': ' . $e->getMessage(), E_USER_WARNING );
 		};
 		$this->deprecationLogger = $params['deprecationLogger'] ?? function ( $msg ) {
@@ -267,12 +270,32 @@ class LoadBalancer implements ILoadBalancer {
 	}
 
 	public function resolveDomainID( $domain ) {
-		if ( $domain === $this->localDomainIdAlias || $domain === false ) {
-			// Local connection requested via some backwards-compatibility domain alias
-			return $this->getLocalDomainID();
+		return $this->resolveDomainInstance( $domain )->getId();
+	}
+
+	/**
+	 * @param DatabaseDomain|string|bool $domain
+	 * @return DatabaseDomain
+	 */
+	final protected function resolveDomainInstance( $domain ) {
+		if ( $domain instanceof DatabaseDomain ) {
+			return $domain; // already a domain instance
+		} elseif ( $domain === false || $domain === $this->localDomain->getId() ) {
+			return $this->localDomain;
+		} elseif ( isset( $this->domainAliases[$domain] ) ) {
+			$this->domainAliases[$domain] =
+				DatabaseDomain::newFromId( $this->domainAliases[$domain] );
+
+			return $this->domainAliases[$domain];
 		}
 
-		return (string)$domain;
+		$cachedDomain = $this->nonLocalDomainCache[$domain] ?? null;
+		if ( $cachedDomain === null ) {
+			$cachedDomain = DatabaseDomain::newFromId( $domain );
+			$this->nonLocalDomainCache = [ $domain => $cachedDomain ];
+		}
+
+		return $cachedDomain;
 	}
 
 	/**
@@ -406,13 +429,13 @@ class LoadBalancer implements ILoadBalancer {
 				if ( $lag === false && !is_infinite( $maxServerLag ) ) {
 					$this->replLogger->debug(
 						__METHOD__ .
-						": server {host} is not replicating?", [ 'host' => $host ] );
+						": server {dbserver} is not replicating?", [ 'dbserver' => $host ] );
 					unset( $loads[$i] );
 				} elseif ( $lag > $maxServerLag ) {
 					$this->replLogger->debug(
 						__METHOD__ .
-						": server {host} has {lag} seconds of lag (>= {maxlag})",
-						[ 'host' => $host, 'lag' => $lag, 'maxlag' => $maxServerLag ]
+						": server {dbserver} has {lag} seconds of lag (>= {maxlag})",
+						[ 'dbserver' => $host, 'lag' => $lag, 'maxlag' => $maxServerLag ]
 					);
 					unset( $loads[$i] );
 				}
@@ -668,12 +691,11 @@ class LoadBalancer implements ILoadBalancer {
 			} else {
 				$ok = true; // no applicable loads
 			}
+			return $ok;
 		} finally {
 			// Restore the old position; this is used for throttling, not lag-protection
 			$this->waitForPos = $oldPos;
 		}
-
-		return $ok;
 	}
 
 	public function waitForAll( $pos, $timeout = null ) {
@@ -695,12 +717,11 @@ class LoadBalancer implements ILoadBalancer {
 					}
 				}
 			}
+			return $ok;
 		} finally {
 			// Restore the old position; this is used for throttling, not lag-protection
 			$this->waitForPos = $oldPos;
 		}
-
-		return $ok;
 	}
 
 	/**
@@ -852,29 +873,8 @@ class LoadBalancer implements ILoadBalancer {
 
 		$result = $conn->masterPosWait( $this->waitForPos, $timeout );
 
-		if ( $result === null ) {
-			$this->replLogger->warning(
-				__METHOD__ . ': Errored out waiting on {host} pos {pos}',
-				[
-					'host' => $server,
-					'pos' => $this->waitForPos,
-					'trace' => ( new RuntimeException() )->getTraceAsString()
-				]
-			);
-			$ok = false;
-		} elseif ( $result == -1 ) {
-			$this->replLogger->warning(
-				__METHOD__ . ': Timed out waiting on {host} pos {pos}',
-				[
-					'host' => $server,
-					'pos' => $this->waitForPos,
-					'trace' => ( new RuntimeException() )->getTraceAsString()
-				]
-			);
-			$ok = false;
-		} else {
-			$this->replLogger->debug( __METHOD__ . ": done waiting" );
-			$ok = true;
+		$ok = ( $result !== null && $result != -1 );
+		if ( $ok ) {
 			// Remember that the DB reached this point
 			$this->srvCache->set( $key, $this->waitForPos, BagOStuff::TTL_DAY );
 		}
@@ -1169,22 +1169,24 @@ class LoadBalancer implements ILoadBalancer {
 			$this->connLogger->debug( __METHOD__ . ": reusing free connection $i/$domain" );
 		} elseif ( !empty( $this->conns[$connFreeKey][$i] ) ) {
 			// Reuse a free connection from another domain if possible
-			foreach ( $this->conns[$connFreeKey][$i] as $oldDomain => $conn ) {
+			foreach ( $this->conns[$connFreeKey][$i] as $oldDomain => $oldConn ) {
 				if ( $domainInstance->getDatabase() !== null ) {
 					// Check if changing the database will require a new connection.
 					// In that case, leave the connection handle alone and keep looking.
 					// This prevents connections from being closed mid-transaction and can
 					// also avoid overhead if the same database will later be requested.
 					if (
-						$conn->databasesAreIndependent() &&
-						$conn->getDBname() !== $domainInstance->getDatabase()
+						$oldConn->databasesAreIndependent() &&
+						$oldConn->getDBname() !== $domainInstance->getDatabase()
 					) {
 						continue;
 					}
 					// Select the new database, schema, and prefix
+					$conn = $oldConn;
 					$conn->selectDomain( $domainInstance );
 				} else {
 					// Stay on the current database, but update the schema/prefix
+					$conn = $oldConn;
 					$conn->dbSchema( $domainInstance->getSchema() );
 					$conn->tablePrefix( $domainInstance->getTablePrefix() );
 				}
@@ -1299,6 +1301,7 @@ class LoadBalancer implements ILoadBalancer {
 				'srvCache' => $this->srvCache,
 				'connLogger' => $this->connLogger,
 				'queryLogger' => $this->queryLogger,
+				'replLogger' => $this->replLogger,
 				'errorLogger' => $this->errorLogger,
 				'deprecationLogger' => $this->deprecationLogger,
 				'profiler' => $this->profiler,
@@ -1499,12 +1502,10 @@ class LoadBalancer implements ILoadBalancer {
 		}
 
 		try {
-			$pos = $conn->getMasterPos();
+			return $conn->getMasterPos();
 		} finally {
 			$this->closeConnection( $conn );
 		}
-
-		return $pos;
 	}
 
 	public function getReplicaResumePos() {
@@ -1764,7 +1765,7 @@ class LoadBalancer implements ILoadBalancer {
 					}
 					try {
 						$count += $conn->runOnTransactionIdleCallbacks( $type );
-					} catch ( Exception $ex ) {
+					} catch ( Throwable $ex ) {
 						$e = $e ?: $ex;
 					}
 				}
@@ -1790,7 +1791,7 @@ class LoadBalancer implements ILoadBalancer {
 				}
 				try {
 					$conn->commit( $fname, $conn::FLUSHING_ALL_PEERS );
-				} catch ( Exception $ex ) {
+				} catch ( Throwable $ex ) {
 					$e = $e ?: $ex;
 				}
 			} );
@@ -1824,7 +1825,7 @@ class LoadBalancer implements ILoadBalancer {
 		$this->forEachOpenMasterConnection( function ( Database $conn ) use ( $type, &$e ) {
 			try {
 				$conn->runTransactionListenerCallbacks( $type );
-			} catch ( Exception $ex ) {
+			} catch ( Throwable $ex ) {
 				$e = $e ?: $ex;
 			}
 		} );
@@ -1966,12 +1967,12 @@ class LoadBalancer implements ILoadBalancer {
 	}
 
 	public function hasMasterChanges() {
-		$pending = 0;
+		$pending = false;
 		$this->forEachOpenMasterConnection( function ( IDatabase $conn ) use ( &$pending ) {
-			$pending |= $conn->writesOrCallbacksPending();
+			$pending = $pending || $conn->writesOrCallbacksPending();
 		} );
 
-		return (bool)$pending;
+		return $pending;
 	}
 
 	public function lastMasterChangeTimestamp() {
@@ -2262,25 +2263,27 @@ class LoadBalancer implements ILoadBalancer {
 			$start = microtime( true );
 			$result = $conn->masterPosWait( $pos, $timeout );
 			$seconds = max( microtime( true ) - $start, 0 );
-			if ( $result == -1 || $result === null ) {
-				$msg = __METHOD__ . ': timed out waiting on {host} pos {pos} [{seconds}s]';
-				$this->replLogger->warning( $msg, [
-					'host' => $conn->getServer(),
-					'pos' => $pos,
-					'seconds' => round( $seconds, 6 ),
-					'trace' => ( new RuntimeException() )->getTraceAsString()
-				] );
-				$ok = false;
+
+			$ok = ( $result !== null && $result != -1 );
+			if ( $ok ) {
+				$this->replLogger->warning(
+					__METHOD__ . ': timed out waiting on {dbserver} pos {pos} [{seconds}s]',
+					[
+						'dbserver' => $conn->getServer(),
+						'pos' => $pos,
+						'seconds' => round( $seconds, 6 ),
+						'trace' => ( new RuntimeException() )->getTraceAsString()
+					]
+				);
 			} else {
 				$this->replLogger->debug( __METHOD__ . ': done waiting' );
-				$ok = true;
 			}
 		} else {
 			$ok = false; // something is misconfigured
 			$this->replLogger->error(
-				__METHOD__ . ': could not get master pos for {host}',
+				__METHOD__ . ': could not get master pos for {dbserver}',
 				[
-					'host' => $conn->getServer(),
+					'dbserver' => $conn->getServer(),
 					'trace' => ( new RuntimeException() )->getTraceAsString()
 				]
 			);
@@ -2324,6 +2327,10 @@ class LoadBalancer implements ILoadBalancer {
 
 	public function setIndexAliases( array $aliases ) {
 		$this->indexAliases = $aliases;
+	}
+
+	public function setDomainAliases( array $aliases ) {
+		$this->domainAliases = $aliases;
 	}
 
 	public function setLocalDomainPrefix( $prefix ) {
@@ -2380,14 +2387,6 @@ class LoadBalancer implements ILoadBalancer {
 	 */
 	private function setLocalDomain( DatabaseDomain $domain ) {
 		$this->localDomain = $domain;
-		// In case a caller assumes that the domain ID is simply <db>-<prefix>, which is almost
-		// always true, gracefully handle the case when they fail to account for escaping.
-		if ( $this->localDomain->getTablePrefix() != '' ) {
-			$this->localDomainIdAlias =
-				$this->localDomain->getDatabase() . '-' . $this->localDomain->getTablePrefix();
-		} else {
-			$this->localDomainIdAlias = $this->localDomain->getDatabase();
-		}
 	}
 
 	/**

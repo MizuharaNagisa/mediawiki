@@ -1,6 +1,7 @@
 <?php
 
 use MediaWiki\MediaWikiServices;
+use Wikimedia\TestingAccessWrapper;
 
 /**
  * @group API
@@ -10,8 +11,18 @@ use MediaWiki\MediaWikiServices;
  * @covers ApiQuerySiteinfo
  */
 class ApiQuerySiteinfoTest extends ApiTestCase {
-	// We don't try to test every single thing for every category, just a sample
+	private $originalRegistryLoaded = null;
 
+	protected function tearDown() : void {
+		if ( $this->originalRegistryLoaded !== null ) {
+			$reg = TestingAccessWrapper::newFromObject( ExtensionRegistry::getInstance() );
+			$reg->loaded = $this->originalRegistryLoaded;
+			$this->originalRegistryLoaded = null;
+		}
+		parent::tearDown();
+	}
+
+	// We don't try to test every single thing for every category, just a sample
 	protected function doQuery( $siprop = null, $extraParams = [] ) {
 		$params = [ 'action' => 'query', 'meta' => 'siteinfo' ];
 		if ( $siprop !== null ) {
@@ -122,12 +133,7 @@ class ApiQuerySiteinfoTest extends ApiTestCase {
 	}
 
 	public function testNamespaceAliases() {
-		global $wgNamespaceAliases;
-
-		$expected = array_merge(
-			$wgNamespaceAliases,
-			MediaWikiServices::getInstance()->getContentLanguage()->getNamespaceAliases()
-		);
+		$expected = MediaWikiServices::getInstance()->getContentLanguage()->getNamespaceAliases();
 		$expected = array_map(
 			function ( $key, $val ) {
 				return [ 'id' => $val, 'alias' => strtr( $key, '_', ' ' ) ];
@@ -135,9 +141,6 @@ class ApiQuerySiteinfoTest extends ApiTestCase {
 			array_keys( $expected ),
 			$expected
 		);
-
-		// Test that we don't list duplicates
-		$this->mergeMwGlobalArrayValue( 'wgNamespaceAliases', [ 'Talk' => NS_TALK ] );
 
 		$this->assertSame( $expected, $this->doQuery( 'namespacealiases' ) );
 	}
@@ -195,7 +198,7 @@ class ApiQuerySiteinfoTest extends ApiTestCase {
 		] );
 		$this->resetServices();
 
-		MessageCache::singleton()->enable();
+		MediaWikiServices::getInstance()->getMessageCache()->enable();
 
 		$this->editPage( 'MediaWiki:Interlanguage-link-self', 'Self!' );
 		$this->editPage( 'MediaWiki:Interlanguage-link-sitename-self', 'Circular logic' );
@@ -434,6 +437,11 @@ class ApiQuerySiteinfoTest extends ApiTestCase {
 				'author' => [ 'John Smith', 'John Smith Jr.', '...' ],
 				'descriptionmsg' => [ 'another-extension-desc', 'param' ] ],
 		] ] );
+		// Make the main registry empty
+		// TODO: Make ExtensionRegistry an injected service?
+		$reg = TestingAccessWrapper::newFromObject( ExtensionRegistry::getInstance() );
+		$this->originalRegistryLoaded = $reg->loaded;
+		$reg->loaded = [];
 
 		$data = $this->doQuery( 'extensions' );
 
@@ -517,7 +525,9 @@ class ApiQuerySiteinfoTest extends ApiTestCase {
 	 * @dataProvider languagesProvider
 	 */
 	public function testLanguages( $langCode ) {
-		$expected = Language::fetchLanguageNames( (string)$langCode );
+		$expected = MediaWikiServices::getInstance()
+			->getLanguageNameUtils()
+			->getLanguageNames( (string)$langCode );
 
 		$expected = array_map(
 			function ( $code, $name ) {
@@ -572,16 +582,19 @@ class ApiQuerySiteinfoTest extends ApiTestCase {
 	 */
 	public function testSkins( $code ) {
 		$data = $this->doQuery( 'skins', $code !== null ? [ 'siinlanguagecode' => $code ] : [] );
-
-		$expectedAllowed = Skin::getAllowedSkins();
+		$services = MediaWikiServices::getInstance();
+		$skinFactory = $services->getSkinFactory();
+		$skinNames = $skinFactory->getSkinNames();
+		$expectedAllowed = $skinFactory->getAllowedSkins();
 		$expectedDefault = Skin::normalizeKey( 'default' );
+		$languageNameUtils = $services->getLanguageNameUtils();
 
 		$i = 0;
-		foreach ( Skin::getSkinNames() as $name => $displayName ) {
+		foreach ( $skinNames as $name => $displayName ) {
 			$this->assertSame( $name, $data[$i]['code'] );
 
 			$msg = wfMessage( "skinname-$name" );
-			if ( $code && Language::isValidCode( $code ) ) {
+			if ( $code && $languageNameUtils->isValidCode( $code ) ) {
 				$msg->inLanguage( $code );
 			} else {
 				$msg->inContentLanguage();

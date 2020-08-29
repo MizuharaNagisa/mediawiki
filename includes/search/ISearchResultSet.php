@@ -5,6 +5,7 @@
  * Must not be directly implemented by extension, please extend BaseSearchResultSet instead.
  * This interface must only be used for type hinting.
  *
+ * @unstable for implementation, extensions should extend the BaseSearchResultSet base class.
  * @see BaseSearchResultSet
  * @ingroup Search
  */
@@ -13,13 +14,13 @@ interface ISearchResultSet extends \Countable, \IteratorAggregate {
 	 * Identifier for interwiki results that are displayed only together with existing main wiki
 	 * results.
 	 */
-	const SECONDARY_RESULTS = 0;
+	public const SECONDARY_RESULTS = 0;
 
 	/**
 	 * Identifier for interwiki results that can be displayed even if no existing main wiki results
 	 * exist.
 	 */
-	const INLINE_RESULTS = 1;
+	public const INLINE_RESULTS = 1;
 
 	/**
 	 * @return int

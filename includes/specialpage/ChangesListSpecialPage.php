@@ -23,6 +23,7 @@
 
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
+use OOUI\IconWidget;
 use Wikimedia\Rdbms\DBQueryTimeoutError;
 use Wikimedia\Rdbms\FakeResultWrapper;
 use Wikimedia\Rdbms\IDatabase;
@@ -39,7 +40,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 	 * Maximum length of a tag description in UTF-8 characters.
 	 * Longer descriptions will be truncated.
 	 */
-	const TAG_DESC_CHARACTER_LIMIT = 120;
+	private const TAG_DESC_CHARACTER_LIMIT = 120;
 
 	/**
 	 * Preference name for saved queries. Subclasses that use saved queries should override this.
@@ -111,7 +112,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 		parent::__construct( $name, $restriction );
 
 		$nonRevisionTypes = [ RC_LOG ];
-		Hooks::run( 'SpecialWatchlistGetNonRevisionTypes', [ &$nonRevisionTypes ] );
+		$this->getHookRunner()->onSpecialWatchlistGetNonRevisionTypes( $nonRevisionTypes );
 
 		$this->filterGroupDefinitions = [
 			[
@@ -624,6 +625,11 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 
 		$this->considerActionsForDefaultSavedQuery( $subpage );
 
+		// Enable OOUI for the clock icon.
+		if ( $this->getConfig()->get( 'WatchlistExpiry' ) ) {
+			$this->getOutput()->enableOOUI();
+		}
+
 		$opts = $this->getOptions();
 		try {
 			$rows = $this->getRows();
@@ -1071,7 +1077,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 			);
 		}
 
-		Hooks::run( 'ChangesListSpecialPageStructuredFilters', [ $this ] );
+		$this->getHookRunner()->onChangesListSpecialPageStructuredFilters( $this );
 
 		$this->registerFiltersFromDefinitions( [] );
 
@@ -1531,31 +1537,43 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 
 			$namespaces = $this->expandSymbolicNamespaceFilters( $namespaces );
 
-			if ( $opts[ 'associated' ] ) {
-				$namespaceInfo = MediaWikiServices::getInstance()->getNamespaceInfo();
-				$associatedNamespaces = array_map(
-					function ( $ns ) use ( $namespaceInfo ){
-						return $namespaceInfo->getAssociated( $ns );
-					},
-					array_filter(
-						$namespaces,
-						function ( $ns ) use ( $namespaceInfo ) {
-							return $namespaceInfo->hasTalkNamespace( $ns );
-						}
-					)
-				);
-				$namespaces = array_unique( array_merge( $namespaces, $associatedNamespaces ) );
-			}
+			$namespaceInfo = MediaWikiServices::getInstance()->getNamespaceInfo();
+			$namespaces = array_filter(
+				$namespaces,
+				function ( $ns ) use ( $namespaceInfo ) {
+					return $namespaceInfo->exists( $ns );
+				}
+			);
 
-			if ( count( $namespaces ) === 1 ) {
-				$operator = $opts[ 'invert' ] ? '!=' : '=';
-				$value = $dbr->addQuotes( reset( $namespaces ) );
-			} else {
-				$operator = $opts[ 'invert' ] ? 'NOT IN' : 'IN';
-				sort( $namespaces );
-				$value = '(' . $dbr->makeList( $namespaces ) . ')';
+			if ( $namespaces !== [] ) {
+				// Namespaces are just ints, use them as int when acting with the database
+				$namespaces = array_map( 'intval', $namespaces );
+
+				if ( $opts[ 'associated' ] ) {
+					$associatedNamespaces = array_map(
+						function ( $ns ) use ( $namespaceInfo ){
+							return $namespaceInfo->getAssociated( $ns );
+						},
+						array_filter(
+							$namespaces,
+							function ( $ns ) use ( $namespaceInfo ) {
+								return $namespaceInfo->hasTalkNamespace( $ns );
+							}
+						)
+					);
+					$namespaces = array_unique( array_merge( $namespaces, $associatedNamespaces ) );
+				}
+
+				if ( count( $namespaces ) === 1 ) {
+					$operator = $opts[ 'invert' ] ? '!=' : '=';
+					$value = $dbr->addQuotes( reset( $namespaces ) );
+				} else {
+					$operator = $opts[ 'invert' ] ? 'NOT IN' : 'IN';
+					sort( $namespaces );
+					$value = '(' . $dbr->makeList( $namespaces ) . ')';
+				}
+				$conds[] = "rc_namespace $operator $value";
 			}
-			$conds[] = "rc_namespace $operator $value";
 		}
 
 		// Calculate cutoff
@@ -1621,10 +1639,8 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 	protected function runMainQueryHook( &$tables, &$fields, &$conds,
 		&$query_options, &$join_conds, $opts
 	) {
-		return Hooks::run(
-			'ChangesListSpecialPageQuery',
-			[ $this->getName(), &$tables, &$fields, &$conds, &$query_options, &$join_conds, $opts ]
-		);
+		return $this->getHookRunner()->onChangesListSpecialPageQuery(
+			$this->getName(), $tables, $fields, $conds, $query_options, $join_conds, $opts );
 	}
 
 	/**
@@ -1763,6 +1779,29 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 			[ 'class' => 'mw-changeslist-legend-plusminus' ],
 			$context->msg( 'recentchanges-label-plusminus' )->text()
 		) . "\n";
+		// Watchlist expiry clock icon.
+		if ( $context->getConfig()->get( 'WatchlistExpiry' ) ) {
+			$widget = new IconWidget( [
+				'icon' => 'clock',
+				'classes' => [ 'mw-changesList-watchlistExpiry' ],
+			] );
+			// Link the image to its label for assistive technologies.
+			$watchlistLabelId = 'mw-changeslist-watchlistExpiry-label';
+			$widget->getIconElement()->setAttributes( [
+				'role' => 'img',
+				'aria-labelledby' => $watchlistLabelId,
+			] );
+			$legend .= Html::rawElement(
+				'dt',
+				[ 'class' => 'mw-changeslist-legend-watchlistexpiry' ],
+				$widget
+			);
+			$legend .= Html::rawElement(
+				'dd',
+				[ 'class' => 'mw-changeslist-legend-watchlistexpiry', 'id' => $watchlistLabelId ],
+				$context->msg( 'recentchanges-legend-watchlistexpiry' )->text()
+			);
+		}
 		$legend .= Html::closeElement( 'dl' ) . "\n";
 
 		$legendHeading = $this->isStructuredFilterUiEnabled() ?

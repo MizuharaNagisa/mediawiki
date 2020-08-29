@@ -7,7 +7,7 @@ use Wikimedia\TestingAccessWrapper;
  * @group Database
  * @group GlobalFunctions
  */
-class GlobalTest extends MediaWikiTestCase {
+class GlobalTest extends MediaWikiIntegrationTestCase {
 	protected function setUp() : void {
 		parent::setUp();
 
@@ -313,8 +313,6 @@ class GlobalTest extends MediaWikiTestCase {
 
 		$this->setMwGlobals( [
 			'wgDebugLogFile' => $debugLogFile,
-			#  @todo FIXME: $wgDebugTimestamps should be tested
-			'wgDebugTimestamps' => false,
 		] );
 		$this->setLogger( 'wfDebug', new LegacyLogger( 'wfDebug' ) );
 
@@ -385,29 +383,28 @@ class GlobalTest extends MediaWikiTestCase {
 
 	/**
 	 * @covers ::wfPercent
+	 * @dataProvider provideWfPercentTest
 	 */
-	public function testWfPercentTest() {
-		$pcts = [
+	public function testWfPercentTest( float $input,
+		string $expected,
+		int $accuracy = 2,
+		bool $round = true
+	) {
+		$this->assertSame( $expected, wfPercent( $input, $accuracy, $round ) );
+	}
+
+	public function provideWfPercentTest() {
+		return [
 			[ 6 / 7, '0.86%', 2, false ],
 			[ 3 / 3, '1%' ],
 			[ 22 / 7, '3.14286%', 5 ],
 			[ 3 / 6, '0.5%' ],
 			[ 1 / 3, '0%', 0 ],
 			[ 10 / 3, '0%', -1 ],
+			[ 123.456, '120%', -1 ],
 			[ 3 / 4 / 5, '0.1%', 1 ],
 			[ 6 / 7 * 8, '6.8571428571%', 10 ],
 		];
-
-		foreach ( $pcts as $pct ) {
-			if ( !isset( $pct[2] ) ) {
-				$pct[2] = 2;
-			}
-			if ( !isset( $pct[3] ) ) {
-				$pct[3] = true;
-			}
-
-			$this->assertEquals( wfPercent( $pct[0], $pct[2], $pct[3] ), $pct[1], $pct[1] );
-		}
 	}
 
 	/**
@@ -732,5 +729,6 @@ class GlobalTest extends MediaWikiTestCase {
 			],
 		];
 	}
+
 	/* @todo many more! */
 }

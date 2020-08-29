@@ -21,9 +21,9 @@
  * @ingroup SpecialPage
  */
 
-use MediaWiki\Auth\AuthManager;
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Permissions\PermissionManager;
 
 /**
  * Let users change their email address.
@@ -36,8 +36,16 @@ class SpecialChangeEmail extends FormSpecialPage {
 	 */
 	private $status;
 
-	public function __construct() {
+	/** @var PermissionManager */
+	private $permManager;
+
+	/**
+	 * @param PermissionManager $permManager
+	 */
+	public function __construct( PermissionManager $permManager ) {
 		parent::__construct( 'ChangeEmail', 'editmyprivateinfo' );
+
+		$this->permManager = $permManager;
 	}
 
 	public function doesWrites() {
@@ -48,14 +56,15 @@ class SpecialChangeEmail extends FormSpecialPage {
 	 * @return bool
 	 */
 	public function isListed() {
-		return AuthManager::singleton()->allowsPropertyChange( 'emailaddress' );
+		return MediaWikiServices::getInstance()->getAuthManager()
+			->allowsPropertyChange( 'emailaddress' );
 	}
 
 	/**
 	 * Main execution point
 	 * @param string $par
 	 */
-	function execute( $par ) {
+	public function execute( $par ) {
 		$out = $this->getOutput();
 		$out->disallowUserJs();
 
@@ -67,7 +76,8 @@ class SpecialChangeEmail extends FormSpecialPage {
 	}
 
 	protected function checkExecutePermissions( User $user ) {
-		if ( !AuthManager::singleton()->allowsPropertyChange( 'emailaddress' ) ) {
+		$services = MediaWikiServices::getInstance();
+		if ( !$services->getAuthManager()->allowsPropertyChange( 'emailaddress' ) ) {
 			throw new ErrorPageError( 'changeemail', 'cannotchangeemail' );
 		}
 
@@ -75,10 +85,7 @@ class SpecialChangeEmail extends FormSpecialPage {
 
 		// This could also let someone check the current email address, so
 		// require both permissions.
-		if ( !MediaWikiServices::getInstance()
-				->getPermissionManager()
-				->userHasRight( $this->getUser(), 'viewmyprivateinfo' )
-		) {
+		if ( !$this->permManager->userHasRight( $this->getUser(), 'viewmyprivateinfo' ) ) {
 			throw new PermissionsError( 'viewmyprivateinfo' );
 		}
 
@@ -187,7 +194,7 @@ class SpecialChangeEmail extends FormSpecialPage {
 			]
 		);
 
-		Hooks::run( 'PrefsEmailAudit', [ $userLatest, $oldaddr, $newaddr ] );
+		$this->getHookRunner()->onPrefsEmailAudit( $userLatest, $oldaddr, $newaddr );
 
 		$userLatest->saveSettings();
 

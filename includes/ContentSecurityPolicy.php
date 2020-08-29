@@ -24,9 +24,14 @@
  * @since 1.32
  * @file
  */
+
+use MediaWiki\HookContainer\HookContainer;
+use MediaWiki\HookContainer\HookRunner;
+use MediaWiki\MediaWikiServices;
+
 class ContentSecurityPolicy {
-	const REPORT_ONLY_MODE = 1;
-	const FULL_MODE = 2;
+	public const REPORT_ONLY_MODE = 1;
+	public const FULL_MODE = 2;
 
 	/** @var string The nonce to use for inline scripts (from OutputPage) */
 	private $nonce;
@@ -42,18 +47,24 @@ class ContentSecurityPolicy {
 	/** @var array */
 	private $extraStyleSrc = [];
 
+	/** @var HookRunner */
+	private $hookRunner;
+
 	/**
-	 *
 	 * @note As a general rule, you would not construct this class directly
 	 *  but use the instance from OutputPage::getCSP()
 	 * @internal
 	 * @param WebResponse $response
 	 * @param Config $mwConfig
+	 * @param HookContainer $hookContainer
 	 * @since 1.35 Method signature changed
 	 */
-	public function __construct( WebResponse $response, Config $mwConfig ) {
+	public function __construct( WebResponse $response, Config $mwConfig,
+		HookContainer $hookContainer
+	) {
 		$this->response = $response;
 		$this->mwConfig = $mwConfig;
+		$this->hookRunner = new HookRunner( $hookContainer );
 	}
 
 	/**
@@ -155,10 +166,9 @@ class ContentSecurityPolicy {
 		// blocked.
 		$defaultSrc = [ '*', 'data:', 'blob:' ];
 
-		$cssSrc = false;
 		$imgSrc = false;
-		$scriptSrc = [ "'unsafe-eval'", "'self'" ];
-		if ( !isset( $policyConfig['useNonces'] ) || $policyConfig['useNonces'] ) {
+		$scriptSrc = [ "'unsafe-eval'", "blob:", "'self'" ];
+		if ( $policyConfig['useNonces'] ?? true ) {
 			$scriptSrc[] = "'nonce-" . $this->getNonce() . "'";
 		}
 
@@ -171,9 +181,7 @@ class ContentSecurityPolicy {
 			}
 		}
 		// Note: default on if unspecified.
-		if ( !isset( $policyConfig['unsafeFallback'] )
-			|| $policyConfig['unsafeFallback']
-		) {
+		if ( $policyConfig['unsafeFallback'] ?? true ) {
 			// unsafe-inline should be ignored on browsers
 			// that support 'nonce-foo' sources.
 			// Some older versions of firefox don't follow this
@@ -199,7 +207,7 @@ class ContentSecurityPolicy {
 			}
 		}
 
-		if ( !isset( $policyConfig['includeCORS'] ) || $policyConfig['includeCORS'] ) {
+		if ( $policyConfig['includeCORS'] ?? true ) {
 			$CORSUrls = $this->getCORSSources();
 			if ( !in_array( '*', $defaultSrc ) ) {
 				$defaultSrc = array_merge( $defaultSrc, $CORSUrls );
@@ -216,8 +224,8 @@ class ContentSecurityPolicy {
 
 		$cssSrc = array_merge( $defaultSrc, $this->extraStyleSrc, [ "'unsafe-inline'" ] );
 
-		Hooks::run( 'ContentSecurityPolicyDefaultSource', [ &$defaultSrc, $policyConfig, $mode ] );
-		Hooks::run( 'ContentSecurityPolicyScriptSource', [ &$scriptSrc, $policyConfig, $mode ] );
+		$this->hookRunner->onContentSecurityPolicyDefaultSource( $defaultSrc, $policyConfig, $mode );
+		$this->hookRunner->onContentSecurityPolicyScriptSource( $scriptSrc, $policyConfig, $mode );
 
 		if ( isset( $policyConfig['report-uri'] ) && $policyConfig['report-uri'] !== true ) {
 			if ( $policyConfig['report-uri'] === false ) {
@@ -254,6 +262,14 @@ class ContentSecurityPolicy {
 				}
 			}
 		}
+		// Default value 'none'. true is none, false is nothing, string is single directive,
+		// array is list.
+		if ( !isset( $policyConfig['object-src'] ) || $policyConfig['object-src'] === true ) {
+			$objectSrc = [ "'none'" ];
+		} else {
+			$objectSrc = (array)( $policyConfig['object-src'] ?: [] );
+		}
+		$objectSrc = array_map( [ $this, 'escapeUrlForCSP' ], $objectSrc );
 
 		$directives = [];
 		if ( $scriptSrc ) {
@@ -268,11 +284,14 @@ class ContentSecurityPolicy {
 		if ( $imgSrc ) {
 			$directives[] = 'img-src ' . implode( ' ', array_unique( $imgSrc ) );
 		}
+		if ( $objectSrc ) {
+			$directives[] = 'object-src ' . implode( ' ', $objectSrc );
+		}
 		if ( $reportUri ) {
 			$directives[] = 'report-uri ' . $reportUri;
 		}
 
-		Hooks::run( 'ContentSecurityPolicyDirectives', [ &$directives, $policyConfig, $mode ] );
+		$this->hookRunner->onContentSecurityPolicyDirectives( $directives, $policyConfig, $mode );
 
 		return implode( '; ', $directives );
 	}
@@ -397,9 +416,10 @@ class ContentSecurityPolicy {
 			$urls[] = $repo->getZoneUrl( 'thumb' );
 			$urls[] = $repo->getDescriptionStylesheetUrl();
 		};
-		$localRepo = RepoGroup::singleton()->getRepo( 'local' );
+		$repoGroup = MediaWikiServices::getInstance()->getRepoGroup();
+		$localRepo = $repoGroup->getRepo( 'local' );
 		$callback( $localRepo, $pathUrls );
-		RepoGroup::singleton()->forEachForeignRepo( $callback, [ &$pathUrls ] );
+		$repoGroup->forEachForeignRepo( $callback, [ &$pathUrls ] );
 
 		// Globals that might point to a different domain
 		$pathGlobals = [ 'LoadScript', 'ExtensionAssetsPath', 'StylePath', 'ResourceBasePath' ];
@@ -547,7 +567,7 @@ class ContentSecurityPolicy {
 	 *
 	 * @since 1.35
 	 * @param string $source Source to add.
-	 *   e.g. blob:, example.com, https://*.example.com, example.com/foo
+	 *   e.g. blob:, *.example.com, %https://example.com, example.com/foo
 	 */
 	public function addDefaultSrc( $source ) {
 		$this->extraDefaultSrc[] = $this->prepareUrlForCSP( $source );
@@ -561,7 +581,7 @@ class ContentSecurityPolicy {
 	 *
 	 * @since 1.35
 	 * @param string $source Source to add.
-	 *   e.g. blob:, example.com, https://*.example.com, example.com/foo
+	 *   e.g. blob:, *.example.com, %https://example.com, example.com/foo
 	 */
 	public function addStyleSrc( $source ) {
 		$this->extraStyleSrc[] = $this->prepareUrlForCSP( $source );
@@ -576,7 +596,7 @@ class ContentSecurityPolicy {
 	 * @since 1.35
 	 * @warning Be careful including external scripts, as they can take over accounts.
 	 * @param string $source Source to add.
-	 *   e.g. blob:, example.com, https://*.example.com, example.com/foo
+	 *   e.g. blob:, *.example.com, %https://example.com, example.com/foo
 	 */
 	public function addScriptSrc( $source ) {
 		$this->extraScriptSrc[] = $this->prepareUrlForCSP( $source );

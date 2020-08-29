@@ -1,5 +1,8 @@
 <?php
 
+use MediaWiki\MediaWikiServices;
+use MediaWiki\Revision\RevisionRecord;
+
 /**
  * @group Database
  */
@@ -471,23 +474,26 @@ class LinkerTest extends MediaWikiLangTestCase {
 		$summary = CommentStoreComment::newUnsavedComment( 'Some comment!' );
 		$updater->saveRevision( $summary );
 
-		$rollbackOutput = Linker::generateRollback( $page->getRevision(), $context );
+		$rollbackOutput = Linker::generateRollback( $page->getRevisionRecord(), $context );
 		$modules = $context->getOutput()->getModules();
-		$currentRev = $page->getRevision();
-		$oldestRev = $page->getOldestRevision();
+		$currentRev = $page->getRevisionRecord();
+		$revisionLookup = MediaWikiServices::getInstance()->getRevisionLookup();
+		$oldestRev = $revisionLookup->getFirstRevision( $page->getTitle() );
 
 		$this->assertEquals( $expectedModules, $modules );
-		$this->assertEquals( $user->getName(), $currentRev->getUserText() );
+		$this->assertInstanceOf( RevisionRecord::class, $currentRev );
+		$this->assertInstanceOf( User::class, $currentRev->getUser() );
+		$this->assertEquals( $user->getName(), $currentRev->getUser()->getName() );
 		$this->assertEquals(
 			static::getTestSysop()->getUser(),
-			$oldestRev->getUserText()
+			$oldestRev->getUser()->getName()
 		);
 
 		$ids = [];
 		$r = $oldestRev;
 		while ( $r ) {
 			$ids[] = $r->getId();
-			$r = $r->getNext();
+			$r = $revisionLookup->getNextRevision( $r );
 		}
 		$this->assertEquals( [ $oldestRev->getId(), $currentRev->getId() ], $ids );
 
@@ -498,7 +504,7 @@ class LinkerTest extends MediaWikiLangTestCase {
 		return [
 			[
 				true,
-				[ 'mediawiki.page.rollback.confirmation' ],
+				[ 'mediawiki.misc-authed-curate' ],
 				'Rollback_Test_Page'
 			],
 			[
@@ -523,6 +529,11 @@ class LinkerTest extends MediaWikiLangTestCase {
 				null,
 			],
 			[
+				'[[Foo<a href="/wiki/Special:BlankPage" title="Special:BlankPage">Special:BlankPage</a>',
+				'[[Foo[[Special:BlankPage]]',
+				null,
+			],
+			[
 				'<a class="external" rel="nofollow" href="//en.example.org/w/Foo%27bar">Foo\'bar</a>',
 				"[[Foo'bar]]",
 				'enwiki',
@@ -541,119 +552,43 @@ class LinkerTest extends MediaWikiLangTestCase {
 		// phpcs:enable
 	}
 
-	public static function provideLinkBeginHook() {
-		// phpcs:disable Generic.Files.LineLength
+	public static function provideTooltipAndAccesskeyAttribs() {
 		return [
-			// Modify $html
-			[
-				function ( $dummy, $title, &$html, &$attribs, &$query, &$options, &$ret ) {
-					$html = 'foobar';
-				},
-				'<a href="/wiki/Special:BlankPage" title="Special:BlankPage">foobar</a>'
+			'Watch no expiry' => [
+				'ca-watch', [], null, [ 'title' => 'Add this page to your watchlist [w]', 'accesskey' => 'w' ]
 			],
-			// Modify $attribs
-			[
-				function ( $dummy, $title, &$html, &$attribs, &$query, &$options, &$ret ) {
-					$attribs['bar'] = 'baz';
-				},
-				'<a href="/wiki/Special:BlankPage" title="Special:BlankPage" bar="baz">Special:BlankPage</a>'
+			'Key does not exist' => [
+				'key-does-not-exist', [], null, []
 			],
-			// Modify $query
-			[
-				function ( $dummy, $title, &$html, &$attribs, &$query, &$options, &$ret ) {
-					$query['bar'] = 'baz';
-				},
-				'<a href="/w/index.php?title=Special:BlankPage&amp;bar=baz" title="Special:BlankPage">Special:BlankPage</a>'
+			'Unwatch no expiry' => [
+				'ca-unwatch', [], null, [ 'title' => 'Remove this page from your watchlist [w]',
+					'accesskey' => 'w' ]
 			],
-			// Force HTTP $options
-			[
-				function ( $dummy, $title, &$html, &$attribs, &$query, &$options, &$ret ) {
-					$options = [ 'http' ];
-				},
-				'<a href="http://example.org/wiki/Special:BlankPage" title="Special:BlankPage">Special:BlankPage</a>'
-			],
-			// Force 'forcearticlepath' in $options
-			[
-				function ( $dummy, $title, &$html, &$attribs, &$query, &$options, &$ret ) {
-					$options = [ 'forcearticlepath' ];
-					$query['foo'] = 'bar';
-				},
-				'<a href="/wiki/Special:BlankPage?foo=bar" title="Special:BlankPage">Special:BlankPage</a>'
-			],
-			// Abort early
-			[
-				function ( $dummy, $title, &$html, &$attribs, &$query, &$options, &$ret ) {
-					$ret = 'foobar';
-					return false;
-				},
-				'foobar'
-			],
-		];
-		// phpcs:enable
-	}
-
-	/**
-	 * @covers MediaWiki\Linker\LinkRenderer::runLegacyBeginHook
-	 * @dataProvider provideLinkBeginHook
-	 */
-	public function testLinkBeginHook( $callback, $expected ) {
-		$this->hideDeprecated( 'LinkBegin hook (used in hook-LinkBegin-closure)' );
-		$this->setMwGlobals( [
-			'wgArticlePath' => '/wiki/$1',
-			'wgServer' => '//example.org',
-			'wgCanonicalServer' => 'http://example.org',
-			'wgScriptPath' => '/w',
-			'wgScript' => '/w/index.php',
-		] );
-
-		$this->setMwGlobals( 'wgHooks', [ 'LinkBegin' => [ $callback ] ] );
-		$title = SpecialPage::getTitleFor( 'Blankpage' );
-		$out = Linker::link( $title );
-		$this->assertEquals( $expected, $out );
-	}
-
-	public static function provideLinkEndHook() {
-		return [
-			// Override $html
-			[
-				function ( $dummy, $title, $options, &$html, &$attribs, &$ret ) {
-					$html = 'foobar';
-				},
-				'<a href="/wiki/Special:BlankPage" title="Special:BlankPage">foobar</a>'
-			],
-			// Modify $attribs
-			[
-				function ( $dummy, $title, $options, &$html, &$attribs, &$ret ) {
-					$attribs['bar'] = 'baz';
-				},
-				'<a href="/wiki/Special:BlankPage" title="Special:BlankPage" bar="baz">Special:BlankPage</a>'
-			],
-			// Fully override return value and abort hook
-			[
-				function ( $dummy, $title, $options, &$html, &$attribs, &$ret ) {
-					$ret = 'blahblahblah';
-					return false;
-				},
-				'blahblahblah'
-			],
-
 		];
 	}
 
 	/**
-	 * @covers MediaWiki\Linker\LinkRenderer::buildAElement
-	 * @dataProvider provideLinkEndHook
+	 * @covers Linker::tooltipAndAccesskeyAttribs
+	 * @dataProvider provideTooltipAndAccesskeyAttribs
 	 */
-	public function testLinkEndHook( $callback, $expected ) {
-		$this->hideDeprecated( 'LinkEnd hook (used in hook-LinkEnd-closure)' );
+	public function testTooltipAndAccesskeyAttribs( $name, $msgParams, $options, $expected ) {
 		$this->setMwGlobals( [
-			'wgArticlePath' => '/wiki/$1',
+			'wgWatchlistExpiry' => true,
 		] );
-
-		$this->setMwGlobals( 'wgHooks', [ 'LinkEnd' => [ $callback ] ] );
+		$user = $this->createMock( User::class );
+		$user->method( 'isRegistered' )->willReturn( true );
+		$user->method( 'isLoggedIn' )->willReturn( true );
 
 		$title = SpecialPage::getTitleFor( 'Blankpage' );
-		$out = Linker::link( $title );
-		$this->assertEquals( $expected, $out );
+
+		$context = RequestContext::getMain();
+		$context->setTitle( $title );
+		$context->setUser( $user );
+
+		$watchedItemWithoutExpiry = new WatchedItem( $user, $title, null, null );
+
+		$result = Linker::tooltipAndAccesskeyAttribs( $name, $msgParams, $options );
+
+		$this->assertEquals( $expected, $result );
 	}
 }

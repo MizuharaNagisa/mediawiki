@@ -22,7 +22,7 @@ use MediaWiki\MediaWikiServices;
  * @covers PPNode_Hash_Array
  * @covers PPNode_Hash_Attr
  */
-class TagHooksTest extends MediaWikiTestCase {
+class TagHooksTest extends MediaWikiIntegrationTestCase {
 	public static function provideValidNames() {
 		return [
 			[ 'foo' ],
@@ -70,44 +70,7 @@ class TagHooksTest extends MediaWikiTestCase {
 		$parser->setHook( $tag, [ $this, 'tagCallback' ] );
 	}
 
-	/**
-	 * @dataProvider provideValidNames
-	 */
-	public function testFunctionTagHooks( $tag ) {
-		$parser = MediaWikiServices::getInstance()->getParserFactory()->create();
-
-		$this->hideDeprecated( 'Parser::setFunctionTagHook' );
-		$parser->setFunctionTagHook( $tag, [ $this, 'functionTagCallback' ], 0 );
-		$parserOutput = $parser->parse(
-			"Foo<$tag>Bar</$tag>Baz",
-			Title::newFromText( 'Test' ),
-			$this->getParserOptions()
-		);
-		$this->assertEquals( "<p>FooOneBaz\n</p>", $parserOutput->getText( [ 'unwrap' => true ] ) );
-
-		$parser->mPreprocessor = null; # Break the Parser <-> Preprocessor cycle
-	}
-
-	/**
-	 * @dataProvider provideBadNames
-	 */
-	public function testBadFunctionTagHooks( $tag ) {
-		$parser = MediaWikiServices::getInstance()->getParserFactory()->create();
-
-		$this->expectException( MWException::class );
-		$this->hideDeprecated( 'Parser::setFunctionTagHook' );
-		$parser->setFunctionTagHook(
-			$tag,
-			[ $this, 'functionTagCallback' ],
-			Parser::SFH_OBJECT_ARGS
-		);
-	}
-
 	public function tagCallback( $text, $params, $parser ) {
 		return str_rot13( $text );
-	}
-
-	public function functionTagCallback( $parser, $frame, $code, $attribs ) {
-		return str_rot13( $code );
 	}
 }

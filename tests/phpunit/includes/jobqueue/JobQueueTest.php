@@ -7,7 +7,7 @@ use MediaWiki\MediaWikiServices;
  * @group medium
  * @group Database
  */
-class JobQueueTest extends MediaWikiTestCase {
+class JobQueueTest extends MediaWikiIntegrationTestCase {
 	protected $key;
 	protected $queueRand, $queueRandTTL, $queueFifo, $queueFifoTTL;
 
@@ -21,6 +21,7 @@ class JobQueueTest extends MediaWikiTestCase {
 		global $wgJobTypeConf;
 		parent::setUp();
 
+		$services = MediaWikiServices::getInstance();
 		if ( $this->getCliArg( 'use-jobqueue' ) ) {
 			$name = $this->getCliArg( 'use-jobqueue' );
 			if ( !isset( $wgJobTypeConf[$name] ) ) {
@@ -34,6 +35,7 @@ class JobQueueTest extends MediaWikiTestCase {
 		$baseConfig['domain'] = WikiMap::getCurrentWikiDbDomain()->getId();
 		$baseConfig['stash'] = new HashBagOStuff();
 		$baseConfig['wanCache'] = new WANObjectCache( [ 'cache' => new HashBagOStuff() ] );
+		$baseConfig['idGenerator'] = $services->getGlobalIdGenerator();
 		$variants = [
 			'queueRand' => [ 'order' => 'random', 'claimTTL' => 0 ],
 			'queueRandTTL' => [ 'order' => 'random', 'claimTTL' => 10 ],
@@ -120,17 +122,17 @@ class JobQueueTest extends MediaWikiTestCase {
 		$this->assertEquals( 2, $queue->getSize(), "Queue size is correct ($desc)" );
 		$this->assertSame( 0, $queue->getAcquiredCount(), "No jobs active ($desc)" );
 		$jobs = iterator_to_array( $queue->getAllQueuedJobs() );
-		$this->assertEquals( 2, count( $jobs ), "Queue iterator size is correct ($desc)" );
+		$this->assertCount( 2, $jobs, "Queue iterator size is correct ($desc)" );
 
 		$job1 = $queue->pop();
 		$this->assertFalse( $queue->isEmpty(), "Queue is not empty ($desc)" );
 
 		$queue->flushCaches();
-		$this->assertEquals( 1, $queue->getSize(), "Queue size is correct ($desc)" );
+		$this->assertSame( 1, $queue->getSize(), "Queue size is correct ($desc)" );
 
 		$queue->flushCaches();
 		if ( $recycles ) {
-			$this->assertEquals( 1, $queue->getAcquiredCount(), "Active job count ($desc)" );
+			$this->assertSame( 1, $queue->getAcquiredCount(), "Active job count ($desc)" );
 		}
 
 		$job2 = $queue->pop();
@@ -146,7 +148,7 @@ class JobQueueTest extends MediaWikiTestCase {
 
 		$queue->flushCaches();
 		if ( $recycles ) {
-			$this->assertEquals( 1, $queue->getAcquiredCount(), "Active job count ($desc)" );
+			$this->assertSame( 1, $queue->getAcquiredCount(), "Active job count ($desc)" );
 		}
 
 		$queue->ack( $job2 );
@@ -189,7 +191,7 @@ class JobQueueTest extends MediaWikiTestCase {
 		$this->assertFalse( $queue->isEmpty(), "Queue is not empty ($desc)" );
 
 		$queue->flushCaches();
-		$this->assertEquals( 1, $queue->getSize(), "Queue size is correct ($desc)" );
+		$this->assertSame( 1, $queue->getSize(), "Queue size is correct ($desc)" );
 		$this->assertSame( 0, $queue->getAcquiredCount(), "No jobs active ($desc)" );
 
 		$this->assertNull(
@@ -202,7 +204,7 @@ class JobQueueTest extends MediaWikiTestCase {
 		$this->assertFalse( $queue->isEmpty(), "Queue is not empty ($desc)" );
 
 		$queue->flushCaches();
-		$this->assertEquals( 1, $queue->getSize(), "Queue size is correct ($desc)" );
+		$this->assertSame( 1, $queue->getSize(), "Queue size is correct ($desc)" );
 		$this->assertSame( 0, $queue->getAcquiredCount(), "No jobs active ($desc)" );
 
 		$job1 = $queue->pop();
@@ -211,7 +213,7 @@ class JobQueueTest extends MediaWikiTestCase {
 		$queue->flushCaches();
 		$this->assertSame( 0, $queue->getSize(), "Queue is empty ($desc)" );
 		if ( $recycles ) {
-			$this->assertEquals( 1, $queue->getAcquiredCount(), "Active job count ($desc)" );
+			$this->assertSame( 1, $queue->getAcquiredCount(), "Active job count ($desc)" );
 		}
 
 		$queue->ack( $job1 );
@@ -297,7 +299,7 @@ class JobQueueTest extends MediaWikiTestCase {
 			}
 		} while ( $job );
 
-		$this->assertEquals( 10, count( $jobs ), "Correct number of jobs popped ($desc)" );
+		$this->assertCount( 10, $jobs, "Correct number of jobs popped ($desc)" );
 		$this->assertEquals( 5, $dupcount, "Correct number of duplicate jobs popped ($desc)" );
 	}
 

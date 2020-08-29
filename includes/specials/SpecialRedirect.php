@@ -21,7 +21,7 @@
  * @ingroup SpecialPage
  */
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\Permissions\PermissionManager;
 
 /**
  * A special page that redirects to: the user for a numeric user id,
@@ -50,17 +50,30 @@ class SpecialRedirect extends FormSpecialPage {
 	 */
 	protected $mValue;
 
-	function __construct() {
+	/** @var PermissionManager */
+	private $permManager;
+
+	/** @var RepoGroup */
+	private $repoGroup;
+
+	/**
+	 * @param PermissionManager $permManager
+	 * @param RepoGroup $repoGroup
+	 */
+	public function __construct( PermissionManager $permManager, RepoGroup $repoGroup ) {
 		parent::__construct( 'Redirect' );
 		$this->mType = null;
 		$this->mValue = null;
+
+		$this->permManager = $permManager;
+		$this->repoGroup = $repoGroup;
 	}
 
 	/**
 	 * Set $mType and $mValue based on parsed value of $subpage.
 	 * @param string $subpage
 	 */
-	function setParameter( $subpage ) {
+	public function setParameter( $subpage ) {
 		// parse $subpage to pull out the parts
 		$parts = explode( '/', $subpage, 2 );
 		$this->mType = $parts[0];
@@ -72,7 +85,7 @@ class SpecialRedirect extends FormSpecialPage {
 	 *
 	 * @return Status A good status contains the url to redirect to
 	 */
-	function dispatchUser() {
+	public function dispatchUser() {
 		if ( !ctype_digit( $this->mValue ) ) {
 			// Message: redirect-not-numeric
 			return Status::newFatal( $this->getMessagePrefix() . '-not-numeric' );
@@ -83,8 +96,8 @@ class SpecialRedirect extends FormSpecialPage {
 			// Message: redirect-not-exists
 			return Status::newFatal( $this->getMessagePrefix() . '-not-exists' );
 		}
-		if ( $user->isHidden() && !MediaWikiServices::getInstance()->getPermissionManager()
-			->userHasRight( $this->getUser(), 'hideuser' )
+		if ( $user->isHidden() &&
+			!$this->permManager->userHasRight( $this->getUser(), 'hideuser' )
 		) {
 			throw new PermissionsError( null, [ 'badaccess-group0' ] );
 		}
@@ -100,7 +113,7 @@ class SpecialRedirect extends FormSpecialPage {
 	 *
 	 * @return Status A good status contains the url to redirect to
 	 */
-	function dispatchFile() {
+	public function dispatchFile() {
 		try {
 			$title = Title::newFromTextThrow( $this->mValue, NS_FILE );
 			if ( $title && !$title->inNamespace( NS_FILE ) ) {
@@ -110,7 +123,7 @@ class SpecialRedirect extends FormSpecialPage {
 		} catch ( MalformedTitleException $e ) {
 			return Status::newFatal( $e->getMessageObject() );
 		}
-		$file = MediaWikiServices::getInstance()->getRepoGroup()->findFile( $title );
+		$file = $this->repoGroup->findFile( $title );
 
 		if ( !$file || !$file->exists() ) {
 			// Message: redirect-not-exists
@@ -143,7 +156,7 @@ class SpecialRedirect extends FormSpecialPage {
 	 *
 	 * @return Status A good status contains the url to redirect to
 	 */
-	function dispatchRevision() {
+	public function dispatchRevision() {
 		$oldid = $this->mValue;
 		if ( !ctype_digit( $oldid ) ) {
 			// Message: redirect-not-numeric
@@ -165,7 +178,7 @@ class SpecialRedirect extends FormSpecialPage {
 	 *
 	 * @return Status A good status contains the url to redirect to
 	 */
-	function dispatchPage() {
+	public function dispatchPage() {
 		$curid = $this->mValue;
 		if ( !ctype_digit( $curid ) ) {
 			// Message: redirect-not-numeric
@@ -189,7 +202,7 @@ class SpecialRedirect extends FormSpecialPage {
 	 * @since 1.27
 	 * @return Status A good status contains the url to redirect to
 	 */
-	function dispatchLog() {
+	public function dispatchLog() {
 		$logid = $this->mValue;
 		if ( !ctype_digit( $logid ) ) {
 			// Message: redirect-not-numeric
@@ -212,7 +225,7 @@ class SpecialRedirect extends FormSpecialPage {
 	 *
 	 * @return Status|bool True if a redirect was successfully handled.
 	 */
-	function dispatch() {
+	private function dispatch() {
 		// the various namespaces supported by Special:Redirect
 		switch ( $this->mType ) {
 			case 'user':

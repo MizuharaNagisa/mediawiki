@@ -20,9 +20,11 @@
  * @file
  */
 
+use MediaWiki\Api\ApiHookRunner;
 use MediaWiki\Api\Validator\SubmoduleDef;
 use MediaWiki\Block\AbstractBlock;
 use MediaWiki\Block\DatabaseBlock;
+use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\Linker\LinkTarget;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\ParamValidator\TypeDef\NamespaceDef;
@@ -43,11 +45,20 @@ use Wikimedia\Rdbms\IDatabase;
  *
  * Self-documentation: code to allow the API to document its own state
  *
+ * @stable to extend
+ *
  * @ingroup API
  */
 abstract class ApiBase extends ContextSource {
 
 	use ApiBlockInfoTrait;
+	use ApiWatchlistTrait;
+
+	/** @var HookContainer */
+	private $hookContainer;
+
+	/** @var ApiHookRunner */
+	private $hookRunner;
 
 	/**
 	 * @name Old constants for ::getAllowedParams() arrays
@@ -194,6 +205,7 @@ abstract class ApiBase extends ContextSource {
 	private $mModuleSource = false;
 
 	/**
+	 * @stable to call
 	 * @param ApiMain $mainModule
 	 * @param string $moduleName Name of this module
 	 * @param string $modulePrefix Prefix to use for parameter names
@@ -234,6 +246,7 @@ abstract class ApiBase extends ContextSource {
 	/**
 	 * Get the module manager, or null if this module has no sub-modules
 	 * @since 1.21
+	 * @stable to override
 	 * @return ApiModuleManager
 	 */
 	public function getModuleManager() {
@@ -247,6 +260,7 @@ abstract class ApiBase extends ContextSource {
 	 * @note Do not use this just because you don't want to support non-json
 	 * formats. This should be used only when there is a fundamental
 	 * requirement for a specific format.
+	 * @stable to override
 	 * @return mixed Instance of a derived class of ApiFormatBase, or null
 	 */
 	public function getCustomPrinter() {
@@ -262,6 +276,7 @@ abstract class ApiBase extends ContextSource {
 	 * Do not call this base class implementation when overriding this method.
 	 *
 	 * @since 1.25
+	 * @stable to override
 	 * @return array
 	 */
 	protected function getExamplesMessages() {
@@ -271,6 +286,7 @@ abstract class ApiBase extends ContextSource {
 	/**
 	 * Return links to more detailed help pages about the module.
 	 * @since 1.25, returning boolean false is deprecated
+	 * @stable to override
 	 * @return string|array
 	 */
 	public function getHelpUrls() {
@@ -287,6 +303,7 @@ abstract class ApiBase extends ContextSource {
 	 * in the overriding methods. Callers of this method can pass zero or
 	 * more OR-ed flags like GET_VALUES_FOR_HELP.
 	 *
+	 * @stable to override
 	 * @return array
 	 */
 	protected function getAllowedParams( /* $flags = 0 */ ) {
@@ -297,6 +314,7 @@ abstract class ApiBase extends ContextSource {
 
 	/**
 	 * Indicates if this module needs maxlag to be checked
+	 * @stable to override
 	 * @return bool
 	 */
 	public function shouldCheckMaxlag() {
@@ -305,6 +323,7 @@ abstract class ApiBase extends ContextSource {
 
 	/**
 	 * Indicates whether this module requires read rights
+	 * @stable to override
 	 * @return bool
 	 */
 	public function isReadMode() {
@@ -320,6 +339,7 @@ abstract class ApiBase extends ContextSource {
 	 * Additionally, requests that only need replica DBs can be efficiently routed to any
 	 * datacenter via the Promise-Non-Write-API-Action header.
 	 *
+	 * @stable to override
 	 * @return bool
 	 */
 	public function isWriteMode() {
@@ -328,6 +348,7 @@ abstract class ApiBase extends ContextSource {
 
 	/**
 	 * Indicates whether this module must be called with a POST request
+	 * @stable to override
 	 * @return bool
 	 */
 	public function mustBePosted() {
@@ -337,6 +358,7 @@ abstract class ApiBase extends ContextSource {
 	/**
 	 * Indicates whether this module is deprecated
 	 * @since 1.25
+	 * @stable to override
 	 * @return bool
 	 */
 	public function isDeprecated() {
@@ -347,6 +369,7 @@ abstract class ApiBase extends ContextSource {
 	 * Indicates whether this module is "internal"
 	 * Internal API modules are not (yet) intended for 3rd party use and may be unstable.
 	 * @since 1.25
+	 * @stable to override
 	 * @return bool
 	 */
 	public function isInternal() {
@@ -369,6 +392,7 @@ abstract class ApiBase extends ContextSource {
 	 * Returning true will generate errors indicating that the API module needs
 	 * updating.
 	 *
+	 * @stable to override
 	 * @return string|false
 	 */
 	public function needsToken() {
@@ -382,6 +406,7 @@ abstract class ApiBase extends ContextSource {
 	 *
 	 * @since 1.24
 	 * @param array $params All supplied parameters for the module
+	 * @stable to override
 	 * @return string|array|null
 	 */
 	protected function getWebUITokenSalt( array $params ) {
@@ -392,6 +417,7 @@ abstract class ApiBase extends ContextSource {
 	 * Returns data for HTTP conditional request mechanisms.
 	 *
 	 * @since 1.26
+	 * @stable to override
 	 * @param string $condition Condition being queried:
 	 *  - last-modified: Return a timestamp representing the maximum of the
 	 *    last-modified dates for all resources involved in the request. See
@@ -446,6 +472,7 @@ abstract class ApiBase extends ContextSource {
 
 	/**
 	 * Get the parent of this module
+	 * @stable to override
 	 * @since 1.25
 	 * @return ApiBase|null
 	 */
@@ -547,6 +574,7 @@ abstract class ApiBase extends ContextSource {
 
 	/**
 	 * Get the error formatter
+	 * @stable to override
 	 * @return ApiErrorFormatter
 	 */
 	public function getErrorFormatter() {
@@ -561,6 +589,7 @@ abstract class ApiBase extends ContextSource {
 
 	/**
 	 * Gets a default replica DB connection object
+	 * @stable to override
 	 * @return IDatabase
 	 */
 	protected function getDB() {
@@ -609,6 +638,34 @@ abstract class ApiBase extends ContextSource {
 		return MediaWikiServices::getInstance()->getPermissionManager();
 	}
 
+	/**
+	 * Get a HookContainer, for running extension hooks or for hook metadata.
+	 *
+	 * @since 1.35
+	 * @return HookContainer
+	 */
+	protected function getHookContainer() {
+		if ( !$this->hookContainer ) {
+			$this->hookContainer = MediaWikiServices::getInstance()->getHookContainer();
+		}
+		return $this->hookContainer;
+	}
+
+	/**
+	 * Get an ApiHookRunner for running core API hooks.
+	 *
+	 * @internal This is for use by core only. Hook interfaces may be removed
+	 *   without notice.
+	 * @since 1.35
+	 * @return ApiHookRunner
+	 */
+	protected function getHookRunner() {
+		if ( !$this->hookRunner ) {
+			$this->hookRunner = new ApiHookRunner( $this->getHookContainer() );
+		}
+		return $this->hookRunner;
+	}
+
 	/** @} */
 
 	/************************************************************************//**
@@ -619,6 +676,7 @@ abstract class ApiBase extends ContextSource {
 	/**
 	 * Indicate if the module supports dynamically-determined parameters that
 	 * cannot be included in self::getAllowedParams().
+	 * @stable to override
 	 * @return string|array|Message|null Return null if the module does not
 	 *  support additional dynamic parameters, otherwise return a message
 	 *  describing them.
@@ -735,7 +793,11 @@ abstract class ApiBase extends ContextSource {
 						$newName = str_replace( $placeholder, $value, $name );
 						if ( !$targets ) {
 							try {
-								$results[$newName] = $this->getParameterFromSettings( $newName, $settings, $parseLimit );
+								$results[$newName] = $this->getParameterFromSettings(
+									$newName,
+									$settings,
+									$parseLimit
+								);
 							} catch ( ApiUsageException $ex ) {
 								$results[$newName] = $ex;
 							}
@@ -979,46 +1041,6 @@ abstract class ApiBase extends ContextSource {
 	}
 
 	/**
-	 * Return true if we're to watch the page, false if not, null if no change.
-	 * @param string $watchlist Valid values: 'watch', 'unwatch', 'preferences', 'nochange'
-	 * @param Title $titleObj The page under consideration
-	 * @param string|null $userOption The user option to consider when $watchlist=preferences.
-	 *    If not set will use watchdefault always and watchcreations if $titleObj doesn't exist.
-	 * @return bool
-	 */
-	protected function getWatchlistValue( $watchlist, $titleObj, $userOption = null ) {
-		$userWatching = $this->getUser()->isWatched( $titleObj, User::IGNORE_USER_RIGHTS );
-
-		switch ( $watchlist ) {
-			case 'watch':
-				return true;
-
-			case 'unwatch':
-				return false;
-
-			case 'preferences':
-				# If the user is already watching, don't bother checking
-				if ( $userWatching ) {
-					return true;
-				}
-				# If no user option was passed, use watchdefault and watchcreations
-				if ( $userOption === null ) {
-					return $this->getUser()->getBoolOption( 'watchdefault' ) ||
-						$this->getUser()->getBoolOption( 'watchcreations' ) && !$titleObj->exists();
-				}
-
-				# Watch the article based on the user preference
-				return $this->getUser()->getBoolOption( $userOption );
-
-			case 'nochange':
-				return $userWatching;
-
-			default:
-				return $userWatching;
-		}
-	}
-
-	/**
 	 * Using the settings determine the value for the given parameter
 	 *
 	 * @param string $name Parameter name
@@ -1101,21 +1123,6 @@ abstract class ApiBase extends ContextSource {
 	 * @name   Utility methods
 	 * @{
 	 */
-
-	/**
-	 * Set a watch (or unwatch) based the based on a watchlist parameter.
-	 * @param string $watch Valid values: 'watch', 'unwatch', 'preferences', 'nochange'
-	 * @param Title $titleObj The article's title to change
-	 * @param string|null $userOption The user option to consider when $watch=preferences
-	 */
-	protected function setWatch( $watch, $titleObj, $userOption = null ) {
-		$value = $this->getWatchlistValue( $watch, $titleObj, $userOption );
-		if ( $value === null ) {
-			return;
-		}
-
-		WatchAction::doWatchOrUnwatch( $value, $titleObj, $this->getUser() );
-	}
 
 	/**
 	 * Gets the user for whom to get the watchlist
@@ -1316,7 +1323,7 @@ abstract class ApiBase extends ContextSource {
 		// No real need to deduplicate here, ApiErrorFormatter does that for
 		// us (assuming the hook is deterministic).
 		$msgs = [ $this->msg( 'api-usage-mailinglist-ref' ) ];
-		Hooks::run( 'ApiDeprecationHelp', [ &$msgs ] );
+		$this->getHookRunner()->onApiDeprecationHelp( $msgs );
 		if ( count( $msgs ) > 1 ) {
 			$key = '$' . implode( ' $', range( 1, count( $msgs ) ) );
 			$msg = ( new RawMessage( $key ) )->params( $msgs );
@@ -1377,14 +1384,14 @@ abstract class ApiBase extends ContextSource {
 	}
 
 	/**
-	 * Abort execution with an error derived from an exception
+	 * Abort execution with an error derived from a throwable
 	 *
 	 * @since 1.29
-	 * @param Exception|Throwable $exception See ApiErrorFormatter::getMessageFromException()
+	 * @param Throwable $exception See ApiErrorFormatter::getMessageFromException()
 	 * @param array $options See ApiErrorFormatter::getMessageFromException()
 	 * @throws ApiUsageException always
 	 */
-	public function dieWithException( $exception, array $options = [] ) {
+	public function dieWithException( Throwable $exception, array $options = [] ) {
 		$this->dieWithError(
 			// @phan-suppress-next-line PhanTypeMismatchArgument
 			$this->getErrorFormatter()->getMessageFromException( $exception, $options )
@@ -1480,7 +1487,7 @@ abstract class ApiBase extends ContextSource {
 		}
 		$rights = (array)$rights;
 		if ( !$this->getPermissionManager()
-				->userHasAnyRight( $user, ...$rights )
+			->userHasAnyRight( $user, ...$rights )
 		) {
 			$this->dieWithError( [ 'apierror-permissiondenied', $this->msg( "action-{$rights[0]}" ) ] );
 		}
@@ -1589,7 +1596,7 @@ abstract class ApiBase extends ContextSource {
 			'feature' => $feature,
 			// Spaces to underscores in 'username' for historical reasons.
 			'username' => str_replace( ' ', '_', $this->getUser()->getName() ),
-			'ip' => $request->getIP(),
+			'clientip' => $request->getIP(),
 			'referer' => (string)$request->getHeader( 'Referer' ),
 			'agent' => $this->getMain()->getUserAgent(),
 		];
@@ -1597,7 +1604,7 @@ abstract class ApiBase extends ContextSource {
 		// Text string is deprecated. Remove (or replace with just $feature) in MW 1.34.
 		$s = '"' . addslashes( $ctx['feature'] ) . '"' .
 			' "' . wfUrlencode( $ctx['username'] ) . '"' .
-			' "' . $ctx['ip'] . '"' .
+			' "' . $ctx['clientip'] . '"' .
 			' "' . addslashes( $ctx['referer'] ) . '"' .
 			' "' . addslashes( $ctx['agent'] ) . '"';
 
@@ -1618,6 +1625,7 @@ abstract class ApiBase extends ContextSource {
 	 * list of modules.
 	 *
 	 * @since 1.30
+	 * @stable to override
 	 * @return string|array|Message
 	 */
 	protected function getSummaryMessage() {
@@ -1631,6 +1639,7 @@ abstract class ApiBase extends ContextSource {
 	 * the summary.
 	 *
 	 * @since 1.30
+	 * @stable to override
 	 * @return string|array|Message
 	 */
 	protected function getExtendedDescription() {
@@ -1644,6 +1653,7 @@ abstract class ApiBase extends ContextSource {
 	 * Get final module summary
 	 *
 	 * @since 1.30
+	 * @stable to override
 	 * @return Message
 	 */
 	public function getFinalSummary() {
@@ -1678,7 +1688,7 @@ abstract class ApiBase extends ContextSource {
 
 		$msgs = [ $summary, $extendedDescription ];
 
-		Hooks::run( 'APIGetDescriptionMessages', [ $this, &$msgs ] );
+		$this->getHookRunner()->onAPIGetDescriptionMessages( $this, $msgs );
 
 		return $msgs;
 	}
@@ -1710,9 +1720,7 @@ abstract class ApiBase extends ContextSource {
 			] + ( $params['token'] ?? [] );
 		}
 
-		// Avoid PHP 7.1 warning of passing $this by reference
-		$apiModule = $this;
-		Hooks::run( 'APIGetAllowedParams', [ &$apiModule, &$params, $flags ] );
+		$this->getHookRunner()->onAPIGetAllowedParams( $this, $params, $flags );
 
 		return $params;
 	}
@@ -1856,7 +1864,7 @@ abstract class ApiBase extends ContextSource {
 			}
 		}
 
-		Hooks::run( 'APIGetParamDescriptionMessages', [ $this, &$msgs ] );
+		$this->getHookRunner()->onAPIGetParamDescriptionMessages( $this, $msgs );
 
 		return $msgs;
 	}
@@ -1938,7 +1946,8 @@ abstract class ApiBase extends ContextSource {
 				'namemsg' => null,
 				'license-name' => null,
 			];
-			foreach ( $this->getConfig()->get( 'ExtensionCredits' ) as $group ) {
+			$credits = SpecialVersion::getCredits( ExtensionRegistry::getInstance(), $this->getConfig() );
+			foreach ( $credits as $group ) {
 				foreach ( $group as $ext ) {
 					if ( !isset( $ext['path'] ) || !isset( $ext['name'] ) ) {
 						// This shouldn't happen, but does anyway.
@@ -1952,14 +1961,6 @@ abstract class ApiBase extends ContextSource {
 					self::$extensionInfo[realpath( $extpath ) ?: $extpath] =
 						array_intersect_key( $ext, $keep );
 				}
-			}
-			foreach ( ExtensionRegistry::getInstance()->getAllThings() as $ext ) {
-				$extpath = $ext['path'];
-				if ( !is_dir( $extpath ) ) {
-					$extpath = dirname( $extpath );
-				}
-				self::$extensionInfo[realpath( $extpath ) ?: $extpath] =
-					array_intersect_key( $ext, $keep );
 			}
 		}
 
@@ -1987,6 +1988,7 @@ abstract class ApiBase extends ContextSource {
 	 * This exists mainly for ApiMain to add the Permissions and Credits
 	 * sections. Other modules probably don't need it.
 	 *
+	 * @stable to override
 	 * @param string[] &$help Array of help data
 	 * @param array $options Options passed to ApiHelp::getHelp
 	 * @param array &$tocData If a TOC is being generated, this array has keys

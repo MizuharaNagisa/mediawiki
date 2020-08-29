@@ -34,10 +34,10 @@ use Wikimedia\ScopedCallback;
  * @since 1.21
  */
 class JobQueueDB extends JobQueue {
-	const CACHE_TTL_SHORT = 30; // integer; seconds to cache info without re-validating
-	const MAX_AGE_PRUNE = 604800; // integer; seconds a job can live once claimed
-	const MAX_JOB_RANDOM = 2147483647; // integer; 2^31 - 1, used for job_random
-	const MAX_OFFSET = 255; // integer; maximum number of rows to skip
+	private const CACHE_TTL_SHORT = 30; // integer; seconds to cache info without re-validating
+	private const MAX_AGE_PRUNE = 604800; // integer; seconds a job can live once claimed
+	private const MAX_JOB_RANDOM = 2147483647; // integer; 2^31 - 1, used for job_random
+	private const MAX_OFFSET = 255; // integer; maximum number of rows to skip
 
 	/** @var IMaintainableDatabase|DBError|null */
 	protected $conn;
@@ -262,7 +262,7 @@ class JobQueueDB extends JobQueue {
 					$method
 				);
 				foreach ( $res as $row ) {
-					wfDebug( "Job with hash '{$row->job_sha1}' is a duplicate.\n" );
+					wfDebug( "Job with hash '{$row->job_sha1}' is a duplicate." );
 					unset( $rowSet[$row->job_sha1] ); // already enqueued
 				}
 			}
@@ -386,22 +386,22 @@ class JobQueueDB extends JobQueue {
 				}
 			}
 
-			if ( $row ) { // claim the job
-				$dbw->update( 'job', // update by PK
-					[
-						'job_token' => $uuid,
-						'job_token_timestamp' => $dbw->timestamp(),
-						'job_attempts = job_attempts+1' ],
-					[ 'job_cmd' => $this->type, 'job_id' => $row->job_id, 'job_token' => '' ],
-					__METHOD__
-				);
-				// This might get raced out by another runner when claiming the previously
-				// selected row. The use of job_random should minimize this problem, however.
-				if ( !$dbw->affectedRows() ) {
-					$row = false; // raced out
-				}
-			} else {
-				break; // nothing to do
+			if ( !$row ) {
+				break;
+			}
+
+			$dbw->update( 'job', // update by PK
+				[
+					'job_token' => $uuid,
+					'job_token_timestamp' => $dbw->timestamp(),
+					'job_attempts = job_attempts+1' ],
+				[ 'job_cmd' => $this->type, 'job_id' => $row->job_id, 'job_token' => '' ],
+				__METHOD__
+			);
+			// This might get raced out by another runner when claiming the previously
+			// selected row. The use of job_random should minimize this problem, however.
+			if ( !$dbw->affectedRows() ) {
+				$row = false; // raced out
 			}
 		} while ( !$row );
 
@@ -455,16 +455,17 @@ class JobQueueDB extends JobQueue {
 					__METHOD__
 				);
 			}
+
+			if ( !$dbw->affectedRows() ) {
+				break;
+			}
+
 			// Fetch any row that we just reserved...
-			if ( $dbw->affectedRows() ) {
-				$row = $dbw->selectRow( 'job', self::selectFields(),
-					[ 'job_cmd' => $this->type, 'job_token' => $uuid ], __METHOD__
-				);
-				if ( !$row ) { // raced out by duplicate job removal
-					wfDebug( "Row deleted as duplicate by another process.\n" );
-				}
-			} else {
-				break; // nothing to do
+			$row = $dbw->selectRow( 'job', self::selectFields(),
+				[ 'job_cmd' => $this->type, 'job_token' => $uuid ], __METHOD__
+			);
+			if ( !$row ) { // raced out by duplicate job removal
+				wfDebug( "Row deleted as duplicate by another process." );
 			}
 		} while ( !$row );
 
@@ -533,7 +534,7 @@ class JobQueueDB extends JobQueue {
 		/** @noinspection PhpUnusedLocalVariableInspection */
 		$scope = $this->getScopedNoTrxFlag( $dbw );
 		try {
-			$dbw->delete( 'job', [ 'job_cmd' => $this->type ] );
+			$dbw->delete( 'job', [ 'job_cmd' => $this->type ], __METHOD__ );
 		} catch ( DBError $e ) {
 			throw $this->getDBException( $e );
 		}
@@ -592,7 +593,7 @@ class JobQueueDB extends JobQueue {
 		$scope = $this->getScopedNoTrxFlag( $dbr );
 		try {
 			return new MappedIterator(
-				$dbr->select( 'job', self::selectFields(), $conds ),
+				$dbr->select( 'job', self::selectFields(), $conds, __METHOD__ ),
 				function ( $row ) {
 					return $this->jobFromRow( $row );
 				}

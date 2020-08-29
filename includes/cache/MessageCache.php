@@ -20,9 +20,16 @@
  * @file
  * @ingroup Cache
  */
+
+use MediaWiki\HookContainer\HookContainer;
+use MediaWiki\HookContainer\HookRunner;
 use MediaWiki\Languages\LanguageFactory;
+use MediaWiki\Languages\LanguageFallback;
+use MediaWiki\Languages\LanguageNameUtils;
+use MediaWiki\Linker\LinkTarget;
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Revision\SlotRecord;
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerInterface;
 use Wikimedia\Rdbms\Database;
@@ -41,18 +48,18 @@ define( 'MSG_CACHE_VERSION', 2 );
  * @ingroup Cache
  */
 class MessageCache implements LoggerAwareInterface {
-	const FOR_UPDATE = 1; // force message reload
+	private const FOR_UPDATE = 1; // force message reload
 
 	/** How long to wait for memcached locks */
-	const WAIT_SEC = 15;
+	private const WAIT_SEC = 15;
 	/** How long memcached locks last */
-	const LOCK_TTL = 30;
+	private const LOCK_TTL = 30;
 
 	/**
 	 * Lifetime for cache, for keys stored in $wanCache, in seconds.
 	 * @var int
 	 */
-	const WAN_TTL = IExpiringStore::TTL_DAY;
+	private const WAN_TTL = IExpiringStore::TTL_DAY;
 
 	/** @var LoggerInterface */
 	private $logger;
@@ -109,6 +116,12 @@ class MessageCache implements LoggerAwareInterface {
 	protected $langFactory;
 	/** @var LocalisationCache */
 	protected $localisationCache;
+	/** @var LanguageNameUtils */
+	protected $languageNameUtils;
+	/** @var LanguageFallback */
+	protected $languageFallback;
+	/** @var HookRunner */
+	private $hookRunner;
 
 	/**
 	 * Get the singleton instance of this class
@@ -151,6 +164,9 @@ class MessageCache implements LoggerAwareInterface {
 	 *    Default: true.
 	 * @param LanguageFactory $langFactory
 	 * @param LocalisationCache $localisationCache
+	 * @param LanguageNameUtils $languageNameUtils
+	 * @param LanguageFallback $languageFallback
+	 * @param HookContainer $hookContainer
 	 */
 	public function __construct(
 		WANObjectCache $wanCache,
@@ -161,7 +177,10 @@ class MessageCache implements LoggerAwareInterface {
 		LoggerInterface $logger,
 		array $options,
 		LanguageFactory $langFactory,
-		LocalisationCache $localisationCache
+		LocalisationCache $localisationCache,
+		LanguageNameUtils $languageNameUtils,
+		LanguageFallback $languageFallback,
+		HookContainer $hookContainer
 	) {
 		$this->wanCache = $wanCache;
 		$this->clusterCache = $clusterCache;
@@ -171,6 +190,9 @@ class MessageCache implements LoggerAwareInterface {
 		$this->logger = $logger;
 		$this->langFactory = $langFactory;
 		$this->localisationCache = $localisationCache;
+		$this->languageNameUtils = $languageNameUtils;
+		$this->languageFallback = $languageFallback;
+		$this->hookRunner = new HookRunner( $hookContainer );
 
 		$this->cache = new MapCacheLRU( 5 ); // limit size for sanity
 
@@ -186,7 +208,7 @@ class MessageCache implements LoggerAwareInterface {
 	 *
 	 * @return ParserOptions
 	 */
-	function getParserOptions() {
+	private function getParserOptions() {
 		global $wgUser;
 
 		if ( !$this->mParserOptions ) {
@@ -196,17 +218,14 @@ class MessageCache implements LoggerAwareInterface {
 				// either.
 				$po = ParserOptions::newFromAnon();
 				$po->setAllowUnsafeRawHtml( false );
-				$po->setTidy( true );
 				return $po;
 			}
 
-			$this->mParserOptions = new ParserOptions;
+			$this->mParserOptions = new ParserOptions( $wgUser );
 			// Messages may take parameters that could come
 			// from malicious sources. As a precaution, disable
 			// the <html> parser tag when parsing messages.
 			$this->mParserOptions->setAllowUnsafeRawHtml( false );
-			// For the same reason, tidy the output!
-			$this->mParserOptions->setTidy( true );
 		}
 
 		return $this->mParserOptions;
@@ -522,8 +541,10 @@ class MessageCache implements LoggerAwareInterface {
 			$cache['EXCESSIVE'][$row->page_title] = $row->page_latest;
 		}
 
-		// Set the text for small software-defined messages in the main cache map
+		// Can not inject the RevisionStore as it would break the installer since
+		// it instantiates MessageCache before the DB.
 		$revisionStore = MediaWikiServices::getInstance()->getRevisionStore();
+		// Set the text for small software-defined messages in the main cache map
 		$revQuery = $revisionStore->getQueryInfo( [ 'page', 'user' ] );
 
 		// T231196: MySQL/MariaDB (10.1.37) can sometimes irrationally decide that querying `actor` then
@@ -741,7 +762,7 @@ class MessageCache implements LoggerAwareInterface {
 		$blobStore = MediaWikiServices::getInstance()->getResourceLoader()->getMessageBlobStore();
 		foreach ( $replacements as list( $title, $msg ) ) {
 			$blobStore->updateMessage( $this->contLang->lcfirst( $msg ) );
-			Hooks::run( 'MessageCacheReplace', [ $title, $newTextByTitle[$title] ] );
+			$this->hookRunner->onMessageCacheReplace( $title, $newTextByTitle[$title] );
 		}
 	}
 
@@ -900,7 +921,7 @@ class MessageCache implements LoggerAwareInterface {
 		// Normalise title-case input (with some inlining)
 		$lckey = self::normalizeKey( $key );
 
-		Hooks::run( 'MessageCache::get', [ &$lckey ] );
+		$this->hookRunner->onMessageCache__get( $lckey );
 
 		// Loop through each language in the fallback list until we find something useful
 		$message = $this->getMessageFromFallbackChain(
@@ -1013,7 +1034,7 @@ class MessageCache implements LoggerAwareInterface {
 
 		// Try checking the database for all of the fallback languages
 		if ( $useDB ) {
-			$fallbackChain = Language::getFallbacksFor( $langcode );
+			$fallbackChain = $this->languageFallback->getAll( $langcode );
 
 			foreach ( $fallbackChain as $code ) {
 				if ( isset( $alreadyTried[$code] ) ) {
@@ -1102,7 +1123,7 @@ class MessageCache implements LoggerAwareInterface {
 			if ( $entry === null || substr( $entry, 0, 1 ) !== ' ' ) {
 				// Message does not have a MediaWiki page definition; try hook handlers
 				$message = false;
-				Hooks::run( 'MessagesPreLoad', [ $title, &$message, $code ] );
+				$this->hookRunner->onMessagesPreLoad( $title, $message, $code );
 				if ( $message !== false ) {
 					$this->cache->setField( $code, $title, ' ' . $message );
 				} else {
@@ -1148,17 +1169,20 @@ class MessageCache implements LoggerAwareInterface {
 					self::WAN_TTL,
 					function ( $oldValue, &$ttl, &$setOpts ) use ( $dbKey, $code, $fname ) {
 						// Try loading the message from the database
-						$dbr = wfGetDB( DB_REPLICA );
-						$setOpts += Database::getCacheSetOptions( $dbr );
+						$setOpts += Database::getCacheSetOptions( wfGetDB( DB_REPLICA ) );
 						// Use newKnownCurrent() to avoid querying revision/user tables
 						$title = Title::makeTitle( NS_MEDIAWIKI, $dbKey );
-						$revision = Revision::newKnownCurrent( $dbr, $title );
+						// Injecting RevisionStore breaks installer since it
+						// instantiates MessageCache before DB.
+						$revision = MediaWikiServices::getInstance()
+							->getRevisionLookup()
+							->getKnownCurrentRevision( $title );
 						if ( !$revision ) {
 							// The wiki doesn't have a local override page. Cache absence with normal TTL.
 							// When overrides are created, self::replace() takes care of the cache.
 							return '!NONEXISTENT';
 						}
-						$content = $revision->getContent();
+						$content = $revision->getContent( SlotRecord::MAIN );
 						if ( $content ) {
 							$message = $this->getMessageTextFromContent( $content );
 						} else {
@@ -1221,20 +1245,12 @@ class MessageCache implements LoggerAwareInterface {
 	 * @return Parser
 	 */
 	public function getParser() {
-		global $wgParserConf;
 		if ( !$this->mParser ) {
 			$parser = MediaWikiServices::getInstance()->getParser();
 			# Do some initialisation so that we don't have to do it twice
 			$parser->firstCallInit();
 			# Clone it and store it
-			$class = $wgParserConf['class'];
-			if ( $class == ParserDiffTest::class ) {
-				# Uncloneable
-				// @phan-suppress-next-line PhanTypeMismatchProperty
-				$this->mParser = new $class( $wgParserConf );
-			} else {
-				$this->mParser = clone $parser;
-			}
+			$this->mParser = clone $parser;
 		}
 
 		return $this->mParser;
@@ -1318,7 +1334,7 @@ class MessageCache implements LoggerAwareInterface {
 	 * Mainly used after a mass rebuild
 	 */
 	public function clear() {
-		$langs = Language::fetchLanguageNames( null, 'mw' );
+		$langs = $this->languageNameUtils->getLanguageNames( null, 'mw' );
 		foreach ( array_keys( $langs ) as $code ) {
 			$this->wanCache->touchCheckKey( $this->getCheckKey( $code ) );
 		}
@@ -1338,7 +1354,7 @@ class MessageCache implements LoggerAwareInterface {
 		}
 
 		$lang = array_pop( $pieces );
-		if ( !Language::fetchLanguageName( $lang, null, 'mw' ) ) {
+		if ( !$this->languageNameUtils->getLanguageName( $lang, null, 'mw' ) ) {
 			return [ $key, $wgLanguageCode ];
 		}
 
@@ -1376,20 +1392,20 @@ class MessageCache implements LoggerAwareInterface {
 	/**
 	 * Purge message caches when a MediaWiki: page is created, updated, or deleted
 	 *
-	 * @param Title $title Message page title
+	 * @param LinkTarget $linkTarget Message page title
 	 * @param Content|null $content New content for edit/create, null on deletion
 	 * @since 1.29
 	 */
-	public function updateMessageOverride( Title $title, Content $content = null ) {
+	public function updateMessageOverride( LinkTarget $linkTarget, Content $content = null ) {
 		$msgText = $this->getMessageTextFromContent( $content );
 		if ( $msgText === null ) {
 			$msgText = false; // treat as not existing
 		}
 
-		$this->replace( $title->getDBkey(), $msgText );
+		$this->replace( $linkTarget->getDBkey(), $msgText );
 
 		if ( $this->contLangConverter->hasVariants() ) {
-			$this->contLangConverter->updateConversionTable( $title );
+			$this->contLangConverter->updateConversionTable( $linkTarget );
 		}
 	}
 

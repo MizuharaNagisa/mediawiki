@@ -31,6 +31,8 @@ use Wikimedia\Assert\ParameterTypeException;
  * @note In contrast to Title, this is designed to be a plain value object. That is,
  * it is immutable, does not use global state, and causes no side effects.
  *
+ * @newable
+ *
  * @see https://www.mediawiki.org/wiki/Requests_for_comment/TitleValue
  * @since 1.23
  */
@@ -65,7 +67,7 @@ class TitleValue implements LinkTarget {
 	 *
 	 * Only public to share cache with TitleFormatter
 	 *
-	 * @private
+	 * @internal
 	 * @var string
 	 */
 	public $prefixedText = null;
@@ -106,6 +108,8 @@ class TitleValue implements LinkTarget {
 	 * @note TitleValue expects a valid namespace and name; typically, a TitleValue is constructed
 	 * either from a database entry, or by a TitleParser. For constructing a TitleValue from user
 	 * input or external sources, use a TitleParser.
+	 *
+	 * @stable to call
 	 *
 	 * @param int $namespace The namespace ID. This is not validated.
 	 * @param string $title The page title in either DBkey or text form. No normalization is applied

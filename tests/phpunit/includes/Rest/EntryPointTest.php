@@ -5,6 +5,7 @@ namespace MediaWiki\Tests\Rest;
 use EmptyBagOStuff;
 use GuzzleHttp\Psr7\Stream;
 use GuzzleHttp\Psr7\Uri;
+use MediaWiki\Config\ServiceOptions;
 use MediaWiki\Permissions\PermissionManager;
 use MediaWiki\Rest\BasicAccess\StaticBasicAuthorizer;
 use MediaWiki\Rest\EntryPoint;
@@ -24,7 +25,7 @@ use Wikimedia\ObjectFactory;
  * @covers \MediaWiki\Rest\EntryPoint
  * @covers \MediaWiki\Rest\Router
  */
-class EntryPointTest extends \MediaWikiTestCase {
+class EntryPointTest extends \MediaWikiIntegrationTestCase {
 	private static $mockHandler;
 
 	private function createRouter( RequestInterface $request ) {
@@ -38,12 +39,14 @@ class EntryPointTest extends \MediaWikiTestCase {
 		return new Router(
 			[ "$IP/tests/phpunit/unit/includes/Rest/testRoutes.json" ],
 			[],
+			'http://wiki.example.com',
 			'/rest',
 			new EmptyBagOStuff(),
 			new ResponseFactory( [] ),
 			new StaticBasicAuthorizer(),
 			$objectFactory,
-			new Validator( $objectFactory, $permissionManager, $request, new User )
+			new Validator( $objectFactory, $permissionManager, $request, new User ),
+			$this->createHookContainer()
 		);
 	}
 
@@ -77,7 +80,9 @@ class EntryPointTest extends \MediaWikiTestCase {
 			RequestContext::getMain(),
 			$request,
 			$webResponse,
-			$this->createRouter( $request ) );
+			$this->createRouter( $request ),
+			$this->createMock( ServiceOptions::class )
+		);
 		$entryPoint->execute();
 		$this->assertTrue( true );
 	}
@@ -103,7 +108,9 @@ class EntryPointTest extends \MediaWikiTestCase {
 			RequestContext::getMain(),
 			$request,
 			$this->createWebResponse(),
-			$this->createRouter( $request ) );
+			$this->createRouter( $request ),
+			$this->createMock( ServiceOptions::class )
+		);
 		ob_start();
 		$entryPoint->execute();
 		$this->assertSame( 'hello', ob_get_clean() );

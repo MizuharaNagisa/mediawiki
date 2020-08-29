@@ -22,9 +22,10 @@ namespace MediaWiki\Block;
 
 use DateTime;
 use DateTimeZone;
-use Hooks;
 use LogicException;
 use MediaWiki\Config\ServiceOptions;
+use MediaWiki\HookContainer\HookContainer;
+use MediaWiki\HookContainer\HookRunner;
 use MediaWiki\Permissions\PermissionManager;
 use MediaWiki\User\UserIdentity;
 use Message;
@@ -50,8 +51,7 @@ class BlockManager {
 	private $options;
 
 	/**
-	 * @var array
-	 * @since 1.34
+	 * @internal For use by ServiceWiring
 	 */
 	public const CONSTRUCTOR_OPTIONS = [
 		'ApplyIpBlocksToXff',
@@ -68,20 +68,26 @@ class BlockManager {
 	/** @var LoggerInterface */
 	private $logger;
 
+	/** @var HookRunner */
+	private $hookRunner;
+
 	/**
 	 * @param ServiceOptions $options
 	 * @param PermissionManager $permissionManager
 	 * @param LoggerInterface $logger
+	 * @param HookContainer $hookContainer
 	 */
 	public function __construct(
 		ServiceOptions $options,
 		PermissionManager $permissionManager,
-		LoggerInterface $logger
+		LoggerInterface $logger,
+		HookContainer $hookContainer
 	) {
 		$options->assertRequiredOptions( self::CONSTRUCTOR_OPTIONS );
 		$this->options = $options;
 		$this->permissionManager = $permissionManager;
 		$this->logger = $logger;
+		$this->hookRunner = new HookRunner( $hookContainer );
 	}
 
 	/**
@@ -94,7 +100,7 @@ class BlockManager {
 	 * (1) The global user (and can be affected by IP blocks). The global request object
 	 * is needed for checking the IP address, the XFF header and the cookies.
 	 * (2) The global user (and exempt from IP blocks). The global request object is
-	 * needed for checking the cookies.
+	 * available.
 	 * (3) Another user (not the global user). No request object is available or needed;
 	 * just look for a block against the user account.
 	 *
@@ -120,7 +126,7 @@ class BlockManager {
 
 		// If this is the global user, they may be affected by IP blocks (case #1),
 		// or they may be exempt (case #2). If affected, look for additional blocks
-		// against the IP address.
+		// against the IP address and referenced in a cookie.
 		$checkIpBlocks = $request &&
 			!$this->permissionManager->userHasRight( $user, 'ipblock-exempt' );
 
@@ -133,16 +139,11 @@ class BlockManager {
 			$this->getAdditionalIpBlocks( $blocks, $request, !$user->isRegistered(), $fromMaster );
 			$this->getCookieBlock( $blocks, $user, $request );
 
-		} elseif ( $request ) {
-
-			// Case #2: checking the global user, but they are exempt from IP blocks
-			// TODO: remove dependency on DatabaseBlock (T221075)
-			$blocks = DatabaseBlock::newListFromTarget( $user, null, $fromMaster );
-			$this->getCookieBlock( $blocks, $user, $request );
-
 		} else {
 
-			// Case #3: checking whether a user's account is blocked
+			// Case #2: checking the global user, but they are exempt from IP blocks
+			// and cookie blocks, so we only check for a user account block.
+			// Case #3: checking whether another user's account is blocked.
 			// TODO: remove dependency on DatabaseBlock (T221075)
 			$blocks = DatabaseBlock::newListFromTarget( $user, null, $fromMaster );
 
@@ -164,7 +165,7 @@ class BlockManager {
 			}
 		}
 
-		Hooks::run( 'GetUserBlock', [ clone $user, $ip, &$block ] );
+		$this->hookRunner->onGetUserBlock( clone $user, $ip, $block );
 
 		return $block;
 	}

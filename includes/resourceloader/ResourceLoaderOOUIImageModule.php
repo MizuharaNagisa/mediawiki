@@ -91,7 +91,8 @@ class ResourceLoaderOOUIImageModule extends ResourceLoaderImageModule {
 	 * @since 1.34
 	 * @param string $theme
 	 * @param string $module
-	 * @return array
+	 * @return array|false
+	 * @suppress PhanTypeArraySuspiciousNullable
 	 */
 	protected function loadOOUIDefinition( $theme, $module ) {
 		// Find the path to the JSON file which contains the actual image definitions for this theme

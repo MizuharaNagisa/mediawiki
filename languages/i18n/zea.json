@@ -1,13 +1,13 @@
 {
 	"@metadata": {
 		"authors": [
+			"DannyS712",
+			"Macofe",
 			"NJ",
 			"Ooswesthoesbes",
-			"아라",
-			"Robin0van0der0vliet",
-			"Macofe",
 			"Robin van der Vliet",
-			"DannyS712"
+			"Robin0van0der0vliet",
+			"아라"
 		]
 	},
 	"tog-underline": "Lienks onderstreepn:",
@@ -243,7 +243,7 @@
 	"nospecialpagetext": "<strong>Je ei een onbestaende speciaole pagina opevrogen.</strong>\n\nEen lieste mie speciaole pagina’s sti op [[Special:SpecialPages|speciaole pagina’s]].",
 	"error": "Fout",
 	"databaseerror": "Databasefout",
-	"laggedslavemode": "Waerschuwieng: de pahina zou verouwerd kunn'n zien.",
+	"laggedreplicamode": "Waerschuwieng: de pahina zou verouwerd kunn'n zien.",
 	"readonly": "Database heblokkeerd",
 	"enterlockreason": "Heef een reeën op voe de blokkaode en heef op wunnir a die warschijnlijk wor opeheven",
 	"readonlytext": "De database is heblokkeerd voe bewerkiengen, warschijnlijk voe rehulier databaseonderoud. Nae afrondieng wor de functionaliteit hersteld.\n\nDe beheêrder ei de volhende reeën opeheven: $1",
@@ -451,8 +451,8 @@
 	"rev-deleted-comment": "(opmerkieng verwiederd)",
 	"rev-deleted-user": "(gebruker verwiederd)",
 	"rev-deleted-event": "(logboekrehel verwiederd)",
-	"rev-deleted-text-permission": "Deêze bewerkieng van de pagina is verwiederd uut de publieke archieven.\nDer kunn'n details anwezig zien in 't [{{fullurl:{{#Special:Log}}/suppress|page={{FULLPAGENAMEE}}}}verwiederiengslogboek].",
-	"rev-deleted-text-view": "Deêze bewerkieng van de pagina is verwiederd uut de publieke archieven.\nAs opzichter van {{SITENAME}} kan je dezen ziene;\nder kunn'n details anwezig zien in 't [{{fullurl:{{#Special:Log}}/suppress|page={{FULLPAGENAMEE}}}} verwiederiengslogboek].",
+	"rev-deleted-text-permission": "Deêze bewerkieng van de pagina is verwiederd uut de publieke archieven.\nDer kunn'n details anwezig zien in 't [{{fullurl:{{#Special:Log}}/suppress|page=$1}}verwiederiengslogboek].",
+	"rev-deleted-text-view": "Deêze bewerkieng van de pagina is verwiederd uut de publieke archieven.\nAs opzichter van {{SITENAME}} kan je dezen ziene;\nder kunn'n details anwezig zien in 't [{{fullurl:{{#Special:Log}}/suppress|page=$1}} verwiederiengslogboek].",
 	"rev-delundel": "weerheven/verberhen",
 	"revisiondelete": "Versies verwiederen/trugplekken",
 	"revdelete-nooldid-title": "Hin doelversie",

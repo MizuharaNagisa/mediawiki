@@ -1,6 +1,5 @@
 <?php
 
-
 namespace MediaWiki\Rest\Handler;
 
 use Config;
@@ -93,7 +92,7 @@ abstract class LatestPageContentHandler extends SimpleHandler {
 	): array {
 		return [
 			'id' => $titleObject->getArticleID(),
-			'key' => $this->titleFormatter->getPrefixedDbKey( $titleObject ),
+			'key' => $this->titleFormatter->getPrefixedDBkey( $titleObject ),
 			'title' => $this->titleFormatter->getPrefixedText( $titleObject ),
 			'latest' => [
 				'id' => $revision->getId(),

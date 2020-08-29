@@ -28,13 +28,12 @@ use Wikimedia\Rdbms\DatabaseSqlite;
  *
  * @ingroup Installer
  * @since 1.17
+ * @property Wikimedia\Rdbms\DatabaseSqlite $db
  */
 class SqliteUpdater extends DatabaseUpdater {
 
 	protected function getCoreUpdateList() {
 		return [
-			[ 'disableContentHandlerUseDB' ],
-
 			// 1.14
 			[ 'addField', 'site_stats', 'ss_active_users', 'patch-ss_active_users.sql' ],
 			[ 'doActiveUsersInit' ],
@@ -47,9 +46,10 @@ class SqliteUpdater extends DatabaseUpdater {
 			// 1.16
 			[ 'addTable', 'user_properties', 'patch-user_properties.sql' ],
 			[ 'addTable', 'log_search', 'patch-log_search.sql' ],
-			[ 'ifNoActorTable', 'addField', 'logging', 'log_user_text', 'patch-log_user_text.sql' ],
+			[ 'ifTableNotExists', 'actor',
+				'addField', 'logging', 'log_user_text', 'patch-log_user_text.sql' ],
 			# listed separately from the previous update because 1.16 was released without this update
-			[ 'ifNoActorTable', 'doLogUsertextPopulation' ],
+			[ 'ifTableNotExists', 'actor', 'doLogUsertextPopulation' ],
 			[ 'doLogSearchPopulation' ],
 			[ 'addTable', 'l10n_cache', 'patch-l10n_cache.sql' ],
 			[ 'dropIndex', 'change_tag', 'ct_rc_id', 'patch-change_tag-indexes.sql' ],
@@ -84,18 +84,22 @@ class SqliteUpdater extends DatabaseUpdater {
 			[ 'addfield', 'job', 'job_timestamp', 'patch-jobs-add-timestamp.sql' ],
 
 			// 1.20
-			[ 'addIndex', 'revision', 'page_user_timestamp', 'patch-revision-user-page-index.sql' ],
+			[ 'ifFieldExists', 'revision', 'rev_user',
+				'addIndex', 'revision', 'page_user_timestamp', 'patch-revision-user-page-index.sql' ],
 			[ 'addField', 'ipblocks', 'ipb_parent_block_id', 'patch-ipb-parent-block-id.sql' ],
 			[ 'addIndex', 'ipblocks', 'ipb_parent_block_id', 'patch-ipb-parent-block-id-index.sql' ],
 			[ 'dropField', 'category', 'cat_hidden', 'patch-cat_hidden.sql' ],
 
 			// 1.21
-			[ 'addField', 'revision', 'rev_content_format', 'patch-revision-rev_content_format.sql' ],
-			[ 'addField', 'revision', 'rev_content_model', 'patch-revision-rev_content_model.sql' ],
-			[ 'addField', 'archive', 'ar_content_format', 'patch-archive-ar_content_format.sql' ],
-			[ 'addField', 'archive', 'ar_content_model', 'patch-archive-ar_content_model.sql' ],
+			[ 'ifFieldExists', 'revision', 'rev_text_id',
+				'addField', 'revision', 'rev_content_format', 'patch-revision-rev_content_format.sql' ],
+			[ 'ifFieldExists', 'revision', 'rev_text_id',
+				'addField', 'revision', 'rev_content_model', 'patch-revision-rev_content_model.sql' ],
+			[ 'ifFieldExists', 'archive', 'ar_text_id',
+				'addField', 'archive', 'ar_content_format', 'patch-archive-ar_content_format.sql' ],
+			[ 'ifFieldExists', 'archive', 'ar_text_id',
+				'addField', 'archive', 'ar_content_model', 'patch-archive-ar_content_model.sql' ],
 			[ 'addField', 'page', 'page_content_model', 'patch-page-page_content_model.sql' ],
-			[ 'enableContentHandlerUseDB' ],
 
 			[ 'dropField', 'site_stats', 'ss_admins', 'patch-drop-ss_admins.sql' ],
 			[ 'dropField', 'recentchanges', 'rc_moved_to_title', 'patch-rc_moved.sql' ],
@@ -118,9 +122,9 @@ class SqliteUpdater extends DatabaseUpdater {
 
 			// 1.23
 			[ 'addField', 'recentchanges', 'rc_source', 'patch-rc_source.sql' ],
-			[ 'ifNoActorTable', 'addIndex', 'logging', 'log_user_text_type_time',
+			[ 'ifTableNotExists', 'actor', 'addIndex', 'logging', 'log_user_text_type_time',
 				'patch-logging_user_text_type_time_index.sql' ],
-			[ 'ifNoActorTable', 'addIndex', 'logging', 'log_user_text_time',
+			[ 'ifTableNotExists', 'actor', 'addIndex', 'logging', 'log_user_text_time',
 				'patch-logging_user_text_time_index.sql' ],
 			[ 'addField', 'page', 'page_links_updated', 'patch-page_links_updated.sql' ],
 			[ 'addField', 'user', 'user_password_expires', 'patch-user_password_expire.sql' ],
@@ -159,7 +163,8 @@ class SqliteUpdater extends DatabaseUpdater {
 			// 1.29
 			[ 'addField', 'externallinks', 'el_index_60', 'patch-externallinks-el_index_60.sql' ],
 			[ 'addField', 'user_groups', 'ug_expiry', 'patch-user_groups-ug_expiry.sql' ],
-			[ 'ifNoActorTable', 'addIndex', 'image', 'img_user_timestamp', 'patch-image-user-index-2.sql' ],
+			[ 'ifTableNotExists', 'actor',
+				'addIndex', 'image', 'img_user_timestamp', 'patch-image-user-index-2.sql' ],
 
 			// 1.30
 			[ 'modifyField', 'image', 'img_media_type', 'patch-add-3d.sql' ],
@@ -281,6 +286,23 @@ class SqliteUpdater extends DatabaseUpdater {
 
 			// 1.35
 			[ 'addTable', 'watchlist_expiry', 'patch-watchlist_expiry.sql' ],
+			[ 'modifyfield', 'filearchive', 'fa_actor', 'patch-filearchive-drop-fa_actor-DEFAULT.sql' ],
+			[ 'modifyfield', 'recentchanges', 'rc_actor', 'patch-recentchanges-drop-rc_actor-DEFAULT.sql' ],
+			[ 'modifyfield', 'logging', 'log_actor', 'patch-logging-drop-log_actor-DEFAULT.sql' ],
+			[ 'modifyField', 'page', 'page_restrictions', 'patch-page_restrictions-null.sql' ],
+			[ 'renameIndex', 'ipblocks', 'ipb_address', 'ipb_address_unique', false,
+				'patch-ipblocks-rename-ipb_address.sql' ],
+			[ 'addField', 'revision', 'rev_actor', 'patch-revision-actor-comment-MCR.sql' ],
+			[ 'dropField', 'archive', 'ar_text_id', 'patch-archive-MCR.sql' ],
+			[ 'doFixIpbAddressUniqueIndex' ],
+			[ 'modifyField', 'actor', 'actor_name', 'patch-actor-actor_name-varbinary.sql' ],
+
+			// 1.36
+			[ 'modifyField', 'content', 'content_id', 'patch-content-content_id-fix_not_null.sql' ],
+			[ 'modifyField', 'redirect', 'rd_title', 'patch-redirect-rd_title-varbinary.sql' ],
+			[ 'modifyField', 'pagelinks', 'pl_title', 'patch-pagelinks-pl_title-varbinary.sql' ],
+			[ 'modifyField', 'templatelinks', 'tl_title', 'patch-templatelinks-tl_title-varbinary.sql' ],
+			[ 'modifyField', 'imagelinks', 'il_to', 'patch-imagelinks-il_to-varbinary.sql' ],
 		];
 	}
 
@@ -311,5 +333,45 @@ class SqliteUpdater extends DatabaseUpdater {
 		} else {
 			$this->output( "...fulltext search table appears to be in order.\n" );
 		}
+	}
+
+	/**
+	 * Check whether an index contain a field
+	 *
+	 * @param string $table Table name
+	 * @param string $index Index name to check
+	 * @param string $field Field that should be in the index
+	 * @return bool
+	 */
+	protected function indexHasField( $table, $index, $field ) {
+		if ( !$this->doTable( $table ) ) {
+			return true;
+		}
+
+		$info = $this->db->indexInfo( $table, $index, __METHOD__ );
+		if ( $info ) {
+			foreach ( $info as $column ) {
+				if ( $column == $field ) {
+					$this->output( "...index $index on table $table includes field $field.\n" );
+					return true;
+				}
+			}
+		}
+		$this->output( "...index $index on table $table has no field $field; added.\n" );
+
+		return false;
+	}
+
+	protected function doFixIpbAddressUniqueIndex() {
+		if ( !$this->indexHasField( 'ipblocks', 'ipb_address_unique', 'ipb_anon_only' ) ) {
+			$this->output( "...ipb_address_unique index up-to-date.\n" );
+			return;
+		}
+
+		$this->applyPatch(
+			'patch-ipblocks-fix-ipb_address_unique.sql',
+			false,
+			'Removing ipb_anon_only column from ipb_address_unique index'
+		);
 	}
 }

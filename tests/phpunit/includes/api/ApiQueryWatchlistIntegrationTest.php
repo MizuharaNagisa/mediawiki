@@ -104,7 +104,7 @@ class ApiQueryWatchlistIntegrationTest extends ApiTestCase {
 	private function deletePage( LinkTarget $target, $reason ) {
 		$title = Title::newFromLinkTarget( $target );
 		$page = WikiPage::factory( $title );
-		$page->doDeleteArticleReal( $reason );
+		$page->doDeleteArticleReal( $reason, $this->getTestSysop()->getUser() );
 	}
 
 	/**
@@ -224,7 +224,7 @@ class ApiQueryWatchlistIntegrationTest extends ApiTestCase {
 		// Check that each item in $actualItems contains all of keys specified in $requiredKeys
 		$actualItemsKeysOnly = array_map( 'array_keys', $actualItems );
 		foreach ( $actualItemsKeysOnly as $keysOfTheItem ) {
-			$this->assertEmpty( array_diff( $requiredKeys, $keysOfTheItem ) );
+			$this->assertSame( [], array_diff( $requiredKeys, $keysOfTheItem ) );
 		}
 	}
 
@@ -428,6 +428,7 @@ class ApiQueryWatchlistIntegrationTest extends ApiTestCase {
 				],
 				[
 					'type' => 'new',
+					'anon' => false,
 					'user' => $user->getName(),
 				],
 			],
@@ -464,6 +465,7 @@ class ApiQueryWatchlistIntegrationTest extends ApiTestCase {
 				],
 				[
 					'type' => 'new',
+					'anon' => false,
 					'user' => $user->getId(),
 					'userid' => $user->getId(),
 				],
@@ -750,6 +752,7 @@ class ApiQueryWatchlistIntegrationTest extends ApiTestCase {
 					'ns' => $talkTarget->getNamespace(),
 					'title' => $this->getPrefixedText( $talkTarget ),
 					'user' => $otherUser->getName(),
+					'anon' => false,
 				],
 			],
 			$this->getItemsFromApiResponse( $result )
@@ -787,6 +790,7 @@ class ApiQueryWatchlistIntegrationTest extends ApiTestCase {
 					'ns' => $subjectTarget->getNamespace(),
 					'title' => $this->getPrefixedText( $subjectTarget ),
 					'user' => $user->getName(),
+					'anon' => false,
 				]
 			],
 			$this->getItemsFromApiResponse( $result )
@@ -829,7 +833,7 @@ class ApiQueryWatchlistIntegrationTest extends ApiTestCase {
 			],
 			[ 'minor' ]
 		);
-		$this->assertEmpty( $this->getItemsFromApiResponse( $resultNotMinor ) );
+		$this->assertSame( [], $this->getItemsFromApiResponse( $resultNotMinor ) );
 	}
 
 	public function testShowBotParams() {
@@ -857,7 +861,7 @@ class ApiQueryWatchlistIntegrationTest extends ApiTestCase {
 			],
 			[ 'bot' ]
 		);
-		$this->assertEmpty( $this->getItemsFromApiResponse( $resultNotBot ) );
+		$this->assertSame( [], $this->getItemsFromApiResponse( $resultNotBot ) );
 	}
 
 	public function testShowAnonParams() {
@@ -886,7 +890,7 @@ class ApiQueryWatchlistIntegrationTest extends ApiTestCase {
 			],
 			[ 'anon' ]
 		);
-		$this->assertEmpty( $this->getItemsFromApiResponse( $resultNotAnon ) );
+		$this->assertSame( [], $this->getItemsFromApiResponse( $resultNotAnon ) );
 	}
 
 	public function testShowUnreadParams() {
@@ -971,7 +975,7 @@ class ApiQueryWatchlistIntegrationTest extends ApiTestCase {
 			],
 			$this->getItemsFromApiResponse( $resultPatrolled )
 		);
-		$this->assertEmpty( $this->getItemsFromApiResponse( $resultNotPatrolled ) );
+		$this->assertSame( [], $this->getItemsFromApiResponse( $resultNotPatrolled ) );
 	}
 
 	public function testNewAndEditTypeParameters() {
@@ -1151,13 +1155,16 @@ class ApiQueryWatchlistIntegrationTest extends ApiTestCase {
 			]
 		);
 		$title = Title::newFromLinkTarget( $subjectTarget );
-		$revision = Revision::newFromTitle( $title );
+		$revision = MediaWikiServices::getInstance()
+			->getRevisionLookup()
+			->getRevisionByTitle( $title );
 
+		$comment = $revision->getComment();
 		$rc = RecentChange::newForCategorization(
 			$revision->getTimestamp(),
 			Title::newFromLinkTarget( $categoryTarget ),
 			$user,
-			$revision->getComment(),
+			$comment ? $comment->text : '',
 			$title,
 			0,
 			$revision->getId(),
@@ -1389,7 +1396,7 @@ class ApiQueryWatchlistIntegrationTest extends ApiTestCase {
 			],
 			$this->getItemsFromApiResponse( $resultStart )
 		);
-		$this->assertEmpty( $this->getItemsFromApiResponse( $resultEnd ) );
+		$this->assertSame( [], $this->getItemsFromApiResponse( $resultEnd ) );
 	}
 
 	public function testContinueParam() {

@@ -4,6 +4,8 @@ namespace MediaWiki\Rest;
 
 use AppendIterator;
 use BagOStuff;
+use MediaWiki\HookContainer\HookContainer;
+use MediaWiki\MediaWikiServices;
 use MediaWiki\Rest\BasicAccess\BasicAuthorizerInterface;
 use MediaWiki\Rest\PathTemplateMatcher\PathMatcher;
 use MediaWiki\Rest\Validator\Validator;
@@ -29,6 +31,9 @@ class Router {
 	private $routeFileTimestamps;
 
 	/** @var string */
+	private $baseUrl;
+
+	/** @var string */
 	private $rootPath;
 
 	/** @var \BagOStuff */
@@ -52,29 +57,42 @@ class Router {
 	/** @var Validator */
 	private $restValidator;
 
+	/** @var HookContainer */
+	private $hookContainer;
+
 	/**
+	 * @internal
 	 * @param string[] $routeFiles List of names of JSON files containing routes
 	 * @param array $extraRoutes Extension route array
-	 * @param string $rootPath The base URL path
+	 * @param string $baseUrl The base URL
+	 * @param string $rootPath The base path for routes, relative to the base URL
 	 * @param BagOStuff $cacheBag A cache in which to store the matcher trees
 	 * @param ResponseFactory $responseFactory
 	 * @param BasicAuthorizerInterface $basicAuth
 	 * @param ObjectFactory $objectFactory
 	 * @param Validator $restValidator
+	 * @param HookContainer|null $hookContainer
 	 */
-	public function __construct( $routeFiles, $extraRoutes, $rootPath,
+	public function __construct( $routeFiles, $extraRoutes, $baseUrl, $rootPath,
 		BagOStuff $cacheBag, ResponseFactory $responseFactory,
 		BasicAuthorizerInterface $basicAuth, ObjectFactory $objectFactory,
-		Validator $restValidator
+		Validator $restValidator, HookContainer $hookContainer = null
 	) {
 		$this->routeFiles = $routeFiles;
 		$this->extraRoutes = $extraRoutes;
+		$this->baseUrl = $baseUrl;
 		$this->rootPath = $rootPath;
 		$this->cacheBag = $cacheBag;
 		$this->responseFactory = $responseFactory;
 		$this->basicAuth = $basicAuth;
 		$this->objectFactory = $objectFactory;
 		$this->restValidator = $restValidator;
+
+		if ( !$hookContainer ) {
+			// b/c for OAuth extension
+			$hookContainer = MediaWikiServices::getInstance()->getHookContainer();
+		}
+		$this->hookContainer = $hookContainer;
 	}
 
 	/**
@@ -218,6 +236,27 @@ class Router {
 	}
 
 	/**
+	 * Returns a full URL for the given route.
+	 * Intended for use in redirects.
+	 *
+	 * @param string $route
+	 * @param array $pathParams
+	 * @param array $queryParams
+	 *
+	 * @return false|string
+	 */
+	public function getRouteUrl( $route, $pathParams = [], $queryParams = [] ) {
+		foreach ( $pathParams as $param => $value ) {
+			// NOTE: we use rawurlencode here, since execute() uses rawurldecode().
+			// Spaces in path params must be encoded to %20 (not +).
+			$route = str_replace( '{' . $param . '}', rawurlencode( $value ), $route );
+		}
+
+		$url = $this->baseUrl . $this->rootPath . $route;
+		return wfAppendQuery( $url, $queryParams );
+	}
+
+	/**
 	 * Find the handler for a request and execute it
 	 *
 	 * @param RequestInterface $request
@@ -273,6 +312,7 @@ class Router {
 			}
 		}
 
+		// Use rawurldecode so a "+" in path params is not interpreted as a space character.
 		$request->setPathParams( array_map( 'rawurldecode', $match['params'] ) );
 		$handler = $this->createHandler( $request, $match['userData'] );
 
@@ -294,7 +334,7 @@ class Router {
 			[ 'factory' => true, 'class' => true, 'args' => true, 'services' => true ] );
 		/** @var $handler Handler (annotation for PHPStorm) */
 		$handler = $this->objectFactory->createObject( $objectFactorySpec );
-		$handler->init( $this, $request, $spec, $this->responseFactory );
+		$handler->init( $this, $request, $spec, $this->responseFactory, $this->hookContainer );
 
 		return $handler;
 	}

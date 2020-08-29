@@ -101,15 +101,18 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'addPgField', 'archive', 'ar_len', 'INTEGER' ],
 			[ 'addPgField', 'archive', 'ar_page_id', 'INTEGER' ],
 			[ 'addPgField', 'archive', 'ar_parent_id', 'INTEGER' ],
-			[ 'addPgField', 'archive', 'ar_content_model', 'TEXT' ],
-			[ 'addPgField', 'archive', 'ar_content_format', 'TEXT' ],
+			[ 'ifFieldExists', 'archive', 'ar_text_id',
+				'addPgField', 'archive', 'ar_content_model', 'TEXT' ],
+			[ 'ifFieldExists', 'archive', 'ar_text_id',
+				'addPgField', 'archive', 'ar_content_format', 'TEXT' ],
 			[ 'addPgField', 'categorylinks', 'cl_sortkey_prefix', "TEXT NOT NULL DEFAULT ''" ],
 			[ 'addPgField', 'categorylinks', 'cl_collation', "TEXT NOT NULL DEFAULT 0" ],
 			[ 'addPgField', 'categorylinks', 'cl_type', "TEXT NOT NULL DEFAULT 'page'" ],
 			[ 'addPgField', 'image', 'img_sha1', "TEXT NOT NULL DEFAULT ''" ],
 			[ 'addPgField', 'ipblocks', 'ipb_allow_usertalk', 'SMALLINT NOT NULL DEFAULT 0' ],
 			[ 'addPgField', 'ipblocks', 'ipb_anon_only', 'SMALLINT NOT NULL DEFAULT 0' ],
-			[ 'ifNoActorTable', 'addPgField', 'ipblocks', 'ipb_by_text', "TEXT NOT NULL DEFAULT ''" ],
+			[ 'ifTableNotExists', 'actor',
+				'addPgField', 'ipblocks', 'ipb_by_text', "TEXT NOT NULL DEFAULT ''" ],
 			[ 'addPgField', 'ipblocks', 'ipb_block_email', 'SMALLINT NOT NULL DEFAULT 0' ],
 			[ 'addPgField', 'ipblocks', 'ipb_create_account', 'SMALLINT NOT NULL DEFAULT 1' ],
 			[ 'addPgField', 'ipblocks', 'ipb_deleted', 'SMALLINT NOT NULL DEFAULT 0' ],
@@ -146,11 +149,14 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'addPgField', 'revision', 'rev_deleted', 'SMALLINT NOT NULL DEFAULT 0' ],
 			[ 'addPgField', 'revision', 'rev_len', 'INTEGER' ],
 			[ 'addPgField', 'revision', 'rev_parent_id', 'INTEGER DEFAULT NULL' ],
-			[ 'addPgField', 'revision', 'rev_content_model', 'TEXT' ],
-			[ 'addPgField', 'revision', 'rev_content_format', 'TEXT' ],
+			[ 'ifFieldExists', 'revision', 'rev_text_id',
+				'addPgField', 'revision', 'rev_content_model', 'TEXT' ],
+			[ 'ifFieldExists', 'revision', 'rev_text_id',
+				'addPgField', 'revision', 'rev_content_format', 'TEXT' ],
 			[ 'addPgField', 'site_stats', 'ss_active_users', "INTEGER DEFAULT '-1'" ],
 			[ 'addPgField', 'user_newtalk', 'user_last_timestamp', 'TIMESTAMPTZ' ],
-			[ 'ifNoActorTable', 'addPgField', 'logging', 'log_user_text', "TEXT NOT NULL DEFAULT ''" ],
+			[ 'ifTableNotExists', 'actor',
+				'addPgField', 'logging', 'log_user_text', "TEXT NOT NULL DEFAULT ''" ],
 			[ 'addPgField', 'logging', 'log_page', 'INTEGER' ],
 			[ 'addPgField', 'interwiki', 'iw_api', "TEXT NOT NULL DEFAULT ''" ],
 			[ 'addPgField', 'interwiki', 'iw_wikiid', "TEXT NOT NULL DEFAULT ''" ],
@@ -219,7 +225,6 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'changeField', 'revision', 'rev_deleted', 'smallint', 'rev_deleted::smallint DEFAULT 0' ],
 			[ 'changeField', 'revision', 'rev_minor_edit', 'smallint',
 				'rev_minor_edit::smallint DEFAULT 0' ],
-			[ 'changeField', 'templatelinks', 'tl_namespace', 'smallint', 'tl_namespace::smallint' ],
 			[ 'changeField', 'user_newtalk', 'user_ip', 'text', 'host(user_ip)' ],
 			[ 'changeField', 'uploadstash', 'us_image_bits', 'smallint', '' ],
 
@@ -236,20 +241,19 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'checkOiDeleted' ],
 
 			# New indexes
-			[ 'ifNoActorTable', 'addPgIndex', 'archive', 'archive_user_text', '(ar_user_text)' ],
+			[ 'ifTableNotExists', 'actor', 'addPgIndex', 'archive', 'archive_user_text', '(ar_user_text)' ],
 			[ 'addPgIndex', 'image', 'img_sha1', '(img_sha1)' ],
 			[ 'addPgIndex', 'ipblocks', 'ipb_parent_block_id', '(ipb_parent_block_id)' ],
 			[ 'addPgIndex', 'oldimage', 'oi_sha1', '(oi_sha1)' ],
 			[ 'addPgIndex', 'page', 'page_mediawiki_title', '(page_title) WHERE page_namespace = 8' ],
-			[ 'addPgIndex', 'pagelinks', 'pagelinks_title', '(pl_title)' ],
 			[ 'addPgIndex', 'page_props', 'pp_propname_page', '(pp_propname, pp_page)' ],
-			[ 'addPgIndex', 'revision', 'rev_text_id_idx', '(rev_text_id)' ],
+			[ 'ifFieldExists', 'revision', 'rev_text_id',
+				'addPgIndex', 'revision', 'rev_text_id_idx', '(rev_text_id)' ],
 			[ 'addPgIndex', 'recentchanges', 'rc_timestamp_bot', '(rc_timestamp) WHERE rc_bot = 0' ],
-			[ 'addPgIndex', 'templatelinks', 'templatelinks_from', '(tl_from)' ],
 			[ 'addPgIndex', 'watchlist', 'wl_user', '(wl_user)' ],
 			[ 'addPgIndex', 'watchlist', 'wl_user_notificationtimestamp',
 				'(wl_user, wl_notificationtimestamp)' ],
-			[ 'ifNoActorTable', 'addPgIndex', 'logging', 'logging_user_type_time',
+			[ 'ifTableNotExists', 'actor', 'addPgIndex', 'logging', 'logging_user_type_time',
 				'(log_user, log_type, log_timestamp)' ],
 			[ 'addPgIndex', 'logging', 'logging_page_id_time', '(log_page,log_timestamp)' ],
 			[ 'addPgIndex', 'iwlinks', 'iwl_prefix_from_title', '(iwl_prefix, iwl_from, iwl_title)' ],
@@ -259,17 +263,11 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'addPgIndex', 'job', 'job_cmd_token', '(job_cmd, job_token, job_random)' ],
 			[ 'addPgIndex', 'job', 'job_cmd_token_id', '(job_cmd, job_token, job_id)' ],
 			[ 'addPgIndex', 'filearchive', 'fa_sha1', '(fa_sha1)' ],
-			[ 'ifNoActorTable', 'addPgIndex', 'logging', 'logging_user_text_type_time',
+			[ 'ifTableNotExists', 'actor', 'addPgIndex', 'logging', 'logging_user_text_type_time',
 				'(log_user_text, log_type, log_timestamp)' ],
-			[ 'ifNoActorTable', 'addPgIndex', 'logging', 'logging_user_text_time',
+			[ 'ifTableNotExists', 'actor', 'addPgIndex', 'logging', 'logging_user_text_time',
 				'(log_user_text, log_timestamp)' ],
 
-			[ 'checkIndex', 'pagelink_unique', [
-				[ 'pl_from', 'int4_ops', 'btree', 0 ],
-				[ 'pl_namespace', 'int2_ops', 'btree', 0 ],
-				[ 'pl_title', 'text_ops', 'btree', 0 ],
-			],
-				'CREATE UNIQUE INDEX pagelink_unique ON pagelinks (pl_from,pl_namespace,pl_title)' ],
 			[ 'checkIndex', 'cl_sortkey', [
 				[ 'cl_to', 'text_ops', 'btree', 0 ],
 				[ 'cl_sortkey', 'text_ops', 'btree', 0 ],
@@ -352,36 +350,34 @@ class PostgresUpdater extends DatabaseUpdater {
 				[ 'ipb_address', 'text_ops', 'btree', 0 ],
 				[ 'ipb_user', 'int4_ops', 'btree', 0 ],
 				[ 'ipb_auto', 'int2_ops', 'btree', 0 ],
-				[ 'ipb_anon_only', 'int2_ops', 'btree', 0 ],
 			],
 			'CREATE UNIQUE INDEX ipb_address_unique ' .
-				'ON ipblocks (ipb_address,ipb_user,ipb_auto,ipb_anon_only)' ],
+				'ON ipblocks (ipb_address,ipb_user,ipb_auto)' ],
 
 			[ 'checkIwlPrefix' ],
 
 			# All FK columns should be deferred
-			[ 'ifNoActorTable', 'changeFkeyDeferrable', 'archive', 'ar_user',
+			[ 'ifTableNotExists', 'actor', 'changeFkeyDeferrable', 'archive', 'ar_user',
 				'mwuser(user_id) ON DELETE SET NULL' ],
 			[ 'changeFkeyDeferrable', 'categorylinks', 'cl_from', 'page(page_id) ON DELETE CASCADE' ],
 			[ 'changeFkeyDeferrable', 'externallinks', 'el_from', 'page(page_id) ON DELETE CASCADE' ],
 			[ 'changeFkeyDeferrable', 'filearchive', 'fa_deleted_user',
 				'mwuser(user_id) ON DELETE SET NULL' ],
-			[ 'ifNoActorTable', 'changeFkeyDeferrable', 'filearchive', 'fa_user',
+			[ 'ifTableNotExists', 'actor', 'changeFkeyDeferrable', 'filearchive', 'fa_user',
 				'mwuser(user_id) ON DELETE SET NULL' ],
-			[ 'ifNoActorTable', 'changeFkeyDeferrable', 'image', 'img_user',
+			[ 'ifTableNotExists', 'actor', 'changeFkeyDeferrable', 'image', 'img_user',
 				'mwuser(user_id) ON DELETE SET NULL' ],
-			[ 'changeFkeyDeferrable', 'imagelinks', 'il_from', 'page(page_id) ON DELETE CASCADE' ],
-			[ 'ifNoActorTable', 'changeFkeyDeferrable', 'ipblocks', 'ipb_by',
+			[ 'ifTableNotExists', 'actor', 'changeFkeyDeferrable', 'ipblocks', 'ipb_by',
 				'mwuser(user_id) ON DELETE CASCADE' ],
 			[ 'changeFkeyDeferrable', 'ipblocks', 'ipb_user', 'mwuser(user_id) ON DELETE SET NULL' ],
 			[ 'changeFkeyDeferrable', 'ipblocks', 'ipb_parent_block_id',
 				'ipblocks(ipb_id) ON DELETE SET NULL' ],
 			[ 'changeFkeyDeferrable', 'langlinks', 'll_from', 'page(page_id) ON DELETE CASCADE' ],
-			[ 'ifNoActorTable', 'changeFkeyDeferrable', 'logging', 'log_user',
+			[ 'ifTableNotExists', 'actor', 'changeFkeyDeferrable', 'logging', 'log_user',
 				'mwuser(user_id) ON DELETE SET NULL' ],
 			[ 'changeFkeyDeferrable', 'oldimage', 'oi_name',
 				'image(img_name) ON DELETE CASCADE ON UPDATE CASCADE' ],
-			[ 'ifNoActorTable', 'changeFkeyDeferrable', 'oldimage', 'oi_user',
+			[ 'ifTableNotExists', 'actor', 'changeFkeyDeferrable', 'oldimage', 'oi_user',
 				'mwuser(user_id) ON DELETE SET NULL' ],
 			[ 'changeFkeyDeferrable', 'pagelinks', 'pl_from', 'page(page_id) ON DELETE CASCADE' ],
 			[ 'changeFkeyDeferrable', 'page_props', 'pp_page', 'page (page_id) ON DELETE CASCADE' ],
@@ -389,12 +385,12 @@ class PostgresUpdater extends DatabaseUpdater {
 				'page(page_id) ON DELETE CASCADE' ],
 			[ 'changeFkeyDeferrable', 'protected_titles', 'pt_user',
 				'mwuser(user_id) ON DELETE SET NULL' ],
-			[ 'ifNoActorTable', 'changeFkeyDeferrable', 'recentchanges', 'rc_user',
+			[ 'ifTableNotExists', 'actor', 'changeFkeyDeferrable', 'recentchanges', 'rc_user',
 				'mwuser(user_id) ON DELETE SET NULL' ],
 			[ 'changeFkeyDeferrable', 'redirect', 'rd_from', 'page(page_id) ON DELETE CASCADE' ],
 			[ 'changeFkeyDeferrable', 'revision', 'rev_page', 'page (page_id) ON DELETE CASCADE' ],
-			[ 'changeFkeyDeferrable', 'revision', 'rev_user', 'mwuser(user_id) ON DELETE RESTRICT' ],
-			[ 'changeFkeyDeferrable', 'templatelinks', 'tl_from', 'page(page_id) ON DELETE CASCADE' ],
+			[ 'ifFieldExists', 'revision', 'rev_text_id',
+				'changeFkeyDeferrable', 'revision', 'rev_user', 'mwuser(user_id) ON DELETE RESTRICT' ],
 			[ 'changeFkeyDeferrable', 'user_groups', 'ug_user', 'mwuser(user_id) ON DELETE CASCADE' ],
 			[ 'changeFkeyDeferrable', 'user_newtalk', 'user_id', 'mwuser(user_id) ON DELETE CASCADE' ],
 			[ 'changeFkeyDeferrable', 'user_properties', 'up_user',
@@ -659,6 +655,83 @@ class PostgresUpdater extends DatabaseUpdater {
 			// 1.35
 			[ 'addIndex', 'redirect', 'redirect_pkey', 'patch-redirect-pk.sql' ],
 			[ 'addTable', 'watchlist_expiry', 'patch-watchlist_expiry.sql' ],
+			[ 'setSequenceOwner', 'watchlist_expiry', 'we_item', 'watchlist_expiry_we_item_seq' ],
+			[ 'setDefault', 'user_newtalk', 'user_ip', '' ],
+			[ 'changeNullableField', 'user_newtalk', 'user_ip', 'NOT NULL', true ],
+			[ 'setDefault', 'user_newtalk', 'user_id', 0 ],
+			[ 'renameIndex', 'revision_actor_temp', 'rev_actor_timestamp', 'revactor_actor_timestamp' ],
+			[ 'renameIndex', 'revision_actor_temp',
+				'rev_page_actor_timestamp', 'revactor_page_actor_timestamp' ],
+			[ 'dropPgIndex', 'revision', 'rev_user_idx' ],
+			[ 'dropPgIndex', 'revision', 'rev_user_text_idx' ],
+			[ 'dropPgIndex', 'revision', 'rev_text_id_idx' ],
+			[ 'dropPgField', 'revision', 'rev_user' ],
+			[ 'dropPgField', 'revision', 'rev_user_text' ],
+			[ 'dropPgField', 'revision', 'rev_comment' ],
+			[ 'dropPgField', 'revision', 'rev_text_id' ],
+			[ 'dropPgField', 'revision', 'rev_content_model' ],
+			[ 'dropPgField', 'revision', 'rev_content_format' ],
+			[ 'addPgField', 'revision', 'rev_comment_id', 'INTEGER NOT NULL DEFAULT 0' ],
+			[ 'addPgField', 'revision', 'rev_actor', 'INTEGER NOT NULL DEFAULT 0' ],
+			[ 'addPgIndex', 'revision', 'rev_actor_timestamp', '(rev_actor,rev_timestamp,rev_id)' ],
+			[ 'addPgIndex', 'revision', 'rev_page_actor_timestamp', '(rev_page,rev_actor,rev_timestamp)' ],
+			[ 'dropPgField', 'archive', 'ar_text_id' ],
+			[ 'dropPgField', 'archive', 'ar_content_model' ],
+			[ 'dropPgField', 'archive', 'ar_content_format' ],
+			[ 'changeField', 'updatelog', 'ul_key', 'varchar(255)', '' ],
+			[ 'changeField', 'updatelog', 'ul_value', 'TEXT', '' ],
+			[ 'changeField', 'site_identifiers', 'si_type', 'TEXT', '' ],
+			[ 'changeField', 'site_identifiers', 'si_key', 'TEXT', '' ],
+			[ 'changeField', 'actor', 'actor_id', 'BIGINT', '' ],
+			[ 'changeField', 'actor', 'actor_name', 'TEXT', '' ],
+			[ 'changeField', 'user_former_groups', 'ufg_group', 'TEXT', '' ],
+			[ 'dropFkey', 'user_former_groups', 'ufg_user' ],
+			[ 'setDefault', 'bot_passwords', 'bp_token', '' ],
+			[ 'changeField', 'comment', 'comment_id', 'BIGINT', '' ],
+			[ 'changeField', 'slots', 'slot_revision_id', 'BIGINT', '' ],
+			[ 'changeField', 'slots', 'slot_content_id', 'BIGINT', '' ],
+			[ 'changeField', 'slots', 'slot_origin', 'BIGINT', '' ],
+			[ 'changeField', 'site_stats', 'ss_total_edits', 'BIGINT', '' ],
+			[ 'changeField', 'site_stats', 'ss_good_articles', 'BIGINT', '' ],
+			[ 'changeField', 'site_stats', 'ss_total_pages', 'BIGINT', '' ],
+			[ 'changeField', 'site_stats', 'ss_users', 'BIGINT', '' ],
+			[ 'changeField', 'site_stats', 'ss_active_users', 'BIGINT', '' ],
+			[ 'changeField', 'site_stats', 'ss_images', 'BIGINT', '' ],
+			[ 'dropFkey', 'user_properties', 'up_user' ],
+			[ 'addIndex', 'user_properties', 'user_properties_pkey', 'patch-user_properties-pk.sql' ],
+			[ 'changeField', 'log_search', 'ls_value', 'VARCHAR(255)', '' ],
+			[ 'changeField', 'content', 'content_id', 'BIGINT', '' ],
+			[ 'changeField', 'l10n_cache', 'lc_value', 'TEXT', '' ],
+			[ 'changeField', 'l10n_cache', 'lc_key', 'VARCHAR(255)', '' ],
+			[ 'addIndex', 'l10n_cache', 'l10n_cache_pkey', 'patch-l10n_cache-pk.sql' ],
+			[ 'addIndex', 'module_deps', 'module_deps_pkey', 'patch-module_deps-pk.sql' ],
+			[ 'changeField', 'redirect', 'rd_namespace', 'INT', 'rd_namespace::INT DEFAULT 0' ],
+			[ 'setDefault', 'redirect', 'rd_title', '' ],
+			[ 'setDefault', 'redirect', 'rd_from', 0 ],
+			[ 'dropFkey', 'redirect', 'rd_from' ],
+			[ 'changeField', 'redirect', 'rd_interwiki', 'VARCHAR(32)', '' ],
+			[ 'dropFkey', 'pagelinks', 'pl_from' ],
+			[ 'changeField', 'pagelinks', 'pl_namespace', 'INT', 'pl_namespace::INT DEFAULT 0' ],
+			[ 'setDefault', 'pagelinks', 'pl_title', '' ],
+			[ 'addPgIndex', 'pagelinks', 'pl_namespace', '(pl_namespace,pl_title,pl_from)' ],
+			[ 'addPgIndex', 'pagelinks', 'pl_backlinks_namespace',
+				'(pl_from_namespace,pl_namespace,pl_title,pl_from)' ],
+			[ 'dropPgIndex', 'pagelinks', 'pagelink_unique' ],
+			[ 'dropPgIndex', 'pagelinks', 'pagelinks_title' ],
+			[ 'dropFkey', 'templatelinks', 'tl_from' ],
+			[ 'changeField', 'templatelinks', 'tl_namespace', 'INT', 'tl_namespace::INT DEFAULT 0' ],
+			[ 'setDefault', 'templatelinks', 'tl_title', '' ],
+			[ 'addPgIndex', 'templatelinks', 'tl_namespace', '(tl_namespace,tl_title,tl_from)' ],
+			[ 'addPgIndex', 'templatelinks', 'tl_backlinks_namespace',
+				'(tl_from_namespace,tl_namespace,tl_title,tl_from)' ],
+			[ 'dropPgIndex', 'templatelinks', 'templatelinks_unique' ],
+			[ 'dropPgIndex', 'templatelinks', 'templatelinks_from' ],
+			[ 'dropFkey', 'imagelinks', 'il_from' ],
+			[ 'setDefault', 'imagelinks', 'il_to', '' ],
+			[ 'addPgIndex', 'imagelinks', 'il_to', '(il_to, il_from)' ],
+			[ 'addPgIndex', 'imagelinks', 'il_backlinks_namespace',
+				'(il_from_namespace, il_to, il_from)' ],
+			[ 'dropPgIndex', 'imagelinks', 'il_from' ],
 		];
 	}
 
@@ -708,9 +781,13 @@ SELECT attname, attnum FROM pg_namespace, pg_class, pg_attribute
 		AND attrelid=pg_class.oid AND attnum > 0
 		AND relname=%s AND nspname=%s
 END;
-		$res = $this->db->query( sprintf( $q,
-			$this->db->addQuotes( $table ),
-			$this->db->addQuotes( $this->db->getCoreSchema() ) ) );
+		$res = $this->db->query(
+			sprintf( $q,
+				$this->db->addQuotes( $table ),
+				$this->db->addQuotes( $this->db->getCoreSchema() )
+			),
+			__METHOD__
+		);
 		if ( !$res ) {
 			return null;
 		}
@@ -726,7 +803,7 @@ END;
 		return $cols;
 	}
 
-	function describeIndex( $idx ) {
+	protected function describeIndex( $idx ) {
 		// first fetch the key (which is a list of columns ords) and
 		// the table the index applies to (an oid)
 		$q = <<<END
@@ -741,7 +818,8 @@ END;
 				$q,
 				$this->db->addQuotes( $this->db->getCoreSchema() ),
 				$this->db->addQuotes( $idx )
-			)
+			),
+			__METHOD__
 		);
 		if ( !$res ) {
 			return null;
@@ -763,7 +841,7 @@ SELECT attname FROM pg_class, pg_attribute
 		AND attnum=%d
 		AND attrelid=pg_class.oid
 END;
-			$r2 = $this->db->query( sprintf( $query, $rid ) );
+			$r2 = $this->db->query( sprintf( $query, $rid ), __METHOD__ );
 			if ( !$r2 ) {
 				return null;
 			}
@@ -777,7 +855,7 @@ END;
 		return $colnames;
 	}
 
-	function fkeyDeltype( $fkey ) {
+	protected function fkeyDeltype( $fkey ) {
 		$q = <<<END
 SELECT confdeltype FROM pg_constraint, pg_namespace
 	WHERE connamespace=pg_namespace.oid
@@ -789,7 +867,8 @@ END;
 				$q,
 				$this->db->addQuotes( $this->db->getCoreSchema() ),
 				$this->db->addQuotes( $fkey )
-			)
+			),
+			__METHOD__
 		);
 		$row = $this->db->fetchRow( $r );
 		if ( !$row ) {
@@ -799,7 +878,7 @@ END;
 		return $row[0];
 	}
 
-	function ruleDef( $table, $rule ) {
+	protected function ruleDef( $table, $rule ) {
 		$q = <<<END
 SELECT definition FROM pg_rules
 	WHERE schemaname = %s
@@ -812,7 +891,8 @@ END;
 				$this->db->addQuotes( $this->db->getCoreSchema() ),
 				$this->db->addQuotes( $table ),
 				$this->db->addQuotes( $rule )
-			)
+			),
+			__METHOD__
 		);
 		$row = $this->db->fetchRow( $r );
 		if ( !$row ) {
@@ -827,10 +907,10 @@ END;
 		if ( !$this->db->sequenceExists( $ns ) ) {
 			$this->output( "Creating sequence $ns\n" );
 			if ( $pkey !== false ) {
-				$this->db->query( "CREATE SEQUENCE $ns OWNED BY $table.$pkey" );
+				$this->db->query( "CREATE SEQUENCE $ns OWNED BY $table.$pkey", __METHOD__ );
 				$this->setDefault( $table, $pkey, '"nextval"(\'"' . $ns . '"\'::"regclass")' );
 			} else {
-				$this->db->query( "CREATE SEQUENCE $ns" );
+				$this->db->query( "CREATE SEQUENCE $ns", __METHOD__ );
 			}
 		}
 	}
@@ -838,7 +918,7 @@ END;
 	protected function dropSequence( $table, $ns ) {
 		if ( $this->db->sequenceExists( $ns ) ) {
 			$this->output( "Dropping sequence $ns\n" );
-			$this->db->query( "DROP SEQUENCE $ns CASCADE" );
+			$this->db->query( "DROP SEQUENCE $ns CASCADE", __METHOD__ );
 		}
 	}
 
@@ -850,23 +930,23 @@ END;
 		}
 		if ( $this->db->sequenceExists( $old ) ) {
 			$this->output( "Renaming sequence $old to $new\n" );
-			$this->db->query( "ALTER SEQUENCE $old RENAME TO $new" );
+			$this->db->query( "ALTER SEQUENCE $old RENAME TO $new", __METHOD__ );
 		}
 	}
 
 	protected function setSequenceOwner( $table, $pkey, $seq ) {
 		if ( $this->db->sequenceExists( $seq ) ) {
 			$this->output( "Setting sequence $seq owner to $table.$pkey\n" );
-			$this->db->query( "ALTER SEQUENCE $seq OWNED BY $table.$pkey" );
+			$this->db->query( "ALTER SEQUENCE $seq OWNED BY $table.$pkey", __METHOD__ );
 		}
 	}
 
 	protected function renameTable( $old, $new, $patch = false ) {
-		if ( $this->db->tableExists( $old ) ) {
+		if ( $this->db->tableExists( $old, __METHOD__ ) ) {
 			$this->output( "Renaming table $old to $new\n" );
 			$old = $this->db->realTableName( $old, "quoted" );
 			$new = $this->db->realTableName( $new, "quoted" );
-			$this->db->query( "ALTER TABLE $old RENAME TO $new" );
+			$this->db->query( "ALTER TABLE $old RENAME TO $new", __METHOD__ );
 			if ( $patch !== false ) {
 				$this->applyPatch( $patch );
 			}
@@ -904,7 +984,7 @@ END;
 			return true;
 		}
 
-		$this->db->query( "ALTER INDEX $old RENAME TO $new" );
+		$this->db->query( "ALTER INDEX $old RENAME TO $new", __METHOD__ );
 		return true;
 	}
 
@@ -916,7 +996,7 @@ END;
 			return;
 		} else {
 			$this->output( "Dropping column '$table.$field'\n" );
-			$this->db->query( "ALTER TABLE $table DROP COLUMN $field" );
+			$this->db->query( "ALTER TABLE $table DROP COLUMN $field", __METHOD__ );
 		}
 	}
 
@@ -928,7 +1008,7 @@ END;
 			return;
 		} else {
 			$this->output( "Adding column '$table.$field'\n" );
-			$this->db->query( "ALTER TABLE $table ADD $field $type" );
+			$this->db->query( "ALTER TABLE $table ADD $field $type", __METHOD__ );
 		}
 	}
 
@@ -948,12 +1028,12 @@ END;
 				$res = [];
 				if ( preg_match( '/DEFAULT (.+)/', $default, $res ) ) {
 					$sqldef = "ALTER TABLE $table ALTER $field SET DEFAULT $res[1]";
-					$this->db->query( $sqldef );
+					$this->db->query( $sqldef, __METHOD__ );
 					$default = preg_replace( '/\s*DEFAULT .+/', '', $default );
 				}
 				$sql .= " USING $default";
 			}
-			$this->db->query( $sql );
+			$this->db->query( $sql, __METHOD__ );
 		}
 	}
 
@@ -970,19 +1050,19 @@ END;
 			$this->output( "...column '$table.$field' is already of type '$newtype'\n" );
 		} else {
 			$this->output( "Purging data from cache table '$table'\n" );
-			$this->db->query( "DELETE from $table" );
+			$this->db->query( "DELETE from $table", __METHOD__ );
 			$this->output( "Changing column type of '$table.$field' from '{$fi->type()}' to '$newtype'\n" );
 			$sql = "ALTER TABLE $table ALTER $field TYPE $newtype";
 			if ( strlen( $default ) ) {
 				$res = [];
 				if ( preg_match( '/DEFAULT (.+)/', $default, $res ) ) {
 					$sqldef = "ALTER TABLE $table ALTER $field SET DEFAULT $res[1]";
-					$this->db->query( $sqldef );
+					$this->db->query( $sqldef, __METHOD__ );
 					$default = preg_replace( '/\s*DEFAULT .+/', '', $default );
 				}
 				$sql .= " USING $default";
 			}
-			$this->db->query( $sql );
+			$this->db->query( $sql, __METHOD__ );
 		}
 	}
 
@@ -991,7 +1071,7 @@ END;
 		if ( $info && $info->defaultValue() !== $default ) {
 			$this->output( "Changing '$table.$field' default value\n" );
 			$this->db->query( "ALTER TABLE $table ALTER $field SET DEFAULT "
-				. $this->db->addQuotes( $default ) );
+				. $this->db->addQuotes( $default ), __METHOD__ );
 		}
 	}
 
@@ -1005,7 +1085,7 @@ END;
 		$info = $this->db->fieldInfo( $table, $field );
 		if ( $info->defaultValue() !== false ) {
 			$this->output( "Removing '$table.$field' default value\n" );
-			$this->db->query( "ALTER TABLE $table ALTER $field DROP DEFAULT" );
+			$this->db->query( "ALTER TABLE $table ALTER $field DROP DEFAULT", __METHOD__ );
 		}
 	}
 
@@ -1019,9 +1099,9 @@ END;
 			if ( $null === 'NOT NULL' ) {
 				$this->output( "Changing '$table.$field' to not allow NULLs\n" );
 				if ( $update ) {
-					$this->db->query( "UPDATE $table SET $field = DEFAULT WHERE $field IS NULL" );
+					$this->db->query( "UPDATE $table SET $field = DEFAULT WHERE $field IS NULL", __METHOD__ );
 				}
-				$this->db->query( "ALTER TABLE $table ALTER $field SET NOT NULL" );
+				$this->db->query( "ALTER TABLE $table ALTER $field SET NOT NULL", __METHOD__ );
 			} else {
 				$this->output( "...column '$table.$field' is already set as NULL\n" );
 			}
@@ -1029,29 +1109,29 @@ END;
 			# # It's NOT NULL - does it need to be NULL?
 			if ( $null === 'NULL' ) {
 				$this->output( "Changing '$table.$field' to allow NULLs\n" );
-				$this->db->query( "ALTER TABLE $table ALTER $field DROP NOT NULL" );
+				$this->db->query( "ALTER TABLE $table ALTER $field DROP NOT NULL", __METHOD__ );
 			} else {
 				$this->output( "...column '$table.$field' is already set as NOT NULL\n" );
 			}
 		}
 	}
 
-	public function addPgIndex( $table, $index, $type, $unique = false ) {
-		if ( $this->db->indexExists( $table, $index ) ) {
+	protected function addPgIndex( $table, $index, $type, $unique = false ) {
+		if ( $this->db->indexExists( $table, $index, __METHOD__ ) ) {
 			$this->output( "...index '$index' on table '$table' already exists\n" );
 		} else {
 			$this->output( "Creating index '$index' on table '$table' $type\n" );
 			$unique = $unique ? 'UNIQUE' : '';
-			$this->db->query( "CREATE $unique INDEX $index ON $table $type" );
+			$this->db->query( "CREATE $unique INDEX $index ON $table $type", __METHOD__ );
 		}
 	}
 
-	public function addPgExtIndex( $table, $index, $type ) {
-		if ( $this->db->indexExists( $table, $index ) ) {
+	protected function addPgExtIndex( $table, $index, $type ) {
+		if ( $this->db->indexExists( $table, $index, __METHOD__ ) ) {
 			$this->output( "...index '$index' on table '$table' already exists\n" );
 		} elseif ( preg_match( '/^\(/', $type ) ) {
 			$this->output( "Creating index '$index' on table '$table'\n" );
-			$this->db->query( "CREATE INDEX $index ON $table $type" );
+			$this->db->query( "CREATE INDEX $index ON $table $type", __METHOD__ );
 		} else {
 			$this->applyPatch( $type, true, "Creating index '$index' on table '$table'" );
 		}
@@ -1063,7 +1143,7 @@ END;
 	 * @param string $type Type name. Must be in the core schema.
 	 * @param string $value Value to add.
 	 */
-	public function addPgEnumValue( $type, $value ) {
+	protected function addPgEnumValue( $type, $value ) {
 		$row = $this->db->selectRow(
 			[
 				't' => 'pg_catalog.pg_type',
@@ -1093,7 +1173,7 @@ END;
 			$this->output( "...Adding value '$value' to enum type $type.\n" );
 			$etype = $this->db->addIdentifierQuotes( $type );
 			$evalue = $this->db->addQuotes( $value );
-			$this->db->query( "ALTER TYPE $etype ADD VALUE $evalue" );
+			$this->db->query( "ALTER TYPE $etype ADD VALUE $evalue", __METHOD__ );
 		}
 	}
 
@@ -1109,7 +1189,7 @@ END;
 			$this->output( "Dropping foreign key constraint on '$table.$field'\n" );
 			$conclause = "CONSTRAINT \"$conname\"";
 			$command = "ALTER TABLE $table DROP CONSTRAINT $conname";
-			$this->db->query( $command );
+			$this->db->query( $command, __METHOD__ );
 		} else {
 			$this->output( "...foreign key constraint on '$table.$field' already does not exist\n" );
 		}
@@ -1131,7 +1211,7 @@ END;
 		if ( $fi->conname() ) {
 			$conclause = "CONSTRAINT \"$conname\"";
 			$command = "ALTER TABLE $table DROP CONSTRAINT $conname";
-			$this->db->query( $command );
+			$this->db->query( $command, __METHOD__ );
 		} else {
 			$this->output( "Column '$table.$field' does not have a foreign key " .
 				"constraint, will be added\n" );
@@ -1140,18 +1220,18 @@ END;
 		$command =
 			"ALTER TABLE $table ADD $conclause " .
 			"FOREIGN KEY ($field) REFERENCES $clause DEFERRABLE INITIALLY DEFERRED";
-		$this->db->query( $command );
+		$this->db->query( $command, __METHOD__ );
 	}
 
 	protected function convertArchive2() {
-		if ( $this->db->tableExists( "archive2" ) ) {
+		if ( $this->db->tableExists( "archive2", __METHOD__ ) ) {
 			if ( $this->db->ruleExists( 'archive', 'archive_insert' ) ) {
 				$this->output( "Dropping rule 'archive_insert'\n" );
-				$this->db->query( 'DROP RULE archive_insert ON archive' );
+				$this->db->query( 'DROP RULE archive_insert ON archive', __METHOD__ );
 			}
 			if ( $this->db->ruleExists( 'archive', 'archive_delete' ) ) {
 				$this->output( "Dropping rule 'archive_delete'\n" );
-				$this->db->query( 'DROP RULE archive_delete ON archive' );
+				$this->db->query( 'DROP RULE archive_delete ON archive', __METHOD__ );
 			}
 			$this->applyPatch(
 				'patch-remove-archive2.sql',
@@ -1166,10 +1246,10 @@ END;
 	protected function checkOiDeleted() {
 		if ( $this->db->fieldInfo( 'oldimage', 'oi_deleted' )->type() !== 'smallint' ) {
 			$this->output( "Changing 'oldimage.oi_deleted' to type 'smallint'\n" );
-			$this->db->query( "ALTER TABLE oldimage ALTER oi_deleted DROP DEFAULT" );
+			$this->db->query( "ALTER TABLE oldimage ALTER oi_deleted DROP DEFAULT", __METHOD__ );
 			$this->db->query(
-				"ALTER TABLE oldimage ALTER oi_deleted TYPE SMALLINT USING (oi_deleted::smallint)" );
-			$this->db->query( "ALTER TABLE oldimage ALTER oi_deleted SET DEFAULT 0" );
+				"ALTER TABLE oldimage ALTER oi_deleted TYPE SMALLINT USING (oi_deleted::smallint)", __METHOD__ );
+			$this->db->query( "ALTER TABLE oldimage ALTER oi_deleted SET DEFAULT 0", __METHOD__ );
 		} else {
 			$this->output( "...column 'oldimage.oi_deleted' is already of type 'smallint'\n" );
 		}
@@ -1182,17 +1262,17 @@ END;
 		} else {
 			if ( $this->db->hasConstraint( "oldimage_oi_name_fkey" ) ) {
 				$this->db->query(
-					"ALTER TABLE oldimage DROP CONSTRAINT oldimage_oi_name_fkey" );
+					"ALTER TABLE oldimage DROP CONSTRAINT oldimage_oi_name_fkey", __METHOD__ );
 			}
 			if ( $this->db->hasConstraint( "oldimage_oi_name_fkey_cascade" ) ) {
 				$this->db->query(
-					"ALTER TABLE oldimage DROP CONSTRAINT oldimage_oi_name_fkey_cascade" );
+					"ALTER TABLE oldimage DROP CONSTRAINT oldimage_oi_name_fkey_cascade", __METHOD__ );
 			}
 			$this->output( "Making foreign key on table 'oldimage' (to image) a cascade delete/update\n" );
 			$this->db->query(
 				"ALTER TABLE oldimage ADD CONSTRAINT oldimage_oi_name_fkey_cascaded " .
 				"FOREIGN KEY (oi_name) REFERENCES image(img_name) " .
-				"ON DELETE CASCADE ON UPDATE CASCADE" );
+				"ON DELETE CASCADE ON UPDATE CASCADE", __METHOD__ );
 		}
 	}
 
@@ -1209,9 +1289,9 @@ END;
 	}
 
 	protected function dropPgIndex( $table, $index ) {
-		if ( $this->db->indexExists( $table, $index ) ) {
+		if ( $this->db->indexExists( $table, $index, __METHOD__ ) ) {
 			$this->output( "Dropping obsolete index '$index'\n" );
-			$this->db->query( "DROP INDEX \"" . $index . "\"" );
+			$this->db->query( "DROP INDEX \"" . $index . "\"", __METHOD__ );
 		}
 	}
 
@@ -1219,7 +1299,7 @@ END;
 		$pu = $this->db->indexAttributes( $index );
 		if ( !empty( $pu ) && $pu != $should_be ) {
 			$this->output( "Dropping obsolete version of index '$index'\n" );
-			$this->db->query( "DROP INDEX \"" . $index . "\"" );
+			$this->db->query( "DROP INDEX \"" . $index . "\"", __METHOD__ );
 			$pu = [];
 		} else {
 			$this->output( "...no need to drop index '$index'\n" );
@@ -1227,14 +1307,16 @@ END;
 
 		if ( empty( $pu ) ) {
 			$this->output( "Creating index '$index'\n" );
-			$this->db->query( $good_def );
+			$this->db->query( $good_def, __METHOD__ );
 		} else {
 			$this->output( "...index '$index' exists\n" );
 		}
 	}
 
 	protected function checkRevUserFkey() {
-		if ( $this->fkeyDeltype( 'revision_rev_user_fkey' ) == 'r' ) {
+		if ( !$this->db->fieldExists( 'revision', 'rev_user', __METHOD__ ) ) {
+			/* Do nothing */
+		} elseif ( $this->fkeyDeltype( 'revision_rev_user_fkey' ) == 'r' ) {
 			$this->output( "...constraint 'revision_rev_user_fkey' is ON DELETE RESTRICT\n" );
 		} else {
 			$this->applyPatch(
@@ -1246,7 +1328,7 @@ END;
 	}
 
 	protected function checkIwlPrefix() {
-		if ( $this->db->indexExists( 'iwlinks', 'iwl_prefix' ) ) {
+		if ( $this->db->indexExists( 'iwlinks', 'iwl_prefix', __METHOD__ ) ) {
 			$this->applyPatch(
 				'patch-rename-iwl_prefix.sql',
 				false,
@@ -1264,12 +1346,7 @@ END;
 		# This is create or replace, so harmless to call if not needed
 		$this->applyPatch( 'patch-ts2pagetitle.sql', false, "Refreshing ts2_page_title()" );
 
-		# If the server is 8.3 or higher, rewrite the tsearch2 triggers
-		# in case they have the old 'default' versions
-		# Gather version numbers in case we need them
-		if ( $this->db->getServerVersion() >= 8.3 ) {
-			$this->applyPatch( 'patch-tsearch2funcs.sql', false, "Rewriting tsearch2 triggers" );
-		}
+		$this->applyPatch( 'patch-tsearch2funcs.sql', false, "Rewriting tsearch2 triggers" );
 	}
 
 	protected function rebuildTextSearch() {

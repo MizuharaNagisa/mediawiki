@@ -23,6 +23,7 @@
 use MediaWiki\Linker\LinkTarget;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Revision\RevisionRecord;
+use MediaWiki\Revision\SlotRecord;
 use Wikimedia\Assert\Assert;
 use Wikimedia\Rdbms\Database;
 use Wikimedia\Rdbms\IDatabase;
@@ -52,7 +53,6 @@ use Wikimedia\Timestamp\ConvertibleTimestamp;
  * @since 1.17
  */
 class ResourceLoaderWikiModule extends ResourceLoaderModule {
-
 	// Origin defaults to users with sitewide authority
 	protected $origin = self::ORIGIN_USER_SITEWIDE;
 
@@ -216,11 +216,13 @@ class ResourceLoaderWikiModule extends ResourceLoaderModule {
 				return null;
 			}
 		} else {
-			$revision = Revision::newKnownCurrent( wfGetDB( DB_REPLICA ), $title );
+			$revision = MediaWikiServices::getInstance()
+				->getRevisionLookup()
+				->getKnownCurrentRevision( $title );
 			if ( !$revision ) {
 				return null;
 			}
-			$content = $revision->getContent( RevisionRecord::RAW );
+			$content = $revision->getContent( SlotRecord::MAIN, RevisionRecord::RAW );
 
 			if ( !$content ) {
 				$this->getLogger()->error(
@@ -231,7 +233,7 @@ class ResourceLoaderWikiModule extends ResourceLoaderModule {
 			}
 		}
 
-		if ( $content && $content->isRedirect() ) {
+		if ( $content->isRedirect() ) {
 			if ( $maxRedirects === null ) {
 				$maxRedirects = $this->getConfig()->get( 'MaxRedirects' ) ?: 0;
 			}
@@ -531,26 +533,40 @@ class ResourceLoaderWikiModule extends ResourceLoaderModule {
 	 * Clear the preloadTitleInfo() cache for all wiki modules on this wiki on
 	 * page change if it was a JS or CSS page
 	 *
+	 * @internal
 	 * @param Title $title
-	 * @param Revision|null $old Prior page revision
-	 * @param Revision|null $new New page revision
+	 * @param RevisionRecord|null $old Prior page revision
+	 * @param RevisionRecord|null $new New page revision
 	 * @param string $domain Database domain ID
-	 * @since 1.28
 	 */
 	public static function invalidateModuleCache(
-		Title $title, ?Revision $old, ?Revision $new, $domain
+		Title $title,
+		?RevisionRecord $old,
+		?RevisionRecord $new,
+		$domain
 	) {
-		static $formats = [ CONTENT_FORMAT_CSS, CONTENT_FORMAT_JAVASCRIPT ];
+		static $models = [ CONTENT_MODEL_CSS, CONTENT_MODEL_JAVASCRIPT ];
 
 		Assert::parameterType( 'string', $domain, '$domain' );
 
+		$purge = false;
 		// TODO: MCR: differentiate between page functionality and content model!
 		//       Not all pages containing CSS or JS have to be modules! [PageType]
-		if ( $old && in_array( $old->getContentFormat(), $formats ) ) {
-			$purge = true;
-		} elseif ( $new && in_array( $new->getContentFormat(), $formats ) ) {
-			$purge = true;
-		} else {
+		if ( $old ) {
+			$oldModel = $old->getSlot( SlotRecord::MAIN, RevisionRecord::RAW )->getModel();
+			if ( in_array( $oldModel, $models ) ) {
+				$purge = true;
+			}
+		}
+
+		if ( !$purge && $new ) {
+			$newModel = $new->getSlot( SlotRecord::MAIN, RevisionRecord::RAW )->getModel();
+			if ( in_array( $newModel, $models ) ) {
+				$purge = true;
+			}
+		}
+
+		if ( !$purge ) {
 			$purge = ( $title->isSiteConfigPage() || $title->isUserConfigPage() );
 		}
 

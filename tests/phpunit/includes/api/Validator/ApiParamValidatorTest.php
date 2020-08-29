@@ -33,12 +33,12 @@ class ApiParamValidatorTest extends ApiTestCase {
 		];
 	}
 
-	public function testKnwonTypes() : void {
+	public function testKnownTypes() : void {
 		[ $validator ] = $this->getValidator( new FauxRequest( [] ) );
 		$this->assertSame(
 			[
-				'boolean', 'enum', 'integer', 'limit', 'namespace', 'NULL', 'password', 'string', 'submodule',
-				'tags', 'text', 'timestamp', 'user', 'upload',
+				'boolean', 'enum', 'expiry', 'integer', 'limit', 'namespace', 'NULL', 'password',
+				'string', 'submodule', 'tags', 'text', 'timestamp', 'user', 'upload',
 			],
 			$validator->knownTypes()
 		);

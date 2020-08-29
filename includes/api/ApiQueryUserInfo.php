@@ -31,7 +31,7 @@ class ApiQueryUserInfo extends ApiQueryBase {
 
 	use ApiBlockInfoTrait;
 
-	const WL_UNREAD_LIMIT = 1000;
+	private const WL_UNREAD_LIMIT = 1000;
 
 	/** @var array */
 	private $params = [];
@@ -111,7 +111,8 @@ class ApiQueryUserInfo extends ApiQueryBase {
 		}
 
 		if ( isset( $this->prop['hasmsg'] ) ) {
-			$vals['messages'] = $user->getNewtalk();
+			$vals['messages'] = MediaWikiServices::getInstance()
+				->getTalkPageNotificationManager()->userHasNewMessages( $user );
 		}
 
 		if ( isset( $this->prop['groups'] ) ) {
@@ -268,7 +269,7 @@ class ApiQueryUserInfo extends ApiQueryBase {
 		// Now get the actual limits
 		foreach ( $this->getConfig()->get( 'RateLimits' ) as $action => $limits ) {
 			foreach ( $categories as $cat ) {
-				if ( isset( $limits[$cat] ) && $limits[$cat] !== null ) {
+				if ( isset( $limits[$cat] ) ) {
 					$retval[$action][$cat]['hits'] = (int)$limits[$cat][0];
 					$retval[$action][$cat]['seconds'] = (int)$limits[$cat][1];
 				}

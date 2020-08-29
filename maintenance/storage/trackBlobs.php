@@ -19,7 +19,6 @@
  *
  * @file
  * @ingroup Maintenance
- * @see wfWaitForSlaves()
  */
 
 use MediaWiki\MediaWikiServices;
@@ -93,9 +92,9 @@ class TrackBlobs {
 
 	private function initTrackingTable() {
 		$dbw = wfGetDB( DB_MASTER );
-		if ( $dbw->tableExists( 'blob_tracking' ) ) {
-			$dbw->query( 'DROP TABLE ' . $dbw->tableName( 'blob_tracking' ) );
-			$dbw->query( 'DROP TABLE ' . $dbw->tableName( 'blob_orphans' ) );
+		if ( $dbw->tableExists( 'blob_tracking', __METHOD__ ) ) {
+			$dbw->query( 'DROP TABLE ' . $dbw->tableName( 'blob_tracking' ), __METHOD__ );
+			$dbw->query( 'DROP TABLE ' . $dbw->tableName( 'blob_orphans' ), __METHOD__ );
 		}
 		$dbw->sourceFile( __DIR__ . '/blob_tracking.sql' );
 	}
@@ -131,8 +130,6 @@ class TrackBlobs {
 	 *  Scan the revision table for rows stored in the specified clusters
 	 */
 	private function trackRevisions() {
-		global $wgMultiContentRevisionSchemaMigrationStage;
-
 		$dbw = wfGetDB( DB_MASTER );
 		$dbr = wfGetDB( DB_REPLICA );
 
@@ -153,22 +150,16 @@ class TrackBlobs {
 			$textClause,
 			'old_flags ' . $dbr->buildLike( $dbr->anyString(), 'external', $dbr->anyString() ),
 		];
-		if ( $wgMultiContentRevisionSchemaMigrationStage & SCHEMA_COMPAT_READ_OLD ) {
-			$tables = [ 'revision', 'text' ];
-			$conds = array_merge( [
-				'rev_text_id=old_id',
-			], $conds );
-		} else {
-			$slotRoleStore = MediaWikiServices::getInstance()->getSlotRoleStore();
-			$tables = [ 'revision', 'slots', 'content', 'text' ];
-			$conds = array_merge( [
-				'rev_id=slot_revision_id',
-				'slot_role_id=' . $slotRoleStore->getId( SlotRecord::MAIN ),
-				'content_id=slot_content_id',
-				'SUBSTRING(content_address, 1, 3)=' . $dbr->addQuotes( 'tt:' ),
-				'SUBSTRING(content_address, 4)=old_id',
-			], $conds );
-		}
+		$slotRoleStore = MediaWikiServices::getInstance()->getSlotRoleStore();
+		$tables = [ 'revision', 'slots', 'content', 'text' ];
+		$conds = array_merge( [
+			'rev_id=slot_revision_id',
+			'slot_role_id=' . $slotRoleStore->getId( SlotRecord::MAIN ),
+			'content_id=slot_content_id',
+			'SUBSTRING(content_address, 1, 3)=' . $dbr->addQuotes( 'tt:' ),
+			'SUBSTRING(content_address, 4)=old_id',
+		], $conds );
+		$lbFactory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
 
 		while ( true ) {
 			$res = $dbr->select( $tables,
@@ -214,7 +205,7 @@ class TrackBlobs {
 			if ( $batchesDone >= $this->reportingInterval ) {
 				$batchesDone = 0;
 				echo "$startId / $endId\n";
-				wfWaitForSlaves();
+				$lbFactory->waitForReplication();
 			}
 		}
 		echo "Found $rowsInserted revisions\n";
@@ -237,6 +228,7 @@ class TrackBlobs {
 		$endId = $dbr->selectField( 'text', 'MAX(old_id)', '', __METHOD__ );
 		$rowsInserted = 0;
 		$batchesDone = 0;
+		$lbFactory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
 
 		echo "Finding orphan text...\n";
 
@@ -298,7 +290,7 @@ class TrackBlobs {
 			if ( $batchesDone >= $this->reportingInterval ) {
 				$batchesDone = 0;
 				echo "$startId / $endId\n";
-				wfWaitForSlaves();
+				$lbFactory->waitForReplication();
 			}
 		}
 		echo "Found $rowsInserted orphan text rows\n";
@@ -319,10 +311,10 @@ class TrackBlobs {
 		}
 
 		$dbw = wfGetDB( DB_MASTER );
+		$lbFactory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
 
 		foreach ( $this->clusters as $cluster ) {
 			echo "Searching for orphan blobs in $cluster...\n";
-			$lbFactory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
 			$lb = $lbFactory->getExternalLB( $cluster );
 			try {
 				$extDB = $lb->getMaintenanceConnectionRef( DB_REPLICA );
@@ -338,7 +330,7 @@ class TrackBlobs {
 			if ( $table === null ) {
 				$table = 'blobs';
 			}
-			if ( !$extDB->tableExists( $table ) ) {
+			if ( !$extDB->tableExists( $table, __METHOD__ ) ) {
 				echo "No blobs table on cluster $cluster\n";
 				continue;
 			}

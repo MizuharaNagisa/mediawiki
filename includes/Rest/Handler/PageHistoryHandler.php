@@ -2,7 +2,6 @@
 
 namespace MediaWiki\Rest\Handler;
 
-use GuzzleHttp\Psr7\Uri;
 use IDBAccessObject;
 use MediaWiki\Permissions\PermissionManager;
 use MediaWiki\Rest\LocalizedHttpException;
@@ -27,9 +26,9 @@ use Wikimedia\Rdbms\IResultWrapper;
  * Handler class for Core REST API endpoints that perform operations on revisions
  */
 class PageHistoryHandler extends SimpleHandler {
-	const REVISIONS_RETURN_LIMIT = 20;
-	const REVERTED_TAG_NAMES = [ 'mw-undo', 'mw-rollback' ];
-	const ALLOWED_FILTER_TYPES = [ 'anonymous', 'bot', 'reverted', 'minor' ];
+	private const REVISIONS_RETURN_LIMIT = 20;
+	private const REVERTED_TAG_NAMES = [ 'mw-undo', 'mw-rollback', 'mw-manual-revert' ];
+	private const ALLOWED_FILTER_TYPES = [ 'anonymous', 'bot', 'reverted', 'minor' ];
 
 	/** @var RevisionStore */
 	private $revisionStore;
@@ -47,6 +46,13 @@ class PageHistoryHandler extends SimpleHandler {
 	private $user;
 
 	/**
+	 * @var Title|bool|null
+	 */
+	private $title = null;
+
+	/**
+	 * RevisionStore $revisionStore
+	 *
 	 * @param RevisionStore $revisionStore
 	 * @param NameTableStoreFactory $nameTableStoreFactory
 	 * @param PermissionManager $permissionManager
@@ -65,6 +71,16 @@ class PageHistoryHandler extends SimpleHandler {
 
 		// @todo Inject this, when there is a good way to do that
 		$this->user = RequestContext::getMain()->getUser();
+	}
+
+	/**
+	 * @return Title|bool Title or false if unable to retrieve title
+	 */
+	private function getTitle() {
+		if ( $this->title === null ) {
+			$this->title = Title::newFromText( $this->getValidatedParams()['title'] ) ?? false;
+		}
+		return $this->title;
 	}
 
 	/**
@@ -371,32 +387,23 @@ class PageHistoryHandler extends SimpleHandler {
 			}
 		}
 
-		$wr = new \WebRequest();
-		$urlParts = wfParseUrl( $wr->getFullRequestURL() );
-		if ( $urlParts ) {
-			if ( isset( $urlParts['query'] ) ) {
-				$queryParts = wfCgiToArray( $urlParts['query'] );
-				unset( $urlParts['query'] );
-				unset( $queryParts['older_than'] );
-				unset( $queryParts['newer_than'] );
-			} else {
-				$queryParts = [];
-			}
+		$queryParts = [];
 
-			$uri = Uri::fromParts( $urlParts );
-			$response['latest'] = Uri::withQueryValues( $uri, $queryParts )->__toString();
-			if ( isset( $older ) ) {
-				$response['older'] = Uri::withQueryValues(
-					$uri,
-					$queryParts + [ 'older_than' => $older ]
-				)->__toString();
-			}
-			if ( isset( $newer ) ) {
-				$response['newer'] = Uri::withQueryValues(
-					$uri,
-					$queryParts + [ 'newer_than' => $newer ]
-				)->__toString();
-			}
+		if ( isset( $params['filter'] ) ) {
+			$queryParts['filter'] = $params['filter'];
+		}
+
+		$pathParams = [ 'title' => $titleObj->getPrefixedDBkey() ];
+
+		$response['latest'] = $this->getRouteUrl( $pathParams, $queryParts );
+
+		if ( isset( $older ) ) {
+			$response['older'] =
+				$this->getRouteUrl( $pathParams, $queryParts + [ 'older_than' => $older ] );
+		}
+		if ( isset( $newer ) ) {
+			$response['newer'] =
+				$this->getRouteUrl( $pathParams, $queryParts + [ 'newer_than' => $newer ] );
 		}
 
 		return $response;
@@ -429,5 +436,42 @@ class PageHistoryHandler extends SimpleHandler {
 				ParamValidator::PARAM_REQUIRED => false,
 			],
 		];
+	}
+
+	/**
+	 * Returns an ETag representing a page's latest revision.
+	 *
+	 * @return string|null
+	 */
+	protected function getETag(): ?string {
+		$title = $this->getTitle();
+		if ( !$title || !$title->getArticleID() ) {
+			return null;
+		}
+
+		return '"' . $title->getLatestRevID() . '"';
+	}
+
+	/**
+	 * Returns the time of the last change to the page.
+	 *
+	 * @return string|null
+	 */
+	protected function getLastModified(): ?string {
+		$title = $this->getTitle();
+		if ( !$title || !$title->getArticleID() ) {
+			return null;
+		}
+
+		$rev = $this->revisionStore->getKnownCurrentRevision( $title );
+		return $rev->getTimestamp();
+	}
+
+	/**
+	 * @return bool
+	 */
+	protected function hasRepresentation() {
+		$title = $this->getTitle();
+		return $title ? $title->exists() : false;
 	}
 }

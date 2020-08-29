@@ -46,7 +46,7 @@ abstract class Profiler {
 	private static $instance = null;
 
 	/**
-	 * @param array $params
+	 * @param array $params See $wgProfiler.
 	 */
 	public function __construct( array $params ) {
 		if ( isset( $params['profileID'] ) ) {
@@ -62,17 +62,14 @@ abstract class Profiler {
 	 */
 	final public static function instance() {
 		if ( self::$instance === null ) {
-			global $wgProfiler, $wgProfileLimit;
+			global $wgProfiler;
 
-			$params = [
+			$params = $wgProfiler + [
 				'class'     => ProfilerStub::class,
 				'sampling'  => 1,
-				'threshold' => $wgProfileLimit,
+				'threshold' => 0.0,
 				'output'    => [],
 			];
-			if ( is_array( $wgProfiler ) ) {
-				$params = array_merge( $params, $wgProfiler );
-			}
 
 			$inSample = mt_rand( 0, $params['sampling'] - 1 ) === 0;
 			// wfIsCLI() is not available yet
@@ -143,7 +140,7 @@ abstract class Profiler {
 			return $this->context;
 		} else {
 			wfDebug( __METHOD__ . " called and \$context is null. " .
-				"Return RequestContext::getMain(); for sanity\n" );
+				"Return RequestContext::getMain(); for sanity" );
 			return RequestContext::getMain();
 		}
 	}

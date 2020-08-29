@@ -1,6 +1,7 @@
 <?php
 
 use MediaWiki\Permissions\PermissionManager;
+use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\User\UserIdentityValue;
 use PHPUnit\Framework\MockObject\MockObject;
 use Wikimedia\Rdbms\IDatabase;
@@ -10,7 +11,7 @@ use Wikimedia\TestingAccessWrapper;
 /**
  * @covers WatchedItemQueryService
  */
-class WatchedItemQueryServiceUnitTest extends MediaWikiTestCase {
+class WatchedItemQueryServiceUnitTest extends MediaWikiIntegrationTestCase {
 
 	/**
 	 * @return MockObject|CommentStore
@@ -77,7 +78,9 @@ class WatchedItemQueryServiceUnitTest extends MediaWikiTestCase {
 			$this->getMockCommentStore(),
 			$this->getMockActorMigration(),
 			$this->getMockWatchedItemStore(),
-			$mockPM ?: $this->getMockPermissionManager()
+			$mockPM ?: $this->getMockPermissionManager(),
+			$this->createHookContainer(),
+			false
 		);
 	}
 
@@ -236,7 +239,7 @@ class WatchedItemQueryServiceUnitTest extends MediaWikiTestCase {
 	}
 
 	private function getFakeRow( array $rowValues ) {
-		$fakeRow = new stdClass();
+		$fakeRow = (object)[];
 		foreach ( $rowValues as $valueName => $value ) {
 			$fakeRow->$valueName = $value;
 		}
@@ -928,7 +931,7 @@ class WatchedItemQueryServiceUnitTest extends MediaWikiTestCase {
 
 		$items = $queryService->getWatchedItemsWithRecentChangeInfo( $user, $options, $startFrom );
 
-		$this->assertEmpty( $items );
+		$this->assertSame( [], $items );
 		$this->assertNull( $startFrom );
 	}
 
@@ -966,7 +969,7 @@ class WatchedItemQueryServiceUnitTest extends MediaWikiTestCase {
 			[ 'filters' => [ $filtersOption ] ]
 		);
 
-		$this->assertEmpty( $items );
+		$this->assertSame( [], $items );
 	}
 
 	public function mysqlIndexOptimizationProvider() {
@@ -1026,7 +1029,7 @@ class WatchedItemQueryServiceUnitTest extends MediaWikiTestCase {
 
 		$items = $queryService->getWatchedItemsWithRecentChangeInfo( $user, $options );
 
-		$this->assertEmpty( $items );
+		$this->assertSame( [], $items );
 	}
 
 	public function userPermissionRelatedExtraChecksProvider() {
@@ -1069,7 +1072,7 @@ class WatchedItemQueryServiceUnitTest extends MediaWikiTestCase {
 				[ 'actormigration' => 'table' ],
 				[
 					'actormigration_conds',
-					'(rc_deleted & ' . Revision::DELETED_USER . ') != ' . Revision::DELETED_USER,
+					'(rc_deleted & ' . RevisionRecord::DELETED_USER . ') != ' . RevisionRecord::DELETED_USER,
 					'(rc_type != ' . RC_LOG . ') OR ((rc_deleted & ' . LogPage::DELETED_ACTION . ') != ' .
 						LogPage::DELETED_ACTION . ')'
 				],
@@ -1081,8 +1084,8 @@ class WatchedItemQueryServiceUnitTest extends MediaWikiTestCase {
 				[ 'actormigration' => 'table' ],
 				[
 					'actormigration_conds',
-					'(rc_deleted & ' . ( Revision::DELETED_USER | Revision::DELETED_RESTRICTED ) . ') != ' .
-						( Revision::DELETED_USER | Revision::DELETED_RESTRICTED ),
+					'(rc_deleted & ' . ( RevisionRecord::DELETED_USER | RevisionRecord::DELETED_RESTRICTED ) . ') != ' .
+						( RevisionRecord::DELETED_USER | RevisionRecord::DELETED_RESTRICTED ),
 					'(rc_type != ' . RC_LOG . ') OR (' .
 						'(rc_deleted & ' . ( LogPage::DELETED_ACTION | LogPage::DELETED_RESTRICTED ) . ') != ' .
 						( LogPage::DELETED_ACTION | LogPage::DELETED_RESTRICTED ) . ')'
@@ -1095,8 +1098,8 @@ class WatchedItemQueryServiceUnitTest extends MediaWikiTestCase {
 				[ 'actormigration' => 'table' ],
 				[
 					'actormigration_conds',
-					'(rc_deleted & ' . ( Revision::DELETED_USER | Revision::DELETED_RESTRICTED ) . ') != ' .
-						( Revision::DELETED_USER | Revision::DELETED_RESTRICTED ),
+					'(rc_deleted & ' . ( RevisionRecord::DELETED_USER | RevisionRecord::DELETED_RESTRICTED ) . ') != ' .
+						( RevisionRecord::DELETED_USER | RevisionRecord::DELETED_RESTRICTED ),
 					'(rc_type != ' . RC_LOG . ') OR (' .
 						'(rc_deleted & ' . ( LogPage::DELETED_ACTION | LogPage::DELETED_RESTRICTED ) . ') != ' .
 						( LogPage::DELETED_ACTION | LogPage::DELETED_RESTRICTED ) . ')'
@@ -1141,7 +1144,7 @@ class WatchedItemQueryServiceUnitTest extends MediaWikiTestCase {
 		$queryService = $this->newService( $mockDb, $permissionManager );
 		$items = $queryService->getWatchedItemsWithRecentChangeInfo( $user, $options );
 
-		$this->assertEmpty( $items );
+		$this->assertSame( [], $items );
 	}
 
 	public function testGetWatchedItemsWithRecentChangeInfo_allRevisionsOptionAndEmptyResult() {
@@ -1183,7 +1186,7 @@ class WatchedItemQueryServiceUnitTest extends MediaWikiTestCase {
 
 		$items = $queryService->getWatchedItemsWithRecentChangeInfo( $user, [ 'allRevisions' => true ] );
 
-		$this->assertEmpty( $items );
+		$this->assertSame( [], $items );
 	}
 
 	public function getWatchedItemsWithRecentChangeInfoInvalidOptionsProvider() {
@@ -1314,7 +1317,7 @@ class WatchedItemQueryServiceUnitTest extends MediaWikiTestCase {
 			[ 'usedInGenerator' => true ]
 		);
 
-		$this->assertEmpty( $items );
+		$this->assertSame( [], $items );
 	}
 
 	public function testGetWatchedItemsWithRecentChangeInfo_usedInGeneratorAllRevisionsOptions() {
@@ -1356,7 +1359,7 @@ class WatchedItemQueryServiceUnitTest extends MediaWikiTestCase {
 			[ 'usedInGenerator' => true, 'allRevisions' => true, ]
 		);
 
-		$this->assertEmpty( $items );
+		$this->assertSame( [], $items );
 	}
 
 	public function testGetWatchedItemsWithRecentChangeInfo_watchlistOwnerOptionAndEmptyResult() {
@@ -1389,7 +1392,7 @@ class WatchedItemQueryServiceUnitTest extends MediaWikiTestCase {
 			[ 'watchlistOwner' => $otherUser, 'watchlistOwnerToken' => '0123456789abcdef' ]
 		);
 
-		$this->assertEmpty( $items );
+		$this->assertSame( [], $items );
 	}
 
 	public function invalidWatchlistTokenProvider() {
@@ -1548,7 +1551,7 @@ class WatchedItemQueryServiceUnitTest extends MediaWikiTestCase {
 		$queryService = $this->newService( $mockDb );
 
 		$items = $queryService->getWatchedItemsForUser( $user, $options );
-		$this->assertEmpty( $items );
+		$this->assertSame( [], $items );
 	}
 
 	public function provideGetWatchedItemsForUser_fromUntilStartFromOptions() {
@@ -1661,7 +1664,7 @@ class WatchedItemQueryServiceUnitTest extends MediaWikiTestCase {
 		$queryService = $this->newService( $mockDb );
 
 		$items = $queryService->getWatchedItemsForUser( $user, $options );
-		$this->assertEmpty( $items );
+		$this->assertSame( [], $items );
 	}
 
 	public function getWatchedItemsForUserInvalidOptionsProvider() {
@@ -1713,7 +1716,7 @@ class WatchedItemQueryServiceUnitTest extends MediaWikiTestCase {
 
 		$items = $queryService->getWatchedItemsForUser(
 			new UserIdentityValue( 0, 'AnonUser', 0 ) );
-		$this->assertEmpty( $items );
+		$this->assertSame( [], $items );
 	}
 
 }

@@ -1,4 +1,5 @@
 <?php
+
 declare( strict_types = 1 );
 
 use MediaWiki\FileBackend\FSFile\TempFSFileFactory;
@@ -109,8 +110,8 @@ class FileBackendTest extends MediaWikiUnitTestCase {
 	 * @covers ::__construct
 	 */
 	public function testConstruct_noName() : void {
-		$this->expectException( PHPUnit\Framework\Error\Notice::class );
-		$this->expectExceptionMessage( 'Undefined index: name' );
+		$this->expectException( InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'Backend name not specified' );
 
 		$this->getMockBuilder( FileBackend::class )
 			->setConstructorArgs( [ [] ] )
@@ -171,7 +172,7 @@ class FileBackendTest extends MediaWikiUnitTestCase {
 			'Function' => [ function () {
 			} ],
 			'Float' => [ -13.402 ],
-			'Object' => [ new stdclass ],
+			'Object' => [ (object)[] ],
 			'Array' => [ [] ],
 		];
 	}
@@ -198,8 +199,8 @@ class FileBackendTest extends MediaWikiUnitTestCase {
 	 * @covers ::__construct
 	 */
 	public function testConstruct_noDomainId() : void {
-		$this->expectException( PHPUnit\Framework\Error\Notice::class );
-		$this->expectExceptionMessage( 'Undefined index: wikiId' );
+		$this->expectException( InvalidArgumentException::class );
+		$this->expectExceptionMessage( "Backend domain ID not provided for 'test_name'" );
 
 		$this->getMockBuilder( FileBackend::class )
 			->setConstructorArgs( [ [ 'name' => 'test_name' ] ] )
@@ -473,7 +474,7 @@ class FileBackendTest extends MediaWikiUnitTestCase {
 		$status = $backend->$method( ...array_merge( $args, [ [ 'bypassReadOnly' => true ] ] ) );
 
 		$this->assertTrue( $status->isOK() );
-		$this->assertEmpty( $status->getErrors() );
+		$this->assertSame( [], $status->getErrors() );
 		$this->assertSame( 'myvalue', $status->getValue() );
 	}
 
@@ -492,7 +493,7 @@ class FileBackendTest extends MediaWikiUnitTestCase {
 
 		$status = $backend->$method( [] );
 		$this->assertTrue( $status->isOK() );
-		$this->assertEmpty( $status->getErrors() );
+		$this->assertSame( [], $status->getErrors() );
 	}
 
 	public static function provideDoMultipleOperations() : array {
@@ -603,7 +604,7 @@ class FileBackendTest extends MediaWikiUnitTestCase {
 		$status = $backend->$method( [ 'foo' => 'bar' ] );
 
 		$this->assertTrue( $status->isOK() );
-		$this->assertEmpty( $status->getErrors() );
+		$this->assertSame( [], $status->getErrors() );
 		$this->assertSame( 'myvalue', $status->getValue() );
 	}
 
@@ -697,7 +698,7 @@ class FileBackendTest extends MediaWikiUnitTestCase {
 		$status = $backend->$backendMethod( ...array_merge( $args, (array)$timeout ) );
 
 		$this->assertTrue( $status->isOK() );
-		$this->assertEmpty( $status->getErrors() );
+		$this->assertSame( [], $status->getErrors() );
 		$this->assertSame( 'myvalue', $status->getValue() );
 	}
 
@@ -1137,7 +1138,7 @@ class FileBackendTest extends MediaWikiUnitTestCase {
 		$status = $backend->$method( $op );
 
 		$this->assertTrue( $status->isOK() );
-		$this->assertEmpty( $status->getErrors() );
+		$this->assertSame( [], $status->getErrors() );
 	}
 
 	/**

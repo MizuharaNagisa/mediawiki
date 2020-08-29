@@ -1,17 +1,18 @@
 {
 	"@metadata": {
 		"authors": [
+			"DannyS712",
 			"Ebe123",
+			"Hangmanwa7id",
 			"JeanVoisin",
 			"Peter17",
 			"PieRRoMaN",
-			"RoyAlcatraz",
-			"Urhixidur",
-			"Zetud",
-			"Hangmanwa7id",
-			"Stisc-14",
 			"Pierpao",
-			"DannyS712"
+			"RoyAlcatraz",
+			"Stisc-14",
+			"Urhixidur",
+			"Whytheonlyone",
+			"Zetud"
 		]
 	},
 	"tog-underline": "Souligner les liens:",
@@ -261,7 +262,7 @@
 	"error": "Erreur",
 	"databaseerror": "Erreur de la base d'information",
 	"databaseerror-error": "Erreur: $1",
-	"laggedslavemode": "Avertissement: La page est peut-être pas renouvelée.",
+	"laggedreplicamode": "Avertissement: La page est peut-être pas renouvelée.",
 	"readonly": "La base d'information est barrée.",
 	"enterlockreason": "Écrire une raison pour le barrage avec un temps estimé\nd'équand le barrage va être ôté.",
 	"readonlytext": "À présent, la base d'information est barrée aux nouveaux changements, peut-être pour le soutien habituel de la base d'information, et ça va retourner à normal t'à l'heure.\n\nL'administrateur qui l'a barrée a donné cette explication: $1",
@@ -484,8 +485,8 @@
 	"rev-deleted-comment": "(remarque ôtée)",
 	"rev-deleted-user": "(nom d'useur ôté)",
 	"rev-deleted-event": "(message ôté)",
-	"rev-deleted-text-permission": "Cette page a été ôtée de la liste des pages publiques.  Il pourrait y avoir des détails dans les [{{fullurl:{{#Special:Log}}/suppress|page={{FULLPAGENAMEE}}}} notes d'ôtage].",
-	"rev-deleted-text-view": "Cette version de la page a été ôtée de la liste des pages publiques.  Comme administrateur sus ce wiki vous pouvez le voir; il pourrait y avoir des détails dans les [{{fullurl:{{#Special:Log}}/suppress|page={{FULLPAGENAMEE}}}} notes d'ôtage].",
+	"rev-deleted-text-permission": "Cette page a été ôtée de la liste des pages publiques.  Il pourrait y avoir des détails dans les [{{fullurl:{{#Special:Log}}/suppress|page=$1}} notes d'ôtage].",
+	"rev-deleted-text-view": "Cette version de la page a été ôtée de la liste des pages publiques.  Comme administrateur sus ce wiki vous pouvez le voir; il pourrait y avoir des détails dans les [{{fullurl:{{#Special:Log}}/suppress|page=$1}} notes d'ôtage].",
 	"rev-delundel": "montrer/cacher",
 	"revisiondelete": "Supprimer/rétablir les changements",
 	"revdelete-nooldid-title": "Aucun changement choisi",

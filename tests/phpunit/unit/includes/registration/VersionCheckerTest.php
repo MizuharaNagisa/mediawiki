@@ -16,7 +16,7 @@ class VersionCheckerTest extends MediaWikiUnitTestCase {
 
 	public static function provideMediaWikiCheck() {
 		return [
-			// [ $wgVersion, constraint, expected ]
+			// [ MediaWiki version, constraint, expected ]
 			[ '1.25alpha', '>= 1.26', false ],
 			[ '1.25.0', '>= 1.26', false ],
 			[ '1.26alpha', '>= 1.26', true ],
@@ -405,7 +405,7 @@ class VersionCheckerTest extends MediaWikiUnitTestCase {
 	/**
 	 * @dataProvider provideInvalidDependency
 	 */
-	public function testInvalidDependency( $depencency, $type ) {
+	public function testInvalidDependency( $dependency, $type ) {
 		$checker = new VersionChecker(
 			'1.0.0',
 			'7.0.0',
@@ -417,7 +417,7 @@ class VersionCheckerTest extends MediaWikiUnitTestCase {
 		);
 		$this->expectException( UnexpectedValueException::class );
 		$this->expectExceptionMessage( "Dependency type $type unknown in FakeExtension" );
-		$checker->checkArray( $depencency );
+		$checker->checkArray( $dependency );
 	}
 
 	public function testInvalidPhpExtensionConstraint() {

@@ -2,14 +2,14 @@
 	"@metadata": {
 		"authors": [
 			"Atabek",
+			"DannyS712",
 			"GaiJin",
-			"Kaztrans",
-			"아라",
-			"Macofe",
-			"Zpizza",
-			"Vlad5250",
 			"JackLantern",
-			"DannyS712"
+			"Kaztrans",
+			"Macofe",
+			"Vlad5250",
+			"Zpizza",
+			"아라"
 		]
 	},
 	"tog-underline": "Siltemeniñ astın sız:",
@@ -222,7 +222,7 @@
 	"nospecialpagetext": "<strong>Jaramsız arnaýı betti suradıñız.</strong>\n\nJaramdı arnaýı bet tizimin [[{{#special:Specialpages}}|{{int:specialpages}}]] degennen taba alasız.",
 	"error": "Qate",
 	"databaseerror": "Derekqor qatesi",
-	"laggedslavemode": "Qulaqtandırw: Bette jwıqtağı jañalawlar bolmawı mümkin.",
+	"laggedreplicamode": "Qulaqtandırw: Bette jwıqtağı jañalawlar bolmawı mümkin.",
 	"readonly": "Derekqorı qulıptalğan",
 	"enterlockreason": "Qulıptaw sebebin, qaý waqıtqa deýin qulıptalğanın kiristirip, engiziñiz",
 	"readonlytext": "Bul derekqor jañadan jazw jäne basqa özgerister jasawdan ağımda qulıptalınğan, mümkin künde-kün derekqordı baptaw üşin, bunı bitirgennen soñ qalıptı iske qaýtarıladı.\n\nQulıptağan äkimşi bunı bılaý tüsindiredi: $1",
@@ -422,8 +422,8 @@
 	"rev-deleted-comment": "(mändeme alastaldı)",
 	"rev-deleted-user": "(qatıswşı atı alastaldı)",
 	"rev-deleted-event": "(jwrnal jazbası alastaldı)",
-	"rev-deleted-text-permission": "Bul bettiñ tüzetwi barşa murağattarınan alastalğan.\nMında [{{fullurl:{{#special:Log}}/delete|page={{FULLPAGENAMEE}}}} joyw jwrnalında] egjeý-tegjeý mälimetteri bolwı mümkin.",
-	"rev-deleted-text-view": "Osı bettiñ tüzetwi barşa murağattarınan alastalğan.\n{{SITENAME}} äkimşisi bop sonı köre alasız;\n[{{fullurl:{{#special:Log}}/delete|page={{FULLPAGENAMEE}}}} joyw jwrnalında] egjeý-tegjeý mälmetteri bolwı mümkin.",
+	"rev-deleted-text-permission": "Bul bettiñ tüzetwi barşa murağattarınan alastalğan.\nMında [{{fullurl:{{#special:Log}}/delete|page=$1}} joyw jwrnalında] egjeý-tegjeý mälimetteri bolwı mümkin.",
+	"rev-deleted-text-view": "Osı bettiñ tüzetwi barşa murağattarınan alastalğan.\n{{SITENAME}} äkimşisi bop sonı köre alasız;\n[{{fullurl:{{#special:Log}}/delete|page=$1}} joyw jwrnalında] egjeý-tegjeý mälmetteri bolwı mümkin.",
 	"rev-delundel": "körset/jasır",
 	"revisiondelete": "Tüzetwlerdi joyw/joywdı boldırmaw",
 	"revdelete-nooldid-title": "Nısana tüzetw jaramsız",

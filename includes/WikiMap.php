@@ -197,7 +197,7 @@ class WikiMap {
 				$infoMap = [];
 				// Make sure at least the current wiki is set, for simple configurations.
 				// This also makes it the first in the map, which is useful for common cases.
-				$wikiId = self::getWikiIdFromDbDomain( self::getCurrentWikiDbDomain() );
+				$wikiId = self::getCurrentWikiId();
 				$infoMap[$wikiId] = [
 					'url' => $wgCanonicalServer,
 					'parts' => wfParseUrl( $wgCanonicalServer )
@@ -225,9 +225,9 @@ class WikiMap {
 		global $wgCanonicalServer;
 
 		if ( strpos( $url, "$wgCanonicalServer/" ) === 0 ) {
-			// Optimisation: Handle the the common case.
+			// Optimisation: Handle the common case.
 			// (Duplicates self::getCanonicalServerInfoForAllWikis)
-			return self::getWikiIdFromDbDomain( self::getCurrentWikiDbDomain() );
+			return self::getCurrentWikiId();
 		}
 
 		$urlPartsCheck = wfParseUrl( $url );
@@ -279,7 +279,7 @@ class WikiMap {
 			// meaning that the schema portion must be accounted for to disambiguate wikis.
 			return "{$domain->getDatabase()}-{$domain->getSchema()}-{$domain->getTablePrefix()}";
 		}
-		// Note that if this wiki ID is passed a a domain ID to LoadBalancer, then it can
+		// Note that if this wiki ID is passed as a domain ID to LoadBalancer, then it can
 		// handle the schema by assuming the generic "mediawiki" schema if needed.
 		return strlen( $domain->getTablePrefix() )
 			? "{$domain->getDatabase()}-{$domain->getTablePrefix()}"
@@ -297,6 +297,14 @@ class WikiMap {
 	}
 
 	/**
+	 * @since 1.35
+	 * @return string
+	 */
+	public static function getCurrentWikiId() {
+		return self::getWikiIdFromDbDomain( self::getCurrentWikiDbDomain() );
+	}
+
+	/**
 	 * @param DatabaseDomain|string $domain
 	 * @return bool Whether $domain matches the DB domain of the current wiki
 	 * @since 1.33
@@ -311,6 +319,6 @@ class WikiMap {
 	 * @since 1.33
 	 */
 	public static function isCurrentWikiId( $wikiId ) {
-		return ( self::getWikiIdFromDbDomain( self::getCurrentWikiDbDomain() ) === $wikiId );
+		return ( self::getCurrentWikiId() === $wikiId );
 	}
 }

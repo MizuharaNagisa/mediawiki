@@ -1,4 +1,7 @@
+'use strict';
+
 const { action, assert, REST, utils } = require( 'api-testing' );
+const supertest = require( 'supertest' );
 
 describe( 'Page History', () => {
 	const title = utils.title( 'PageHistory_' );
@@ -20,7 +23,12 @@ describe( 'Page History', () => {
 		return { editOne, editTwo };
 	}
 
-	const addEditInfo = ( editInfo, editBucket ) => {
+	async function assertGetStatus( url, status = 200 ) {
+		const response = await supertest.agent( url ).get( '' );
+		assert.equal( response.status, status, `Status of GET ${url}` );
+	}
+
+	const addEditInfo = ( editInfo, editBuckets ) => {
 		const obj = {
 			id: editInfo.newrevid,
 			comment: editInfo.param_summary,
@@ -29,9 +37,7 @@ describe( 'Page History', () => {
 		};
 
 		edits.all.unshift( obj );
-		if ( editBucket ) {
-			editBucket.unshift( obj );
-		}
+		editBuckets.forEach( ( editBucket ) => editBucket.unshift( obj ) );
 	};
 
 	before( async () => {
@@ -48,11 +54,11 @@ describe( 'Page History', () => {
 		anon.username = anonInfo.name;
 
 		// Create a page and make edits by various users and store edit information
-		addEditInfo( await alice.edit( title, { text: 'Counting 1', summary: 'creating page' } ), false );
-		addEditInfo( await anon.edit( title, { text: 'Counting 1 2', summary: 'anon edit 1' } ), edits.anon );
-		addEditInfo( await anon.edit( title, { text: 'Counting 1 2 3', summary: 'anon edit 2' } ), edits.anon );
-		addEditInfo( await bot.edit( title, { text: 'Counting 1 2 3 4', summary: 'bot edit 1' } ), edits.bot );
-		addEditInfo( await bot.edit( title, { text: 'Counting 1 2 3 4 5', summary: 'bot edit 2' } ), edits.bot );
+		addEditInfo( await alice.edit( title, { text: 'Counting 1', summary: 'creating page' } ), [] );
+		addEditInfo( await anon.edit( title, { text: 'Counting 1 2', summary: 'anon edit 1' } ), [ edits.anon ] );
+		addEditInfo( await anon.edit( title, { text: 'Counting 1 2 3', summary: 'anon edit 2' } ), [ edits.anon ] );
+		addEditInfo( await bot.edit( title, { text: 'Counting 1 2 3 4', summary: 'bot edit 1' } ), [ edits.bot ] );
+		addEditInfo( await bot.edit( title, { text: 'Counting 1 2 3 4 5', summary: 'bot edit 2' } ), [ edits.bot ] );
 
 		// Rollback edits by bot
 		const summary = 'revert edits by bot';
@@ -74,20 +80,25 @@ describe( 'Page History', () => {
 		await client.get( `/page/${title}/history/counts/edits` );
 		await utils.sleep();
 
-		addEditInfo( rollback, edits.reverts );
-		addEditInfo( await bot.edit( title, { text: 'Counting 1 2 3 4', summary: 'bot edit 3', minor: true } ), edits.bot );
-		addEditInfo( await bot.edit( title, { text: 'Counting 1 2 3 4 555', summary: 'bot edit 4' } ), edits.bot );
+		addEditInfo( rollback, [ edits.reverts ] );
+
+		// The bot manually reverts the page to bot edit 1
+		addEditInfo(
+			await bot.edit( title, { text: 'Counting 1 2 3 4', summary: 'bot edit 3', minor: true } ),
+			[ edits.bot, edits.reverts ]
+		);
+		addEditInfo( await bot.edit( title, { text: 'Counting 1 2 3 4 555', summary: 'bot edit 4' } ), [ edits.bot ] );
 
 		// Undo last edit
-		addEditInfo( await mindy.edit( title, { undo: edits.all[ 0 ].id } ), edits.reverts );
+		addEditInfo( await mindy.edit( title, { undo: edits.all[ 0 ].id } ), [ edits.reverts ] );
 
 	} );
 
-	describe( 'Revision deletion and un-deletion', async () => {
-		let edits;
+	describe( 'Revision deletion and un-deletion', () => {
+		let deleteEdits;
 		it( 'Should get total number of edits and editors when edits are hidden and shown', async () => {
-			edits = await setupDeletedPage();
-			const { editOne } = edits;
+			deleteEdits = await setupDeletedPage();
+			const { editOne } = deleteEdits;
 
 			// Populate cache
 			const { body, status } = await client.get( `/page/${titleToDelete}/history/counts/edits` );
@@ -144,7 +155,7 @@ describe( 'Page History', () => {
 
 		it( 'Should update last-modified header after revision deletion', async () => {
 			const { headers } = await client.get( `/page/${titleToDelete}/history/counts/edits` );
-			const { editTwo } = edits;
+			const { editTwo } = deleteEdits;
 			assert.containsAllKeys( headers, [ 'last-modified' ] );
 			const lastTouchedTS = Date.parse( editTwo.newtimestamp );
 			const headerLastModTS = Date.parse( headers[ 'last-modified' ] );
@@ -221,7 +232,7 @@ describe( 'Page History', () => {
 		it( 'Should get total number of reverted edits', async () => {
 			const res = await client.get( `/page/${title}/history/counts/reverted` );
 
-			assert.deepEqual( res.body, { count: 2, limit: false } );
+			assert.deepEqual( res.body, { count: 3, limit: false } );
 			assert.equal( res.status, 200 );
 		} );
 	} );
@@ -267,6 +278,8 @@ describe( 'Page History', () => {
 				.forEach( ( rev, i ) => assert.deepNestedInclude( rev, edits.all[ i ] ) );
 			assert.include( res.body.latest, `page/${title}/history` );
 			assert.equal( res.status, 200 );
+
+			await assertGetStatus( res.body.latest );
 		} );
 
 		it( 'Should get revisions by anonymous users', async () => {
@@ -277,6 +290,8 @@ describe( 'Page History', () => {
 				.forEach( ( rev, i ) => assert.deepNestedInclude( rev, edits.anon[ i ] ) );
 			assert.include( res.body.latest, `page/${title}/history?filter=anonymous` );
 			assert.equal( res.status, 200 );
+
+			await assertGetStatus( res.body.latest );
 		} );
 
 		it( 'Should get revisions by bots', async () => {
@@ -311,6 +326,27 @@ describe( 'Page History', () => {
 
 			assert.equal( res.status, 404 );
 		} );
+
+		it( 'Should update cache control headers', async () => {
+			const title2 = utils.title( 'Random_' );
+			const edit1 = await alice.edit( title2, { text: 'Old Content', summary: 'make page' } );
+			const res1a = await client.get( `/page/${title2}/history`, { filter: 'bot' } );
+			const res1b = await client.get( `/page/${title2}/history`, { filter: 'bot' } );
+
+			assert.equal( res1a.headers[ 'last-modified' ], res1b.headers[ 'last-modified' ] );
+			assert.equal( res1a.headers.etag, res1b.headers.etag );
+
+			const edit2 = await alice.edit( title2, { text: 'New Content', summary: 'poke page' } );
+			const res2 = await client.get( `/page/${title2}/history`, { filter: 'bot' } );
+
+			assert.equal( Date.parse( res1a.headers[ 'last-modified' ] ),
+				Date.parse( edit1.newtimestamp ) );
+
+			assert.equal( Date.parse( res2.headers[ 'last-modified' ] ),
+				Date.parse( edit2.newtimestamp ) );
+
+			assert.notEqual( res1a.headers.etag, res2.headers.etag );
+		} );
 	} );
 
 	describe( 'GET /page/{title}/history?{older_than|newer_than={id}}', () => {
@@ -338,6 +374,8 @@ describe( 'Page History', () => {
 			assert.include( res.body.latest, `page/${title}/history` );
 			assert.include( res.body.newer, `page/${title}/history?newer_than=${expected[ 0 ].id}` );
 			assert.equal( res.status, 200 );
+
+			await assertGetStatus( res.body.newer );
 		} );
 
 		it( 'Should get revisions using both filter and newer_than|older_than parameters', async () => {
@@ -350,6 +388,8 @@ describe( 'Page History', () => {
 			assert.include( res.body.latest, `page/${title}/history?filter=bot` );
 			assert.include( res.body.older, `page/${title}/history?filter=bot&older_than=${edits.bot[ 1 ].id}` );
 			assert.equal( res.status, 200 );
+
+			await assertGetStatus( res.body.older );
 		} );
 
 		it( 'Should return 400 for revision id less than 0 ', async () => {

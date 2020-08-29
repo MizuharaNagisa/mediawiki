@@ -174,9 +174,8 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 
 		$options['limit'] = $params['limit'];
 
-		Hooks::run( 'ApiQueryWatchlistPrepareWatchedItemQueryServiceOptions', [
-			$this, $params, &$options
-		] );
+		$this->getHookRunner()->onApiQueryWatchlistPrepareWatchedItemQueryServiceOptions(
+			$this, $params, $options );
 
 		$ids = [];
 		$services = MediaWikiServices::getInstance();
@@ -190,6 +189,7 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 			$nsInfo = $services->getNamespaceInfo();
 			$usernames = [];
 			foreach ( $items as list( $watchedItem, $recentChangeInfo ) ) {
+				/** @var WatchedItem $watchedItem */
 				$linkTarget = $watchedItem->getLinkTarget();
 				if ( $nsInfo->hasGenderDistinction( $linkTarget->getNamespace() ) ) {
 					$usernames[] = $linkTarget->getText();
@@ -336,9 +336,7 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 					$vals['user'] = $recentChangeInfo['rc_user_text'];
 				}
 
-				if ( !$recentChangeInfo['rc_user'] ) {
-					$vals['anon'] = true;
-				}
+				$vals['anon'] = $recentChangeInfo['rc_user'] == 0;
 			}
 		}
 
@@ -426,9 +424,8 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 			$vals['suppressed'] = true;
 		}
 
-		Hooks::run( 'ApiQueryWatchlistExtractOutputData', [
-			$this, $watchedItem, $recentChangeInfo, &$vals
-		] );
+		$this->getHookRunner()->onApiQueryWatchlistExtractOutputData(
+			$this, $watchedItem, $recentChangeInfo, $vals );
 
 		return $vals;
 	}

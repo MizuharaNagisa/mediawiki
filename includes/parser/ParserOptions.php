@@ -22,6 +22,8 @@
  */
 
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Revision\MutableRevisionRecord;
+use MediaWiki\Revision\SlotRecord;
 use Wikimedia\ScopedCallback;
 
 /**
@@ -40,13 +42,6 @@ use Wikimedia\ScopedCallback;
  * @ingroup Parser
  */
 class ParserOptions {
-
-	/**
-	 * Flag indicating that newCanonical() accepts an IContextSource or the string 'canonical', for
-	 * back-compat checks from extensions.
-	 * @since 1.32
-	 */
-	const HAS_NEWCANONICAL_FROM_CONTEXT = 1;
 
 	/**
 	 * Default values for all options that are relevant for caching.
@@ -210,8 +205,11 @@ class ParserOptions {
 	 * Allow all external images inline?
 	 * @param bool|null $x New value (null is no change)
 	 * @return bool Old value
+	 * @deprecated since 1.35; per-parser configuration of image handling via
+	 * parser options is deprecated. Use site configuration.
 	 */
 	public function setAllowExternalImages( $x ) {
+		wfDeprecated( __METHOD__, '1.35' );
 		return $this->setOptionLegacy( 'allowExternalImages', $x );
 	}
 
@@ -233,8 +231,11 @@ class ParserOptions {
 	 *
 	 * @param string|string[]|null $x New value (null is no change)
 	 * @return string|string[] Old value
+	 * @deprecated since 1.35; per-parser configuration of image handling via
+	 * parser options is deprecated. Use site configuration.
 	 */
 	public function setAllowExternalImagesFrom( $x ) {
+		wfDeprecated( __METHOD__, '1.35' );
 		return $this->setOptionLegacy( 'allowExternalImagesFrom', $x );
 	}
 
@@ -250,8 +251,11 @@ class ParserOptions {
 	 * Use the on-wiki external image whitelist?
 	 * @param bool|null $x New value (null is no change)
 	 * @return bool Old value
+	 * @deprecated since 1.35; per-parser configuration of image handling via
+	 * parser options is deprecated. Use site configuration.
 	 */
 	public function setEnableImageWhitelist( $x ) {
+		wfDeprecated( __METHOD__, '1.35' );
 		return $this->setOptionLegacy( 'enableImageWhitelist', $x );
 	}
 
@@ -291,19 +295,14 @@ class ParserOptions {
 
 	/**
 	 * Use tidy to cleanup output HTML?
-	 * @return bool
-	 */
-	public function getTidy() {
-		return $this->getOption( 'tidy' );
-	}
-
-	/**
-	 * Use tidy to cleanup output HTML?
 	 * @param bool|null $x New value (null is no change)
 	 * @return bool Old value
+	 * @deprecated since 1.35; tidy is always enabled so this has no effect
 	 */
 	public function setTidy( $x ) {
-		return $this->setOptionLegacy( 'tidy', $x );
+		wfDeprecated( __METHOD__, '1.35' );
+		// This has no effect.
+		return null;
 	}
 
 	/**
@@ -787,21 +786,91 @@ class ParserOptions {
 
 	/**
 	 * Callback for current revision fetching; first argument to call_user_func().
+	 * @deprecated since 1.35, use getCurrentRevisionRecordCallback
 	 * @since 1.24
 	 * @return callable
 	 */
 	public function getCurrentRevisionCallback() {
-		return $this->getOption( 'currentRevisionCallback' );
+		wfDeprecated( __METHOD__, '1.35' );
+		$revCb = $this->getOption( 'currentRevisionCallback' );
+
+		// As a temporary measure, while both currentRevisionCallback and
+		// currentRevisionRecordCallback are supported, retrieving one that is
+		// not set first checks if the other is set, so that the end result works
+		// regardless of which setter was used, since  one extension may set a
+		// RevisionCallback and another may ask for the RevisionRecordCallback
+		if ( $revCb === [ Parser::class, 'statelessFetchRevision' ] ) {
+			// currentRevisionCallback is set to the default, check if
+			// currentRevisionRecordCallback is set (and not the default)
+			$revRecordCb = $this->getOption( 'currentRevisionRecordCallback' );
+			if ( $revRecordCb !== [ Parser::class, 'statelessFetchRevisionRecord' ] ) {
+				// currentRevisionRecordCallback is set and not the default,
+				// convert it
+				$revCb = function ( Title $title, $parser = false ) use ( $revRecordCb ) {
+					$revRecord = call_user_func(
+						$revRecordCb,
+						$title,
+						$parser ?: null
+					);
+					if ( $revRecord ) {
+						return new Revision( $revRecord );
+					}
+					return false;
+				};
+			}
+		}
+		return $revCb;
 	}
 
 	/**
 	 * Callback for current revision fetching; first argument to call_user_func().
+	 * @internal
+	 * @since 1.35
+	 * @return callable
+	 */
+	public function getCurrentRevisionRecordCallback() {
+		$revRecordCb = $this->getOption( 'currentRevisionRecordCallback' );
+
+		// See explanation above
+		if ( $revRecordCb === [ Parser::class, 'statelessFetchRevisionRecord' ] ) {
+			// currentRevisionRecordCallback is set to the default, check if
+			// currentRevisionCallback is set (and not the default)
+			$revCb = $this->getOption( 'currentRevisionCallback' );
+			if ( $revCb !== [ Parser::class, 'statelessFetchRevision' ] ) {
+				// currentRevisionCallback is set and not the default, convert it
+				$revRecordCb = function ( Title $title, $parser = null ) use ( $revCb ) {
+					$rev = call_user_func( $revCb, $title, $parser ?? false );
+					if ( $rev ) {
+						return $rev->getRevisionRecord();
+					}
+					return false;
+				};
+			}
+		}
+		return $revRecordCb;
+	}
+
+	/**
+	 * Callback for current revision fetching; first argument to call_user_func().
+	 * @deprecated since 1.35, use setCurrentRevisionRecordCallback
 	 * @since 1.24
 	 * @param callable|null $x New value (null is no change)
 	 * @return callable Old value
 	 */
 	public function setCurrentRevisionCallback( $x ) {
+		wfDeprecated( __METHOD__, '1.35' );
 		return $this->setOptionLegacy( 'currentRevisionCallback', $x );
+	}
+
+	/**
+	 * Callback for current revision fetching; first argument to call_user_func().
+	 * @internal
+	 * @since 1.35
+	 * @param callable|null $x New value
+	 * @return callable Old value
+	 */
+	public function setCurrentRevisionRecordCallback( $x ) {
+		return $this->setOption( 'currentRevisionRecordCallback', $x );
 	}
 
 	/**
@@ -929,7 +998,7 @@ class ParserOptions {
 	 * @since 1.24
 	 * @param Title|null $title
 	 */
-	function setRedirectTarget( $title ) {
+	public function setRedirectTarget( $title ) {
 		$this->redirectTarget = $title;
 	}
 
@@ -939,7 +1008,7 @@ class ParserOptions {
 	 * @since 1.24
 	 * @return Title|null
 	 */
-	function getRedirectTarget() {
+	public function getRedirectTarget() {
 		return $this->redirectTarget;
 	}
 
@@ -978,9 +1047,7 @@ class ParserOptions {
 		}
 		if ( $lang === null ) {
 			global $wgLang;
-			if ( !StubObject::isRealObject( $wgLang ) ) {
-				$wgLang->_unstub();
-			}
+			StubObject::unstub( $wgLang );
 			$lang = $wgLang;
 		}
 		$this->initialiseFromUser( $user, $lang );
@@ -1048,7 +1115,8 @@ class ParserOptions {
 	 *  - If an IContextSource, the options are initialized based on the source's User and Language.
 	 *  - If the string 'canonical', the options are initialized with an anonymous user and
 	 *    the content language.
-	 *  - If a User or null, the options are initialized for that User (or $wgUser if null).
+	 *  - If a User or null, the options are initialized for that User
+	 *      falls back to $wgUser if null; fallback is deprecated since 1.35
 	 *    'userlang' is taken from the $userLang parameter, defaulting to $wgLang if that is null.
 	 * @param Language|StubObject|null $userLang (see above)
 	 * @return ParserOptions
@@ -1059,6 +1127,9 @@ class ParserOptions {
 		} elseif ( $context === 'canonical' ) {
 			$ret = self::newFromAnon();
 		} elseif ( $context instanceof User || $context === null ) {
+			if ( $context === null ) {
+				wfDeprecated( __METHOD__ . ' with no user', '1.35' );
+			}
 			$ret = new self( $context, $userLang );
 		} else {
 			throw new InvalidArgumentException(
@@ -1093,7 +1164,6 @@ class ParserOptions {
 			// *UPDATE* ParserOptions::matches() if any of this changes as needed
 			self::$defaults = [
 				'dateformat' => null,
-				'tidy' => true,
 				'interfaceMessage' => false,
 				'targetLanguage' => null,
 				'removeComments' => true,
@@ -1105,6 +1175,7 @@ class ParserOptions {
 				'allowUnsafeRawHtml' => true,
 				'wrapclass' => 'mw-parser-output',
 				'currentRevisionCallback' => [ Parser::class, 'statelessFetchRevision' ],
+				'currentRevisionRecordCallback' => [ Parser::class, 'statelessFetchRevisionRecord' ],
 				'templateCallback' => [ Parser::class, 'statelessFetchTemplate' ],
 				'speculativeRevIdCallback' => null,
 				'speculativeRevId' => null,
@@ -1112,11 +1183,11 @@ class ParserOptions {
 				'speculativePageId' => null,
 			];
 
-			Hooks::run( 'ParserOptionsRegister', [
-				&self::$defaults,
-				&self::$inCacheKey,
-				&self::$lazyOptions,
-			] );
+			Hooks::runner()->onParserOptionsRegister(
+				self::$defaults,
+				self::$inCacheKey,
+				self::$lazyOptions
+			);
 
 			ksort( self::$inCacheKey );
 		}
@@ -1194,6 +1265,7 @@ class ParserOptions {
 		$options = array_keys( $this->options );
 		$options = array_diff( $options, [
 			'enableLimitReport', // only affects HTML comments
+			'tidy', // Has no effect since 1.35; removed in 1.36
 		] );
 		foreach ( $options as $option ) {
 			// Resolve any lazy options
@@ -1363,7 +1435,7 @@ class ParserOptions {
 
 		// Give a chance for extensions to modify the hash, if they have
 		// extra options or other effects on the parser cache.
-		Hooks::run( 'PageRenderingHash', [ &$confstr, $this->getUser(), &$forOptions ] );
+		Hooks::runner()->onPageRenderingHash( $confstr, $this->getUser(), $forOptions );
 
 		// Make it a valid memcached key fragment
 		$confstr = str_replace( ' ', '_', $confstr );
@@ -1401,19 +1473,18 @@ class ParserOptions {
 	 * @return ScopedCallback to unset the hook
 	 */
 	public function setupFakeRevision( $title, $content, $user ) {
-		$oldCallback = $this->setCurrentRevisionCallback(
+		$oldCallback = $this->setCurrentRevisionRecordCallback(
 			function (
-				$titleToCheck, $parser = false ) use ( $title, $content, $user, &$oldCallback
+				$titleToCheck, $parser = null ) use ( $title, $content, $user, &$oldCallback
 			) {
 				if ( $titleToCheck->equals( $title ) ) {
-					return new Revision( [
-						'page' => $title->getArticleID(),
-						'user_text' => $user->getName(),
-						'user' => $user->getId(),
-						'parent_id' => $title->getLatestRevID(),
-						'title' => $title,
-						'content' => $content
-					] );
+					$revRecord = new MutableRevisionRecord( $title );
+					$revRecord->setContent( SlotRecord::MAIN, $content );
+					$revRecord->setUser( $user );
+					$revRecord->setTimestamp( MWTimestamp::now( TS_MW ) );
+					$revRecord->setPageId( $title->getArticleID() );
+					$revRecord->setParentId( $title->getLatestRevID() );
+					return $revRecord;
 				} else {
 					return call_user_func( $oldCallback, $titleToCheck, $parser );
 				}

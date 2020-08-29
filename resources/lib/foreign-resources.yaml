@@ -93,11 +93,6 @@ CLDRPluralRuleParser:
   src: https://raw.githubusercontent.com/santhoshtr/CLDRPluralRuleParser/0dda851/src/CLDRPluralRuleParser.js
   integrity: sha384-M4taeYYG2+9Ob1/La16iO+zlRRmBV5lBR3xUKkQT6kfkJ0aLbCi6yc0RYI1BDzdh
 
-html5shiv:
-  type: file
-  src: https://raw.githubusercontent.com/aFarkas/html5shiv/3.7.3/src/html5shiv.js
-  integrity: sha384-RPXhaTf22QktT8KTwZ6bUz/C+7CnccaIw5W/y/t0FW5WSDGj3wc3YtRIJC0w47in
-
 jquery:
   type: multi-file
   files:
@@ -196,14 +191,14 @@ jquery.throttle-debounce:
 
 moment:
   type: tar
-  src: https://codeload.github.com/moment/moment/tar.gz/2.24.0
-  integrity: sha384-2/I9rfqkN8AAgh5wOXXphuo827uV7lMmOodrCfIvqC6W6JKKiDGOwd+lE3e8R0yz
+  src: https://codeload.github.com/moment/moment/tar.gz/2.25.2
+  integrity: sha384-Kdi8+psMUggMYwnp+uBCuy03sBfDbKFyjzdLWJks/4O8x4DwOFWzYbtm7RbJ4ISU
   dest:
-    moment-2.24.0/moment.js:
-    moment-2.24.0/CHANGELOG.md:
-    moment-2.24.0/README.md:
-    moment-2.24.0/LICENSE:
-    moment-2.24.0/locale/*.js: locale
+    moment-2.25.2/moment.js:
+    moment-2.25.2/CHANGELOG.md:
+    moment-2.25.2/README.md:
+    moment-2.25.2/LICENSE:
+    moment-2.25.2/locale/*.js: locale
 
 mustache:
   type: multi-file
@@ -217,8 +212,8 @@ mustache:
 
 oojs:
   type: tar
-  src: https://registry.npmjs.org/oojs/-/oojs-3.0.0.tgz
-  integrity: sha256-cNQ5UOHczNGzfEvm6jKM5zcmg3tqFxnJ2UnEOSt9/1M=
+  src: https://registry.npmjs.org/oojs/-/oojs-5.0.0.tgz
+  integrity: sha384-otTlw6PtjKOqRQCEpsKOR7LuxE673tqlgfl/aIH33tR8JuPAJ7vB+Gvr4JNWw6FO
   dest:
     package/dist/oojs.jquery.js:
     package/AUTHORS.txt:
@@ -237,8 +232,8 @@ oojs-router:
 
 ooui:
   type: tar
-  src: https://registry.npmjs.org/oojs-ui/-/oojs-ui-0.36.4.tgz
-  integrity: sha384-Xg4jSUWpij0pHjYM001/jPcu4NJ5m5M3Di3sJNQ2rNQlA0qld7uqH5b/wMc15GWa
+  src: https://registry.npmjs.org/oojs-ui/-/oojs-ui-0.40.1.tgz
+  integrity: sha384-NqrhfzAMlYxiUiZLIpxGElJu3ClK0t57tBeRiC3D+1dw6Nmrxr3CbMfGbAwce4tb
 
   dest:
     # Main stuff
@@ -253,6 +248,8 @@ ooui:
     package/dist/oojs-ui-{wikimediaui,apex}.js{,.map.json}:
     package/dist/i18n:
     package/dist/images:
+    # For jsduck/eg-iframe
+    package/dist/oojs-ui-images-wikimediaui.css:
     # WikimediaUI theme
     package/dist/themes/wikimediaui/images/icons/*.{svg,png}: themes/wikimediaui/images/icons
     package/dist/themes/wikimediaui/images/indicators/*.{svg,png}: themes/wikimediaui/images/indicators
@@ -279,16 +276,27 @@ pako:
       src: https://raw.githubusercontent.com/nodeca/pako/1.0.10/LICENSE
       integrity: sha384-9tg5LwdfxM6Fpdp6Sep9VI0qXS7Eg5gQRPvNrfV3DKIkVVL3EwSK2atu+zRoEwJg
 
+promise-polyfill:
+  type: multi-file
+  files:
+    promise-polyfill.js:
+      # src: https://raw.githubusercontent.com/taylorhakes/promise-polyfill/8.1.3/dist/polyfill.js
+      src: https://raw.githubusercontent.com/wikimedia/promise-polyfill/9bafe45598e69e4215757dc874b99629d0dfea0d/dist/polyfill.js
+      integrity: sha384-nQUslfDX7uz5YSWudfV8dG5d8whQpNMrLcbJPLjvq+McUl2VK7v0UOVnbfs/FrMl
+    LICENSE:
+      src: https://raw.githubusercontent.com/wikimedia/promise-polyfill/9bafe45598e69e4215757dc874b99629d0dfea0d/LICENSE
+      integrity: sha384-IiroT08PAyKPUM4VsNJI7G1o3SM1y+YBBj1lwdJURXYnjtx1OzYKJTNEWs2pE684
+
 qunitjs:
   type: multi-file
   # Integrity from link modals at https://code.jquery.com/qunit/
   files:
     qunit.js:
-      src: http://code.jquery.com/qunit/qunit-2.9.3.js
-      integrity: sha256-ksCoz4aTeJ3G1WQoXFsLgVcRW8ZBm22E60eji6uuLJQ=
+      src: http://code.jquery.com/qunit/qunit-2.10.0.js
+      integrity: sha256-X1fQXHSYGxa4V2bqkEAQW0DQGSxJrKveasahr959o28=
     qunit.css:
-      src: https://code.jquery.com/qunit/qunit-2.9.3.css
-      integrity: sha256-aB6kcCmSu+FAtLeVPZwTAHcihr/yN3JpXWTXcz7n9Mg=
+      src: https://code.jquery.com/qunit/qunit-2.10.0.css
+      integrity: sha256-0qVb1rgTvRqgmXb5us49Z/TADxRfGlAWvjxUqrgCnYQ=
 
 sinonjs:
   type: file
@@ -306,3 +314,14 @@ vue:
     vue-2.6.11/LICENSE:
     vue-2.6.11/dist/vue.common.prod.js:
     vue-2.6.11/dist/vue.common.dev.js:
+
+vuex:
+  type: tar
+  src: https://codeload.github.com/vuejs/vuex/tar.gz/v3.1.3
+  integrity: sha384-Q+Mapd6G1U76N7ZSdYApIqr/+u/c0HxSiYw+IKQAqcKPFFOLD5ASFQ9pOBrE4qcw
+
+  dest:
+    vuex-3.1.3/README.md:
+    vuex-3.1.3/LICENSE:
+    vuex-3.1.3/dist/vuex.js:
+    vuex-3.1.3/dist/vuex.min.js:

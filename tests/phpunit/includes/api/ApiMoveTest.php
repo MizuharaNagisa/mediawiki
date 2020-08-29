@@ -1,6 +1,8 @@
 <?php
 
 use MediaWiki\Block\DatabaseBlock;
+use MediaWiki\MediaWikiServices;
+use MediaWiki\Revision\SlotRecord;
 
 /**
  * @group API
@@ -10,6 +12,20 @@ use MediaWiki\Block\DatabaseBlock;
  * @covers ApiMove
  */
 class ApiMoveTest extends ApiTestCase {
+
+	protected function setUp(): void {
+		parent::setUp();
+
+		$this->tablesUsed = array_merge(
+			$this->tablesUsed,
+			[ 'watchlist', 'watchlist_expiry' ]
+		);
+
+		$this->setMwGlobals( [
+			'wgWatchlistExpiry' => true,
+		] );
+	}
+
 	/**
 	 * @param string $from Prefixed name of source
 	 * @param string $to Prefixed name of destination
@@ -35,7 +51,11 @@ class ApiMoveTest extends ApiTestCase {
 			$this->assertTrue( $fromTitle->isRedirect(),
 				"Source {$fromTitle->getPrefixedText()} is not a redirect" );
 
-			$target = Revision::newFromTitle( $fromTitle )->getContent()->getRedirectTarget();
+			$target = MediaWikiServices::getInstance()
+				->getRevisionLookup()
+				->getRevisionByTitle( $fromTitle )
+				->getContent( SlotRecord::MAIN )
+				->getRedirectTarget();
 			$this->assertSame( $toTitle->getPrefixedText(), $target->getPrefixedText() );
 		}
 
@@ -49,7 +69,7 @@ class ApiMoveTest extends ApiTestCase {
 	 * @return int ID of created page
 	 */
 	protected function createPage( $name ) {
-		return $this->editPage( $name, 'Content' )->value['revision']->getPage();
+		return $this->editPage( $name, 'Content' )->value['revision-record']->getPageId();
 	}
 
 	public function testFromWithFromid() {
@@ -92,6 +112,54 @@ class ApiMoveTest extends ApiTestCase {
 
 		$this->assertMoved( $name, "$name 2", $id );
 		$this->assertArrayNotHasKey( 'warnings', $res[0] );
+	}
+
+	public function testMoveAndWatch(): void {
+		$name = ucfirst( __FUNCTION__ );
+		$this->createPage( $name );
+
+		$this->doApiRequestWithToken( [
+			'action' => 'move',
+			'from' => $name,
+			'to' => "$name 2",
+			'watchlist' => 'watch',
+			'watchlistexpiry' => '99990123000000',
+		] );
+
+		$title = Title::newFromText( $name );
+		$title2 = Title::newFromText( "$name 2" );
+		$this->assertTrue( $this->getTestSysop()->getUser()->isTempWatched( $title ) );
+		$this->assertTrue( $this->getTestSysop()->getUser()->isTempWatched( $title2 ) );
+	}
+
+	public function testMoveWithWatchUnchanged(): void {
+		$name = ucfirst( __FUNCTION__ );
+		$this->createPage( $name );
+		$title = Title::newFromText( $name );
+		$title2 = Title::newFromText( "$name 2" );
+		$user = $this->getTestSysop()->getUser();
+
+		// Temporarily watch the page.
+		$this->doApiRequestWithToken( [
+			'action' => 'watch',
+			'titles' => $name,
+			'expiry' => '99990123000000',
+		] );
+
+		// Fetched stored expiry (maximum duration may override '99990123000000').
+		$store = MediaWikiServices::getInstance()->getWatchedItemStore();
+		$expiry = $store->getWatchedItem( $user, $title )->getExpiry();
+
+		// Move to new location, without changing the watched state.
+		$this->doApiRequestWithToken( [
+			'action' => 'move',
+			'from' => $title->getDBkey(),
+			'to' => $title2->getDBkey(),
+		] );
+
+		// New page should have the same expiry.
+		$expiry2 = $store->getWatchedItem( $user, $title2 )->getExpiry();
+		$this->assertSame( wfTimestamp( TS_MW, $expiry ), $expiry2 );
 	}
 
 	public function testMoveNonexistent() {

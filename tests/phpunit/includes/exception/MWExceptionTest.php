@@ -6,7 +6,7 @@
  * @file
  */
 
-class MWExceptionTest extends MediaWikiTestCase {
+class MWExceptionTest extends MediaWikiIntegrationTestCase {
 
 	/**
 	 * @covers MWException
@@ -50,22 +50,11 @@ class MWExceptionTest extends MediaWikiTestCase {
 	}
 
 	/**
-	 * @dataProvider provideUseMessageCache
 	 * @covers MWException::useMessageCache
 	 */
-	public function testUseMessageCache( $expected, $langObj ) {
-		$this->setMwGlobals( [
-			'wgLang' => $langObj,
-		] );
+	public function testUseMessageCache() {
 		$e = new MWException();
-		$this->assertEquals( $expected, $e->useMessageCache() );
-	}
-
-	public function provideUseMessageCache() {
-		return [
-			[ false, null ],
-			[ true, $this->getMockLanguage() ],
-		];
+		$this->assertTrue( $e->useMessageCache() );
 	}
 
 	/**

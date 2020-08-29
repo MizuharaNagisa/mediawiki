@@ -2,6 +2,7 @@
 
 namespace MediaWiki\Rest\Validator;
 
+use MediaWiki\ParamValidator\TypeDef\UserDef;
 use MediaWiki\Permissions\PermissionManager;
 use MediaWiki\Rest\Handler;
 use MediaWiki\Rest\HttpException;
@@ -12,6 +13,7 @@ use Wikimedia\ObjectFactory;
 use Wikimedia\ParamValidator\ParamValidator;
 use Wikimedia\ParamValidator\TypeDef\BooleanDef;
 use Wikimedia\ParamValidator\TypeDef\EnumDef;
+use Wikimedia\ParamValidator\TypeDef\ExpiryDef;
 use Wikimedia\ParamValidator\TypeDef\FloatDef;
 use Wikimedia\ParamValidator\TypeDef\IntegerDef;
 use Wikimedia\ParamValidator\TypeDef\PasswordDef;
@@ -46,6 +48,11 @@ class Validator {
 		'string' => [ 'class' => StringDef::class ],
 		'timestamp' => [ 'class' => TimestampDef::class ],
 		'upload' => [ 'class' => UploadDef::class ],
+		'expiry' => [ 'class' => ExpiryDef::class ],
+		'user' => [
+			'class' => UserDef::class,
+			'services' => [ 'UserFactory', 'TitleFactory', 'UserNameUtils' ]
+		],
 	];
 
 	/** @var string[] HTTP request methods that we expect never to have a payload */

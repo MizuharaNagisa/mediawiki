@@ -41,44 +41,7 @@ use Wikimedia\Rdbms\MySQLMasterPos;
  * @covers \Wikimedia\Rdbms\LBFactorySimple
  * @covers \Wikimedia\Rdbms\LBFactoryMulti
  */
-class LBFactoryTest extends MediaWikiTestCase {
-
-	/**
-	 * @covers MWLBFactory::getLBFactoryClass()
-	 * @dataProvider getLBFactoryClassProvider
-	 */
-	public function testGetLBFactoryClass( $expected, $deprecated ) {
-		$mockDB = $this->getMockBuilder( IDatabase::class )
-			->disableOriginalConstructor()
-			->getMock();
-
-		$config = [
-			'class'          => $deprecated,
-			'connection'     => $mockDB,
-			# Various other parameters required:
-			'sectionsByDB'   => [],
-			'sectionLoads'   => [],
-			'serverTemplate' => [],
-		];
-
-		$this->hideDeprecated( '$wgLBFactoryConf must be updated. See RELEASE-NOTES for details' );
-		$result = MWLBFactory::getLBFactoryClass( $config );
-
-		$this->assertEquals( $expected, $result );
-	}
-
-	public function getLBFactoryClassProvider() {
-		return [
-			# Format: new class, old class
-			[ Wikimedia\Rdbms\LBFactorySimple::class, 'LBFactory_Simple' ],
-			[ Wikimedia\Rdbms\LBFactorySingle::class, 'LBFactory_Single' ],
-			[ Wikimedia\Rdbms\LBFactoryMulti::class, 'LBFactory_Multi' ],
-			[ Wikimedia\Rdbms\LBFactorySimple::class, 'LBFactorySimple' ],
-			[ Wikimedia\Rdbms\LBFactorySingle::class, 'LBFactorySingle' ],
-			[ Wikimedia\Rdbms\LBFactoryMulti::class, 'LBFactoryMulti' ],
-		];
-	}
-
+class LBFactoryTest extends MediaWikiIntegrationTestCase {
 	/**
 	 * @covers \Wikimedia\Rdbms\LBFactory::getLocalDomainID()
 	 * @covers \Wikimedia\Rdbms\LBFactory::resolveDomainID()
@@ -144,7 +107,7 @@ class LBFactoryTest extends MediaWikiTestCase {
 
 		$factory = new LBFactorySimple( [
 			'servers' => $servers,
-			'loadMonitorClass' => LoadMonitorNull::class
+			'loadMonitor' => [ 'class' => LoadMonitorNull::class ],
 		] );
 		$lb = $factory->getMainLB();
 
@@ -198,7 +161,7 @@ class LBFactoryTest extends MediaWikiTestCase {
 		$factory = $this->newLBFactoryMultiLBs();
 		$this->assertSame( 0, $countLBsFunc( $factory ) );
 		$dbw = $factory->getMainLB()->getConnection( DB_MASTER );
-		$this->assertEquals( 1, $countLBsFunc( $factory ) );
+		$this->assertSame( 1, $countLBsFunc( $factory ) );
 		// Test that LoadBalancer instances made during pre-commit callbacks in do not
 		// throw DBTransactionError due to transaction ROUND_* stages being mismatched.
 		$factory->beginMasterChanges( __METHOD__ );
@@ -210,7 +173,7 @@ class LBFactoryTest extends MediaWikiTestCase {
 			$factory->getMainLB( 's1wiki' )->getConnection( DB_MASTER );
 		} );
 		$factory->commitMasterChanges( __METHOD__ );
-		$this->assertEquals( 1, $called );
+		$this->assertSame( 1, $called );
 		$this->assertEquals( 2, $countLBsFunc( $factory ) );
 		$factory->shutdown();
 		$factory->closeAll();
@@ -219,7 +182,7 @@ class LBFactoryTest extends MediaWikiTestCase {
 		$factory = $this->newLBFactoryMultiLBs();
 		$this->assertSame( 0, $countLBsFunc( $factory ) );
 		$dbw = $factory->getMainLB()->getConnection( DB_MASTER );
-		$this->assertEquals( 1, $countLBsFunc( $factory ) );
+		$this->assertSame( 1, $countLBsFunc( $factory ) );
 		// Test that LoadBalancer instances made during pre-commit callbacks in do not
 		// throw DBTransactionError due to transaction ROUND_* stages being mismatched.hrow
 		// DBTransactionError due to transaction ROUND_* stages being mismatched.
@@ -233,7 +196,7 @@ class LBFactoryTest extends MediaWikiTestCase {
 			$factory->getMainLB( 's1wiki' )->getConnection( DB_MASTER );
 		} );
 		$factory->commitMasterChanges( __METHOD__ );
-		$this->assertEquals( 1, $called );
+		$this->assertSame( 1, $called );
 		$this->assertEquals( 2, $countLBsFunc( $factory ) );
 		$factory->shutdown();
 		$factory->closeAll();
@@ -246,7 +209,7 @@ class LBFactoryTest extends MediaWikiTestCase {
 			++$ran;
 		} );
 		$factory->commitAll( __METHOD__ );
-		$this->assertEquals( 1, $ran );
+		$this->assertSame( 1, $ran );
 
 		$factory->shutdown();
 		$factory->closeAll();
@@ -283,7 +246,7 @@ class LBFactoryTest extends MediaWikiTestCase {
 				'test-db3' => $wgDBserver,
 				'test-db4' => $wgDBserver
 			],
-			'loadMonitorClass' => LoadMonitorNull::class
+			'loadMonitor' => [ 'class' => LoadMonitorNull::class ],
 		] );
 	}
 
@@ -298,6 +261,7 @@ class LBFactoryTest extends MediaWikiTestCase {
 		$m2Pos = new MySQLMasterPos( 'db1064-bin.002400/794074907', $now );
 
 		// Master DB 1
+		/** @var IDatabase|\PHPUnit\Framework\MockObject\MockObject $mockDB1 */
 		$mockDB1 = $this->getMockBuilder( IDatabase::class )
 			->disableOriginalConstructor()
 			->getMock();
@@ -316,8 +280,8 @@ class LBFactoryTest extends MediaWikiTestCase {
 		$lb1->method( 'hasOrMadeRecentMasterChanges' )->will( $this->returnCallback(
 				function () use ( $mockDB1 ) {
 					$p = 0;
-					$p |= call_user_func( [ $mockDB1, 'writesOrCallbacksPending' ] );
-					$p |= call_user_func( [ $mockDB1, 'lastDoneWrites' ] );
+					$p |= $mockDB1->writesOrCallbacksPending();
+					$p |= $mockDB1->lastDoneWrites();
 
 					return (bool)$p;
 				}
@@ -326,6 +290,7 @@ class LBFactoryTest extends MediaWikiTestCase {
 		$lb1->method( 'getReplicaResumePos' )->willReturn( $m1Pos );
 		$lb1->method( 'getServerName' )->with( 0 )->willReturn( 'master1' );
 		// Master DB 2
+		/** @var IDatabase|\PHPUnit\Framework\MockObject\MockObject $mockDB2 */
 		$mockDB2 = $this->getMockBuilder( IDatabase::class )
 			->disableOriginalConstructor()
 			->getMock();
@@ -344,8 +309,8 @@ class LBFactoryTest extends MediaWikiTestCase {
 		$lb2->method( 'hasOrMadeRecentMasterChanges' )->will( $this->returnCallback(
 			function () use ( $mockDB2 ) {
 				$p = 0;
-				$p |= call_user_func( [ $mockDB2, 'writesOrCallbacksPending' ] );
-				$p |= call_user_func( [ $mockDB2, 'lastDoneWrites' ] );
+				$p |= $mockDB2->writesOrCallbacksPending();
+				$p |= $mockDB2->lastDoneWrites();
 
 				return (bool)$p;
 			}
@@ -378,7 +343,7 @@ class LBFactoryTest extends MediaWikiTestCase {
 		$cpIndex = null;
 		$cp->shutdown( null, 'sync', $cpIndex );
 
-		$this->assertEquals( 1, $cpIndex, "CP write index set" );
+		$this->assertSame( 1, $cpIndex, "CP write index set" );
 
 		// (b) Second HTTP request
 
@@ -449,7 +414,7 @@ class LBFactoryTest extends MediaWikiTestCase {
 			'hostsByName' => [
 				'test-db1' => $wgDBserver,
 			],
-			'loadMonitorClass' => LoadMonitorNull::class,
+			'loadMonitor' => [ 'class' => LoadMonitorNull::class ],
 			'localDomain' => new DatabaseDomain( $wgDBname, null, $wgDBprefix ),
 			'agent' => 'MW-UNIT-TESTS'
 		] );
@@ -486,7 +451,7 @@ class LBFactoryTest extends MediaWikiTestCase {
 
 		$this->assertSame(
 			'',
-			$db->getDomainId(),
+			$db->getDomainID(),
 			'Null domain ID handle used'
 		);
 		$this->assertNull(
@@ -815,5 +780,42 @@ class LBFactoryTest extends MediaWikiTestCase {
 			LBFactory::getCPInfoFromCookieValue( "5@$time#$agentId", $time + 11 - 10 )['clientId'],
 			'Stale (client ID)'
 		);
+	}
+
+	/**
+	 * @covers \Wikimedia\Rdbms\LBFactory::setDomainAliases()
+	 * @covers \Wikimedia\Rdbms\LBFactory::resolveDomainID()
+	 */
+	public function testSetDomainAliases() {
+		$lb = $this->newLBFactoryMulti();
+		$origDomain = $lb->getLocalDomainID();
+
+		$this->assertEquals( $origDomain, $lb->resolveDomainID( false ) );
+		$this->assertEquals( "db-prefix_", $lb->resolveDomainID( "db-prefix_" ) );
+
+		$lb->setDomainAliases( [
+			'alias-db' => 'realdb',
+			'alias-db-prefix_' => 'realdb-realprefix_'
+		] );
+
+		$this->assertEquals( 'realdb', $lb->resolveDomainID( 'alias-db' ) );
+		$this->assertEquals( "realdb-realprefix_", $lb->resolveDomainID( "alias-db-prefix_" ) );
+	}
+
+	/**
+	 * @covers \Wikimedia\Rdbms\ChronologyProtector
+	 * @covers \Wikimedia\Rdbms\LBFactory
+	 */
+	public function testGetChronologyProtectorTouched() {
+		$store = new HashBagOStuff;
+		$lbFactory = $this->newLBFactoryMulti( [
+			'memStash' => $store
+		] );
+		$lbFactory->setRequestInfo( [ 'ChronologyClientId' => 'ii' ] );
+		$key = $store->makeGlobalKey( ChronologyProtector::class,
+			'mtime', 'ii', 'test-db1' );
+		$store->set( $key, 2 );
+		$touched = $lbFactory->getChronologyProtectorTouched();
+		$this->assertEquals( 2, $touched );
 	}
 }

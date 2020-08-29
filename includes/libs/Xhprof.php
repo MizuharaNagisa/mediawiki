@@ -29,7 +29,7 @@
  */
 class Xhprof {
 	/**
-	 * @var bool $enabled Whether XHProf is currently running.
+	 * @var bool Whether XHProf is currently running.
 	 */
 	protected static $enabled;
 
@@ -57,7 +57,6 @@ class Xhprof {
 			$args[] = $options;
 		}
 
-		self::$enabled = true;
 		self::callAny(
 			[
 				'xhprof_enable',
@@ -66,6 +65,7 @@ class Xhprof {
 			],
 			$args
 		);
+		self::$enabled = true;
 	}
 
 	/**

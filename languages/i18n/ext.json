@@ -1,19 +1,19 @@
 {
 	"@metadata": {
 		"authors": [
+			"Babanwalia",
 			"Better",
+			"Crucifunked",
+			"DannyS712",
+			"Fitoschido",
+			"Henares",
 			"Kaganer",
+			"Macofe",
+			"MarcoAurelio",
 			"The Evil IP address",
 			"Urhixidur",
 			"Xuacu",
-			"아라",
-			"Babanwalia",
-			"Henares",
-			"MarcoAurelio",
-			"Macofe",
-			"Fitoschido",
-			"Crucifunked",
-			"DannyS712"
+			"아라"
 		]
 	},
 	"tog-underline": "Surrayal atihus:",
@@ -263,7 +263,7 @@
 	"nospecialpagetext": "<strong>Nu desisti esa páhina especial.</strong>\n\nPueis alcuentral una lista colas páhinas especialis desistentis en [[Special:SpecialPages]].",
 	"error": "Marru",
 	"databaseerror": "Marru ena basi e datus",
-	"laggedslavemode": "Avisu: Es posibri que la páhina nu esté atualizá.",
+	"laggedreplicamode": "Avisu: Es posibri que la páhina nu esté atualizá.",
 	"readonly": "Basi e datus atarugá",
 	"enterlockreason": "Escrebi una razón pal tarugu, i cuandu esti\nsedrá esborrau",
 	"readonlytext": "La basi e datus está atualmenti atarugá, siguramenti pol mantenimientu rutinariu. Cuandu s´acabihin los chambus, la güiqui gorverá a la normaliá.\n\nLa razón dá pol el alministraol que pusu el tarugu es: $1",
@@ -477,8 +477,8 @@
 	"rev-deleted-comment": "(comentáriu esborrau)",
 	"rev-deleted-user": "(nombri d’usuáriu esborrau)",
 	"rev-deleted-event": "(entrá esborrá)",
-	"rev-deleted-text-permission": "La revisión desta página á siu '''esborrá'''.\nEs possibri que aiga detallis nel [{{fullurl:{{#Special:Log}}/suppress|page={{FULLPAGENAMEE}}}} rustriju d'esborrau].",
-	"rev-deleted-text-view": "Esta revisión de la páhina á siu '''esborrá'''.\nCumu alministraol pueis echali una guipaina;\npuei bel detallis nel [{{fullurl:{{#Special:Log}}/suppress|page={{FULLPAGENAMEE}}}} rustriju d'esborrau].",
+	"rev-deleted-text-permission": "La revisión desta página á siu '''esborrá'''.\nEs possibri que aiga detallis nel [{{fullurl:{{#Special:Log}}/suppress|page=$1}} rustriju d'esborrau].",
+	"rev-deleted-text-view": "Esta revisión de la páhina á siu '''esborrá'''.\nCumu alministraol pueis echali una guipaina;\npuei bel detallis nel [{{fullurl:{{#Special:Log}}/suppress|page=$1}} rustriju d'esborrau].",
 	"rev-delundel": "muestral/açonchal",
 	"rev-showdeleted": "muestral",
 	"revisiondelete": "Esborral/arrecuperal revisionis",

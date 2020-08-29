@@ -2,17 +2,24 @@
 
 namespace MediaWiki\Rest;
 
+use MediaWiki\HookContainer\HookContainer;
+use MediaWiki\HookContainer\HookRunner;
 use MediaWiki\Rest\Validator\BodyValidator;
 use MediaWiki\Rest\Validator\NullBodyValidator;
 use MediaWiki\Rest\Validator\Validator;
 
+/**
+ * Base class for REST route handlers.
+ *
+ * @stable to extend.
+ */
 abstract class Handler {
 
 	/**
 	 * (string) ParamValidator constant to specify the source of the parameter.
 	 * Value must be 'path', 'query', or 'post'.
 	 */
-	const PARAM_SOURCE = 'rest-param-source';
+	public const PARAM_SOURCE = 'rest-param-source';
 
 	/** @var Router */
 	private $router;
@@ -35,6 +42,12 @@ abstract class Handler {
 	/** @var ConditionalHeaderUtil */
 	private $conditionalHeaderUtil;
 
+	/** @var HookContainer */
+	private $hookContainer;
+
+	/** @var HookRunner */
+	private $hookRunner;
+
 	/**
 	 * Initialise with dependencies from the Router. This is called after construction.
 	 * @internal
@@ -42,14 +55,18 @@ abstract class Handler {
 	 * @param RequestInterface $request
 	 * @param array $config
 	 * @param ResponseFactory $responseFactory
+	 * @param HookContainer $hookContainer
 	 */
-	public function init( Router $router, RequestInterface $request, array $config,
-		ResponseFactory $responseFactory
+	final public function init( Router $router, RequestInterface $request, array $config,
+		ResponseFactory $responseFactory, HookContainer $hookContainer
 	) {
 		$this->router = $router;
 		$this->request = $request;
 		$this->config = $config;
 		$this->responseFactory = $responseFactory;
+		$this->hookContainer = $hookContainer;
+		$this->hookRunner = new HookRunner( $hookContainer );
+		$this->postInitSetup();
 	}
 
 	/**
@@ -59,6 +76,48 @@ abstract class Handler {
 	 */
 	protected function getRouter(): Router {
 		return $this->router;
+	}
+
+	/**
+	 * Get the URL of this handler's endpoint.
+	 * Supports the substitution of path parameters, and additions of query parameters.
+	 *
+	 * @see Router::getRouteUrl()
+	 *
+	 * @param string[] $pathParams Path parameters to be injected into the path
+	 * @param string[] $queryParams Query parameters to be attached to the URL
+	 *
+	 * @return string
+	 */
+	protected function getRouteUrl( $pathParams = [], $queryParams = [] ): string {
+		$path = $this->getConfig()['path'];
+		return $this->router->getRouteUrl( $path, $pathParams, $queryParams );
+	}
+
+	/**
+	 * URL-encode titles in a "pretty" way.
+	 *
+	 * Keeps intact ;@$!*(),~: (urlencode does not, but wfUrlencode does).
+	 * Encodes spaces as underscores (wfUrlencode does not).
+	 * Encodes slashes (wfUrlencode does not, but keeping them messes with REST pathes).
+	 * Encodes pluses (this is not necessary, and may change).
+	 *
+	 * @see wfUrlencode
+	 *
+	 * @param string $title
+	 *
+	 * @return string
+	 */
+	protected function urlEncodeTitle( $title ) {
+		$title = str_replace( ' ', '_', $title );
+		$title = urlencode( $title );
+
+		// %3B_a_%40_b_%24_c_%21_d_%2A_e_%28_f_%29_g_%2C_h_~_i_%3A
+		$replace = [ '%3B', '%40', '%24', '%21', '%2A', '%28', '%29', '%2C', '%7E', '%3A' ];
+		$with = [ ';', '@', '$', '!', '*', '(', ')', ',', '~', ':' ];
+		$title = str_replace( $replace, $with, $title );
+
+		return $title;
 	}
 
 	/**
@@ -98,6 +157,7 @@ abstract class Handler {
 	 * failure, a response with an error message should be returned or an
 	 * HttpException should be thrown.
 	 *
+	 * @stable to override
 	 * @param Validator $restValidator
 	 * @throws HttpException On validation failure.
 	 */
@@ -132,6 +192,8 @@ abstract class Handler {
 	 * Check the conditional request headers and generate a response if appropriate.
 	 * This is called by the Router before execute() and may be overridden.
 	 *
+	 * @stable to override
+	 *
 	 * @return ResponseInterface|null
 	 */
 	public function checkPreconditions() {
@@ -150,6 +212,8 @@ abstract class Handler {
 	 * the values previously returned by ETag and getLastModified(). This is
 	 * called after execute() returns, and may be overridden.
 	 *
+	 * @stable to override
+	 *
 	 * @param ResponseInterface $response
 	 */
 	public function applyConditionalResponseHeaders( ResponseInterface $response ) {
@@ -162,6 +226,8 @@ abstract class Handler {
 	 * Every setting must include self::PARAM_SOURCE to specify which part of
 	 * the request is to contain the parameter.
 	 *
+	 * @stable to override
+	 *
 	 * @return array[] Associative array mapping parameter names to
 	 *  ParamValidator settings arrays
 	 */
@@ -171,6 +237,9 @@ abstract class Handler {
 
 	/**
 	 * Fetch the BodyValidator
+	 *
+	 * @stable to override
+	 *
 	 * @param string $contentType Content type of the request.
 	 * @return BodyValidator
 	 */
@@ -202,12 +271,36 @@ abstract class Handler {
 	}
 
 	/**
+	 * Get a HookContainer, for running extension hooks or for hook metadata.
+	 *
+	 * @since 1.35
+	 * @return HookContainer
+	 */
+	protected function getHookContainer() {
+		return $this->hookContainer;
+	}
+
+	/**
+	 * Get a HookRunner for running core hooks.
+	 *
+	 * @internal This is for use by core only. Hook interfaces may be removed
+	 *   without notice.
+	 * @since 1.35
+	 * @return HookRunner
+	 */
+	protected function getHookRunner() {
+		return $this->hookRunner;
+	}
+
+	/**
 	 * The subclass should override this to provide the maximum last modified
 	 * timestamp for the current request. This is called before execute() in
 	 * order to decide whether to send a 304.
 	 *
 	 * The timestamp can be in any format accepted by ConvertibleTimestamp, or
 	 * null to indicate that the timestamp is unknown.
+	 *
+	 * @stable to override
 	 *
 	 * @return bool|string|int|float|\DateTime|null
 	 */
@@ -224,6 +317,8 @@ abstract class Handler {
 	 *
 	 * See RFC 7232 § 2.3 for semantics.
 	 *
+	 * @stable to override
+	 *
 	 * @return string|null
 	 */
 	protected function getETag() {
@@ -234,6 +329,8 @@ abstract class Handler {
 	 * The subclass should override this to indicate whether the resource
 	 * exists. This is used for wildcard validators, for example "If-Match: *"
 	 * fails if the resource does not exist.
+	 *
+	 * @stable to override
 	 *
 	 * @return bool|null
 	 */
@@ -247,6 +344,8 @@ abstract class Handler {
 	 * The handler should override this if it does not need to read from the
 	 * wiki. This is uncommon, but may be useful for login and other account
 	 * management APIs.
+	 *
+	 * @stable to override
 	 *
 	 * @return bool
 	 */
@@ -264,10 +363,21 @@ abstract class Handler {
 	 * Modules that do not need such writes should also not rely on master database access,
 	 * since only read queries are needed and each master DB is a single point of failure.
 	 *
+	 * @stable to override
+	 *
 	 * @return bool
 	 */
 	public function needsWriteAccess() {
 		return true;
+	}
+
+	/**
+	 * The handler can override this to do any necessary setup after init()
+	 * is called to inject the dependencies.
+	 *
+	 * @stable to override
+	 */
+	protected function postInitSetup() {
 	}
 
 	/**
@@ -280,6 +390,8 @@ abstract class Handler {
 	 *
 	 * If execute() throws any other kind of exception, the exception will be
 	 * logged and a generic 500 error page will be shown.
+	 *
+	 * @stable to override
 	 *
 	 * @return mixed
 	 */

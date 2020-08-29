@@ -1,6 +1,7 @@
 <?php
 /**
- * The web entry point for retreiving media thumbnails.
+ * The web entry point for retrieving media thumbnails, created by a MediaHandler
+ * subclass or proxy request if FileRepo::getThumbProxyUrl is configured.
  *
  * This script may also resize an image on-demand, if it isn't found in the
  * configured FileBackend storage.
@@ -36,21 +37,25 @@ if ( !defined( 'MW_ENTRY_POINT' ) ) {
 }
 require __DIR__ . '/includes/WebStart.php';
 
-// Don't use fancy MIME detection, just check the file extension for jpg/gif/png
-$wgTrivialMimeDetection = true;
+wfThumbMain();
 
-if ( defined( 'THUMB_HANDLER' ) ) {
-	// Called from thumb_handler.php via 404; extract params from the URI...
-	wfThumbHandle404();
-} else {
-	// Called directly, use $_GET params
-	wfStreamThumb( $wgRequest->getQueryValuesOnly() );
+function wfThumbMain() {
+	global $wgTrivialMimeDetection, $wgRequest;
+
+	// Don't use fancy MIME detection, just check the file extension for jpg/gif/png
+	$wgTrivialMimeDetection = true;
+
+	if ( defined( 'THUMB_HANDLER' ) ) {
+		// Called from thumb_handler.php via 404; extract params from the URI...
+		wfThumbHandle404();
+	} else {
+		// Called directly, use $_GET params
+		wfStreamThumb( $wgRequest->getQueryValuesOnly() );
+	}
+
+	$mediawiki = new MediaWiki();
+	$mediawiki->doPostOutputShutdown();
 }
-
-$mediawiki = new MediaWiki();
-$mediawiki->doPostOutputShutdown();
-
-// --------------------------------------------------------------------------
 
 /**
  * Handle a thumbnail request via thumbnail file URL
@@ -58,25 +63,17 @@ $mediawiki->doPostOutputShutdown();
  * @return void
  */
 function wfThumbHandle404() {
-	global $wgArticlePath;
-
-	# Set action base paths so that WebRequest::getPathInfo()
-	# recognizes the "X" as the 'title' in ../thumb_handler.php/X urls.
-	# Note: If Custom per-extension repo paths are set, this may break.
-	$repo = RepoGroup::singleton()->getLocalRepo();
-	$oldArticlePath = $wgArticlePath;
-	$wgArticlePath = $repo->getZoneUrl( 'thumb' ) . '/$1';
-
-	$matches = WebRequest::getPathInfo();
-
-	$wgArticlePath = $oldArticlePath;
-
-	if ( !isset( $matches['title'] ) ) {
-		wfThumbError( 404, 'Could not determine the name of the requested thumbnail.' );
-		return;
+	// Determine the request path relative to the thumbnail zone base
+	$repo = MediaWikiServices::getInstance()->getRepoGroup()->getLocalRepo();
+	$baseUrl = $repo->getZoneUrl( 'thumb' );
+	if ( substr( $baseUrl, 0, 1 ) === '/' ) {
+		$basePath = $baseUrl;
+	} else {
+		$basePath = parse_url( $baseUrl, PHP_URL_PATH );
 	}
+	$relPath = WebRequest::getRequestPathSuffix( $basePath );
 
-	$params = wfExtractThumbRequestInfo( $matches['title'] ); // basic wiki URL param extracting
+	$params = wfExtractThumbRequestInfo( $relPath ); // basic wiki URL param extracting
 	if ( $params == null ) {
 		wfThumbError( 400, 'The specified thumbnail parameters are not recognized.' );
 		return;
@@ -129,10 +126,11 @@ function wfStreamThumb( array $params ) {
 
 	// Some basic input validation
 	$fileName = strtr( $fileName, '\\/', '__' );
+	$localRepo = MediaWikiServices::getInstance()->getRepoGroup()->getLocalRepo();
 
 	// Actually fetch the image. Method depends on whether it is archived or not.
 	if ( $isTemp ) {
-		$repo = RepoGroup::singleton()->getLocalRepo()->getTempRepo();
+		$repo = $localRepo->getTempRepo();
 		$img = new UnregisteredLocalFile( null, $repo,
 			# Temp files are hashed based on the name without the timestamp.
 			# The thumbnails will be hashed based on the entire name however.
@@ -151,9 +149,9 @@ function wfStreamThumb( array $params ) {
 			wfThumbError( 404, wfMessage( 'badtitletext' )->parse() );
 			return;
 		}
-		$img = RepoGroup::singleton()->getLocalRepo()->newFromArchiveName( $title, $fileName );
+		$img = $localRepo->newFromArchiveName( $title, $fileName );
 	} else {
-		$img = wfLocalFile( $fileName );
+		$img = $localRepo->newFile( $fileName );
 	}
 
 	// Check the source file title
@@ -199,10 +197,10 @@ function wfStreamThumb( array $params ) {
 			// Check for file redirect
 			// Since redirects are associated with pages, not versions of files,
 			// we look for the most current version to see if its a redirect.
-			$possRedirFile = RepoGroup::singleton()->getLocalRepo()->findFile( $img->getName() );
+			$possRedirFile = $localRepo->findFile( $img->getName() );
 			if ( $possRedirFile && $possRedirFile->getRedirected() !== null ) {
 				$redirTarget = $possRedirFile->getName();
-				$targetFile = wfLocalFile( Title::makeTitleSafe( NS_FILE, $redirTarget ) );
+				$targetFile = $localRepo->newFile( Title::makeTitleSafe( NS_FILE, $redirTarget ) );
 				if ( $targetFile->exists() ) {
 					$newThumbName = $targetFile->thumbName( $params );
 					if ( $isOld ) {
@@ -545,7 +543,7 @@ function wfGenerateThumbnail( File $file, array $params, $thumbName, $thumbPath 
  * @return array|null Associative params array or null
  */
 function wfExtractThumbRequestInfo( $thumbRel ) {
-	$repo = RepoGroup::singleton()->getLocalRepo();
+	$repo = MediaWikiServices::getInstance()->getRepoGroup()->getLocalRepo();
 
 	$hashDirReg = $subdirReg = '';
 	$hashLevels = $repo->getHashLevels();

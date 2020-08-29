@@ -214,7 +214,9 @@ class SpecialContributions extends IncludableSpecialPage {
 		// Add RSS/atom links
 		$this->addFeedLinks( $feedParams );
 
-		if ( Hooks::run( 'SpecialContributionsBeforeMainOutput', [ $id, $userObj, $this ] ) ) {
+		if ( $this->getHookRunner()->onSpecialContributionsBeforeMainOutput(
+			$id, $userObj, $this )
+		) {
 			$pager = new ContribsPager( $this->getContext(), [
 				'target' => $target,
 				'namespace' => $this->opts['namespace'],
@@ -355,6 +357,19 @@ class SpecialContributions extends IncludableSpecialPage {
 					}
 
 					$out = $this->getOutput(); // showLogExtract() wants first parameter by reference
+					if ( $userObj->isAnon() ) {
+						$msgKey = $block->isSitewide() ?
+							'sp-contributions-blocked-notice-anon' :
+							'sp-contributions-blocked-notice-anon-partial';
+					} else {
+						$msgKey = $block->isSitewide() ?
+							'sp-contributions-blocked-notice' :
+							'sp-contributions-blocked-notice-partial';
+					}
+					// Allow local styling overrides for different types of block
+					$class = $block->isSitewide() ?
+						'mw-contributions-blocked-notice' :
+						'mw-contributions-blocked-notice-partial';
 					LogEventsList::showLogExtract(
 						$out,
 						'block',
@@ -364,12 +379,15 @@ class SpecialContributions extends IncludableSpecialPage {
 							'lim' => 1,
 							'showIfEmpty' => false,
 							'msgKey' => [
-								$userObj->isAnon() ?
-									'sp-contributions-blocked-notice-anon' :
-									'sp-contributions-blocked-notice',
+								$msgKey,
 								$userObj->getName() # Support GENDER in 'sp-contributions-blocked-notice'
 							],
-							'offset' => '' # don't use WebRequest parameter offset
+							'offset' => '', # don't use WebRequest parameter offset
+							'wrap' => Html::rawElement(
+								'div',
+								[ 'class' => $class ],
+								'$1'
+							),
 						]
 					);
 				}
@@ -484,7 +502,7 @@ class SpecialContributions extends IncludableSpecialPage {
 			);
 		}
 
-		Hooks::run( 'ContributionsToolLinks', [ $id, $userpage, &$tools, $sp ] );
+		Hooks::runner()->onContributionsToolLinks( $id, $userpage, $tools, $sp );
 
 		return $tools;
 	}
@@ -626,11 +644,8 @@ class SpecialContributions extends IncludableSpecialPage {
 
 		// Allow additions at this point to the filters.
 		$rawFilters = [];
-		Hooks::run(
-			'SpecialContributions::getForm::filters',
-			[ $this, &$rawFilters ]
-		);
-		// @phan-suppress-next-line PhanEmptyForeach False positive
+		$this->getHookRunner()->onSpecialContributions__getForm__filters(
+			$this, $rawFilters );
 		foreach ( $rawFilters as $filter ) {
 			// Backwards compatibility support for previous hook function signature.
 			if ( is_string( $filter ) ) {
@@ -641,9 +656,9 @@ class SpecialContributions extends IncludableSpecialPage {
 					'section' => 'contribs-top',
 				];
 				wfDeprecated(
-					__METHOD__ .
-					' returning string[]',
-					'1.33'
+					'A SpecialContributions::getForm::filters hook handler returned ' .
+					'an array of strings, this is deprecated since MediaWiki 1.33',
+					'1.33', false, false
 				);
 			} else {
 				// Preferred append method.

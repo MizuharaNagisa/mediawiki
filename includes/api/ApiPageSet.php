@@ -44,7 +44,7 @@ class ApiPageSet extends ApiBase {
 	 * Constructor flag: The new instance of ApiPageSet will ignore the 'generator=' parameter
 	 * @since 1.21
 	 */
-	const DISABLE_GENERATORS = 1;
+	private const DISABLE_GENERATORS = 1;
 
 	private $mDbSource;
 	private $mParams = [];
@@ -178,9 +178,7 @@ class ApiPageSet extends ApiBase {
 			if ( !$isDryRun ) {
 				$generator->executeGenerator( $this );
 
-				// Avoid PHP 7.1 warning of passing $this by reference
-				$apiModule = $this;
-				Hooks::run( 'APIQueryGeneratorAfterExecute', [ &$generator, &$apiModule ] );
+				$this->getHookRunner()->onAPIQueryGeneratorAfterExecute( $generator, $this );
 			} else {
 				// Prevent warnings from being reported on these parameters
 				$main = $this->getMain();
@@ -320,9 +318,7 @@ class ApiPageSet extends ApiBase {
 			$pageFlds['page_is_redirect'] = null;
 		}
 
-		if ( $this->getConfig()->get( 'ContentHandlerUseDB' ) ) {
-			$pageFlds['page_content_model'] = null;
-		}
+		$pageFlds['page_content_model'] = null;
 
 		if ( $this->getConfig()->get( 'PageLanguageUseDB' ) ) {
 			$pageFlds['page_lang'] = null;
@@ -415,7 +411,7 @@ class ApiPageSet extends ApiBase {
 
 	/**
 	 * Title objects for good and missing titles.
-	 * @return array
+	 * @return Title[]
 	 */
 	public function getGoodAndMissingTitles() {
 		return $this->mGoodTitles + $this->mMissingTitles;
@@ -1117,6 +1113,7 @@ class ApiPageSet extends ApiBase {
 
 		if ( $this->mPendingRedirectSpecialPages ) {
 			foreach ( $this->mPendingRedirectSpecialPages as $key => list( $from, $to ) ) {
+				/** @var Title $from */
 				$fromKey = $from->getPrefixedText();
 				$this->mResolvedRedirectTitles[$fromKey] = $from;
 				$this->mRedirectTitles[$fromKey] = $to;
@@ -1163,7 +1160,6 @@ class ApiPageSet extends ApiBase {
 	 * @return LinkBatch
 	 */
 	private function processTitlesArray( $titles ) {
-		$usernames = [];
 		$linkBatch = new LinkBatch();
 		$services = MediaWikiServices::getInstance();
 		$contLang = $services->getContentLanguage();
@@ -1172,6 +1168,7 @@ class ApiPageSet extends ApiBase {
 		foreach ( $titles as $index => $title ) {
 			if ( is_string( $title ) ) {
 				try {
+					/** @var Title $titleObj */
 					$titleObj = Title::newFromTextThrow( $title, $this->mDefaultNamespace );
 				} catch ( MalformedTitleException $ex ) {
 					// Handle invalid titles gracefully
@@ -1228,7 +1225,8 @@ class ApiPageSet extends ApiBase {
 							$special = $spFactory->getPage( $dbkey );
 							if ( $special instanceof RedirectSpecialArticle ) {
 								// Only RedirectSpecialArticle is intended to redirect to an article, other kinds of
-								// RedirectSpecialPage are probably applying weird URL parameters we don't want to handle.
+								// RedirectSpecialPage are probably applying weird URL parameters we don't want to
+								// handle.
 								$context = new DerivativeContext( $this );
 								$context->setTitle( $titleObj );
 								$context->setRequest( new FauxRequest );

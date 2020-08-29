@@ -101,7 +101,7 @@ class RecentChangesUpdateJob extends Job {
 			}
 			if ( $rcIds ) {
 				$dbw->delete( 'recentchanges', [ 'rc_id' => $rcIds ], __METHOD__ );
-				Hooks::run( 'RecentChangesPurgeRows', [ $rows ] );
+				Hooks::runner()->onRecentChangesPurgeRows( $rows );
 				// There might be more, so try waiting for replica DBs
 				if ( !$factory->commitAndWaitForReplication(
 					__METHOD__, $ticket, [ 'timeout' => 3 ]
@@ -141,7 +141,8 @@ class RecentChangesUpdateJob extends Job {
 		// Get the last-updated timestamp for the cache
 		$cTime = $dbw->selectField( 'querycache_info',
 			'qci_timestamp',
-			[ 'qci_type' => 'activeusers' ]
+			[ 'qci_type' => 'activeusers' ],
+			__METHOD__
 		);
 		$cTimeUnix = $cTime ? wfTimestamp( TS_UNIX, $cTime ) : 1;
 
@@ -221,8 +222,9 @@ class RecentChangesUpdateJob extends Job {
 		$asOfTimestamp = min( $eTimestamp, (int)$dbw->trxTimestamp() );
 
 		// Touch the data freshness timestamp
-		$dbw->replace( 'querycache_info',
-			[ 'qci_type' ],
+		$dbw->replace(
+			'querycache_info',
+			'qci_type',
 			[ 'qci_type' => 'activeusers',
 				'qci_timestamp' => $dbw->timestamp( $asOfTimestamp ) ], // not always $now
 			__METHOD__

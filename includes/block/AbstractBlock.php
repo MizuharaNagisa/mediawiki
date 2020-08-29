@@ -24,6 +24,7 @@ use CommentStoreComment;
 use IContextSource;
 use InvalidArgumentException;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\User\UserIdentity;
 use Message;
 use RequestContext;
 use Title;
@@ -31,6 +32,7 @@ use User;
 use Wikimedia\IPUtils;
 
 /**
+ * @note Extensions should not subclass this, as MediaWiki currently does not support custom block types.
  * @since 1.34 Factored out from DatabaseBlock (previously Block).
  */
 abstract class AbstractBlock {
@@ -83,11 +85,11 @@ abstract class AbstractBlock {
 	protected $isSitewide = true;
 
 	# TYPE constants
-	const TYPE_USER = 1;
-	const TYPE_IP = 2;
-	const TYPE_RANGE = 3;
-	const TYPE_AUTO = 4;
-	const TYPE_ID = 5;
+	public const TYPE_USER = 1;
+	public const TYPE_IP = 2;
+	public const TYPE_RANGE = 3;
+	public const TYPE_AUTO = 4;
+	public const TYPE_ID = 5;
 
 	/**
 	 * Create a new block with specified parameters on a user, IP or IP range.
@@ -372,16 +374,17 @@ abstract class AbstractBlock {
 	 *
 	 * If the type is not null, it will be an AbstractBlock::TYPE_ constant.
 	 *
-	 * @param string|int|User|null $target
+	 * @param string|UserIdentity|null $target
 	 * @return array [ User|String|null, int|null ]
 	 */
 	public static function parseTarget( $target ) {
 		# We may have been through this before
-		if ( $target instanceof User ) {
+		if ( $target instanceof UserIdentity ) {
+			$userObj = User::newFromIdentity( $target );
 			if ( IPUtils::isValid( $target->getName() ) ) {
-				return [ $target, self::TYPE_IP ];
+				return [ $userObj, self::TYPE_IP ];
 			} else {
-				return [ $target, self::TYPE_USER ];
+				return [ $userObj, self::TYPE_USER ];
 			}
 		} elseif ( $target === null ) {
 			return [ null, null ];

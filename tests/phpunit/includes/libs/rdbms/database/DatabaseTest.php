@@ -5,8 +5,10 @@ use Wikimedia\Rdbms\DatabaseDomain;
 use Wikimedia\Rdbms\DatabaseMysqli;
 use Wikimedia\Rdbms\DatabasePostgres;
 use Wikimedia\Rdbms\DatabaseSqlite;
+use Wikimedia\Rdbms\DBReadOnlyRoleError;
 use Wikimedia\Rdbms\DBUnexpectedError;
 use Wikimedia\Rdbms\IDatabase;
+use Wikimedia\Rdbms\IResultWrapper;
 use Wikimedia\Rdbms\LBFactorySingle;
 use Wikimedia\Rdbms\TransactionProfiler;
 use Wikimedia\TestingAccessWrapper;
@@ -457,6 +459,7 @@ class DatabaseTest extends PHPUnit\Framework\TestCase {
 		$wdb->trxProfiler = new TransactionProfiler();
 		$wdb->connLogger = new \Psr\Log\NullLogger();
 		$wdb->queryLogger = new \Psr\Log\NullLogger();
+		$wdb->replLogger = new \Psr\Log\NullLogger();
 		$wdb->currentDomain = DatabaseDomain::newUnspecified();
 		return $db;
 	}
@@ -516,7 +519,7 @@ class DatabaseTest extends PHPUnit\Framework\TestCase {
 			$lock = $db->getScopedLockAndFlush( 'meow', __METHOD__, 1 );
 			$this->fail( "Exception not reached" );
 		} catch ( DBUnexpectedError $e ) {
-			$this->assertEquals( 1, $db->trxLevel(), "Transaction not committed." );
+			$this->assertSame( 1, $db->trxLevel(), "Transaction not committed." );
 			$this->assertTrue( $db->lockIsFree( 'meow', __METHOD__ ), 'Lock not acquired' );
 		}
 		$db->rollback( __METHOD__, IDatabase::FLUSHING_ALL_PEERS );
@@ -530,7 +533,7 @@ class DatabaseTest extends PHPUnit\Framework\TestCase {
 			$lock = $db->getScopedLockAndFlush( 'meow2', __METHOD__, 1 );
 			$this->fail( "Exception not reached" );
 		} catch ( DBUnexpectedError $e ) {
-			$this->assertEquals( 1, $db->trxLevel(), "Transaction not committed." );
+			$this->assertSame( 1, $db->trxLevel(), "Transaction not committed." );
 			$this->assertTrue( $db->lockIsFree( 'meow2', __METHOD__ ), 'Lock not acquired' );
 		}
 		$db->rollback( __METHOD__ );
@@ -539,7 +542,7 @@ class DatabaseTest extends PHPUnit\Framework\TestCase {
 		$this->assertSame( 0, $db->trxLevel() );
 		$this->assertTrue( $db->lockIsFree( 'wuff', __METHOD__ ) );
 		$db->query( "SELECT 1", __METHOD__ );
-		$this->assertEquals( 1, $db->trxLevel() );
+		$this->assertSame( 1, $db->trxLevel() );
 		$lock = $db->getScopedLockAndFlush( 'wuff', __METHOD__, 1 );
 		$this->assertSame( 0, $db->trxLevel() );
 		$this->assertFalse( $db->lockIsFree( 'wuff', __METHOD__ ), 'Lock already acquired' );
@@ -553,7 +556,7 @@ class DatabaseTest extends PHPUnit\Framework\TestCase {
 			$lock = $db->getScopedLockAndFlush( 'wuff2', __METHOD__, 1 );
 			$this->fail( "Exception not reached" );
 		} catch ( DBUnexpectedError $e ) {
-			$this->assertEquals( 1, $db->trxLevel(), "Transaction not committed." );
+			$this->assertSame( 1, $db->trxLevel(), "Transaction not committed." );
 			$this->assertFalse( $db->lockIsFree( 'wuff2', __METHOD__ ), 'Lock not acquired' );
 		}
 		$db->rollback( __METHOD__ );
@@ -647,17 +650,17 @@ class DatabaseTest extends PHPUnit\Framework\TestCase {
 		$this->assertEquals( $ud->getId(), $this->db->getDomainID() );
 
 		$old = $this->db->tablePrefix();
-		$oldDomain = $this->db->getDomainId();
+		$oldDomain = $this->db->getDomainID();
 		$this->assertIsString( $old, 'Prefix is string' );
 		$this->assertSame( $old, $this->db->tablePrefix(), "Prefix unchanged" );
 		$this->assertSame( $old, $this->db->tablePrefix( 'xxx_' ) );
 		$this->assertSame( 'xxx_', $this->db->tablePrefix(), "Prefix set" );
 		$this->db->tablePrefix( $old );
 		$this->assertNotEquals( 'xxx_', $this->db->tablePrefix() );
-		$this->assertSame( $oldDomain, $this->db->getDomainId() );
+		$this->assertSame( $oldDomain, $this->db->getDomainID() );
 
 		$old = $this->db->dbSchema();
-		$oldDomain = $this->db->getDomainId();
+		$oldDomain = $this->db->getDomainID();
 		$this->assertIsString( $old, 'Schema is string' );
 		$this->assertSame( $old, $this->db->dbSchema(), "Schema unchanged" );
 
@@ -666,7 +669,7 @@ class DatabaseTest extends PHPUnit\Framework\TestCase {
 		$this->assertSame( 'xxx', $this->db->dbSchema(), "Schema set" );
 		$this->db->dbSchema( $old );
 		$this->assertNotEquals( 'xxx', $this->db->dbSchema() );
-		$this->assertSame( "y", $this->db->getDomainId() );
+		$this->assertSame( "y", $this->db->getDomainID() );
 	}
 
 	/**
@@ -687,7 +690,7 @@ class DatabaseTest extends PHPUnit\Framework\TestCase {
 	 * @covers Wikimedia\Rdbms\Database::selectDomain
 	 */
 	public function testSelectDomain() {
-		$oldDomain = $this->db->getDomainId();
+		$oldDomain = $this->db->getDomainID();
 		$oldDatabase = $this->db->getDBname();
 		$oldSchema = $this->db->dbSchema();
 		$oldPrefix = $this->db->tablePrefix();
@@ -701,7 +704,7 @@ class DatabaseTest extends PHPUnit\Framework\TestCase {
 		$this->assertSame( $oldDatabase, $this->db->getDBname() );
 		$this->assertSame( $oldSchema, $this->db->dbSchema() );
 		$this->assertSame( $oldPrefix, $this->db->tablePrefix() );
-		$this->assertSame( $oldDomain, $this->db->getDomainId() );
+		$this->assertSame( $oldDomain, $this->db->getDomainID() );
 
 		$this->db->selectDomain( 'testselectdb-schema-xxx_' );
 		$this->assertSame( 'testselectdb', $this->db->getDBname() );
@@ -712,7 +715,7 @@ class DatabaseTest extends PHPUnit\Framework\TestCase {
 		$this->assertSame( $oldDatabase, $this->db->getDBname() );
 		$this->assertSame( $oldSchema, $this->db->dbSchema() );
 		$this->assertSame( $oldPrefix, $this->db->tablePrefix() );
-		$this->assertSame( $oldDomain, $this->db->getDomainId() );
+		$this->assertSame( $oldDomain, $this->db->getDomainID() );
 	}
 
 	/**
@@ -751,7 +754,7 @@ class DatabaseTest extends PHPUnit\Framework\TestCase {
 	 */
 	public function testIsWriteQuery( string $query, bool $res ) {
 		$db = TestingAccessWrapper::newFromObject( $this->db );
-		$this->assertSame( $res, $db->isWriteQuery( $query ) );
+		$this->assertSame( $res, $db->isWriteQuery( $query, 0 ) );
 	}
 
 	/**
@@ -771,5 +774,100 @@ class DatabaseTest extends PHPUnit\Framework\TestCase {
 			[ 'DELETE FROM baz', true ],
 			[ 'CREATE TABLE foobar', true ]
 		];
+	}
+
+	/**
+	 * @covers Database::executeQuery()
+	 * @covers Database::assertIsWritableMaster()
+	 */
+	public function testShouldRejectPersistentWriteQueryOnReplicaDatabaseConnection(): void {
+		$this->expectException( DBReadOnlyRoleError::class );
+		$this->expectDeprecationMessage( 'Server is configured as a read-only replica database.' );
+
+		$dbr = new DatabaseTestHelper(
+			__CLASS__ . '::' . $this->getName(),
+			[ 'topologyRole' => Database::ROLE_STREAMING_REPLICA ]
+		);
+
+		$dbr->query( "INSERT INTO test_table (a_column) VALUES ('foo');", __METHOD__ );
+	}
+
+	/**
+	 * @covers Database::executeQuery()
+	 * @covers Database::assertIsWritableMaster()
+	 */
+	public function testShouldAcceptTemporaryTableOperationsOnReplicaDatabaseConnection(): void {
+		$dbr = new DatabaseTestHelper(
+			__CLASS__ . '::' . $this->getName(),
+			[ 'topologyRole' => Database::ROLE_STREAMING_REPLICA ]
+		);
+
+		$resCreate = $dbr->query(
+			"CREATE TEMPORARY TABLE temp_test_table (temp_column int);",
+			__METHOD__
+		);
+
+		$resModify = $dbr->query(
+			"INSERT INTO temp_test_table (temp_column) VALUES (42);",
+			__METHOD__
+		);
+
+		$this->assertInstanceOf( IResultWrapper::class, $resCreate );
+		$this->assertInstanceOf( IResultWrapper::class, $resModify );
+	}
+
+	/**
+	 * @covers Database::executeQuery()
+	 * @covers Database::assertIsWritableMaster()
+	 */
+	public function testShouldRejectPseudoPermanentTemporaryTableOperationsOnReplicaDatabaseConnection(): void {
+		$this->expectException( DBReadOnlyRoleError::class );
+		$this->expectDeprecationMessage( 'Server is configured as a read-only replica database.' );
+
+		$dbr = new DatabaseTestHelper(
+			__CLASS__ . '::' . $this->getName(),
+			[ 'topologyRole' => Database::ROLE_STREAMING_REPLICA ]
+		);
+
+		$dbr->query(
+			"CREATE TEMPORARY TABLE temp_test_table (temp_column int);",
+			__METHOD__,
+			Database::QUERY_PSEUDO_PERMANENT
+		);
+	}
+
+	/**
+	 * @covers Database::executeQuery()
+	 * @covers Database::assertIsWritableMaster()
+	 */
+	public function testShouldAcceptWriteQueryOnPrimaryDatabaseConnection(): void {
+		$dbr = new DatabaseTestHelper(
+			__CLASS__ . '::' . $this->getName(),
+			[ 'topologyRole' => Database::ROLE_STREAMING_MASTER ]
+		);
+
+		$res = $dbr->query( "INSERT INTO test_table (a_column) VALUES ('foo');", __METHOD__ );
+
+		$this->assertInstanceOf( IResultWrapper::class, $res );
+	}
+
+	/**
+	 * @covers Database::executeQuery()
+	 * @covers Database::assertIsWritableMaster()
+	 */
+	public function testShouldRejectWriteQueryOnPrimaryDatabaseConnectionWhenReplicaQueryRoleFlagIsSet(): void {
+		$this->expectException( DBReadOnlyRoleError::class );
+		$this->expectDeprecationMessage( 'Cannot write; target role is DB_REPLICA' );
+
+		$dbr = new DatabaseTestHelper(
+			__CLASS__ . '::' . $this->getName(),
+			[ 'topologyRole' => Database::ROLE_STREAMING_MASTER ]
+		);
+
+		$dbr->query(
+			"INSERT INTO test_table (a_column) VALUES ('foo');",
+			__METHOD__,
+			Database::QUERY_REPLICA_ROLE
+		);
 	}
 }

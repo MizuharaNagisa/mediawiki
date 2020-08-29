@@ -106,13 +106,12 @@ class TextConflictHelper {
 		$this->submitLabel = $submitLabel;
 		$this->contentModel = $title->getContentModel();
 
-		if ( $contentHandlerFactory === null ) {
-			//wfDeprecated( __METHOD__, '1.35' );
-			$this->contentHandlerFactory = MediaWikiServices::getInstance()
-				->getContentHandlerFactory();
-		} else {
-			$this->contentHandlerFactory = $contentHandlerFactory;
+		if ( !$contentHandlerFactory ) {
+			wfDeprecated( __METHOD__ . ' without $contentHandlerFactory parameter', '1.35' );
+			$contentHandlerFactory = MediaWikiServices::getInstance()->getContentHandlerFactory();
 		}
+		$this->contentHandlerFactory = $contentHandlerFactory;
+
 		$this->contentFormat = $this->contentHandlerFactory
 			->getContentHandler( $this->contentModel )
 			->getDefaultFormat();
@@ -218,12 +217,16 @@ class TextConflictHelper {
 	 * HTML to build the textbox1 on edit conflicts
 	 *
 	 * @param array $customAttribs
+	 * @return string HTML
 	 */
 	public function getEditConflictMainTextBox( array $customAttribs = [] ) {
 		$builder = new TextboxBuilder();
 		$classes = $builder->getTextboxProtectionCSSClasses( $this->title );
 
-		$attribs = [ 'tabindex' => 1 ];
+		$attribs = [
+			'aria-label' => $this->out->msg( 'edit-textarea-aria-label' )->text(),
+			'tabindex' => 1,
+		];
 		$attribs += $customAttribs;
 
 		$attribs = $builder->mergeClassesIntoAttributes( $classes, $attribs );
@@ -235,8 +238,10 @@ class TextConflictHelper {
 			$this->title
 		);
 
-		$this->out->addHTML(
-			Html::textarea( 'wpTextbox1', $builder->addNewLineAtEnd( $this->storedversion ), $attribs )
+		return Html::textarea(
+			'wpTextbox1',
+			$builder->addNewLineAtEnd( $this->storedversion ),
+			$attribs
 		);
 	}
 

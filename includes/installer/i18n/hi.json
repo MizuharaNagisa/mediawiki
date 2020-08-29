@@ -1,14 +1,14 @@
 {
 	"@metadata": {
 		"authors": [
+			"Phoenix303",
+			"Sachinkatiyar",
+			"Sahilrathod",
+			"Sfic",
+			"Shyamal",
 			"Smtchahal",
 			"Vivek Rai",
-			"Phoenix303",
-			"संजीव कुमार",
-			"Sahilrathod",
-			"Shyamal",
-			"Sfic",
-			"Sachinkatiyar"
+			"संजीव कुमार"
 		]
 	},
 	"config-desc": "साँचा लिए इंस्टॉलर",
@@ -37,7 +37,6 @@
 	"config-page-install": "स्थापित करें",
 	"config-page-complete": "पूर्ण!",
 	"config-page-restart": "स्थापना को पुनरारंभ करें",
-	"config-page-readme": "मुझे पढ़ें",
 	"config-page-releasenotes": "रिलीज नोट्स",
 	"config-page-copying": "अनुकरण",
 	"config-page-upgradedoc": "उन्नयन",

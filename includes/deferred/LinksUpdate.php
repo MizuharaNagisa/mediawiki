@@ -20,8 +20,10 @@
  * @file
  */
 
+use MediaWiki\HookContainer\ProtectedHookAccessorTrait;
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Revision\RevisionRecord;
 use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\ScopedCallback;
 
@@ -33,6 +35,8 @@ use Wikimedia\ScopedCallback;
  * See docs/deferred.txt
  */
 class LinksUpdate extends DataUpdate {
+	use ProtectedHookAccessorTrait;
+
 	// @todo make members protected, but make sure extensions don't break
 
 	/** @var int Page ID of the article linked from */
@@ -74,8 +78,8 @@ class LinksUpdate extends DataUpdate {
 	/** @var bool Whether to queue jobs for recursive updates */
 	public $mRecursive;
 
-	/** @var Revision Revision for which this update has been triggered */
-	private $mRevision;
+	/** @var RevisionRecord Revision for which this update has been triggered */
+	private $mRevisionRecord;
 
 	/**
 	 * @var array[]|null Added links if calculated.
@@ -134,7 +138,8 @@ class LinksUpdate extends DataUpdate {
 
 		if ( !$this->mId ) {
 			throw new InvalidArgumentException(
-				"The Title object yields no ID. Perhaps the page doesn't exist?"
+				"The Title object yields no ID. "
+					. "Perhaps the page [[{$title->getPrefixedDBkey()}]] doesn't exist?"
 			);
 		}
 
@@ -167,9 +172,7 @@ class LinksUpdate extends DataUpdate {
 
 		$this->mRecursive = $recursive;
 
-		// Avoid PHP 7.1 warning from passing $this by reference
-		$linksUpdate = $this;
-		Hooks::run( 'LinksUpdateConstructed', [ &$linksUpdate ] );
+		$this->getHookRunner()->onLinksUpdateConstructed( $this );
 	}
 
 	/**
@@ -187,9 +190,7 @@ class LinksUpdate extends DataUpdate {
 			}
 		}
 
-		// Avoid PHP 7.1 warning from passing $this by reference
-		$linksUpdate = $this;
-		Hooks::run( 'LinksUpdate', [ &$linksUpdate ] );
+		$this->getHookRunner()->onLinksUpdate( $this );
 		$this->doIncrementalUpdate();
 
 		// Commit and release the lock (if set)
@@ -199,9 +200,7 @@ class LinksUpdate extends DataUpdate {
 			$this->getDB(),
 			__METHOD__,
 			function () {
-				// Avoid PHP 7.1 warning from passing $this by reference
-				$linksUpdate = $this;
-				Hooks::run( 'LinksUpdateComplete', [ &$linksUpdate, $this->ticket ] );
+				$this->getHookRunner()->onLinksUpdateComplete( $this, $this->ticket );
 			}
 		) );
 	}
@@ -335,7 +334,7 @@ class LinksUpdate extends DataUpdate {
 		$agent = $this->getCauseAgent();
 
 		self::queueRecursiveJobsForTable( $this->mTitle, 'templatelinks', $action, $agent );
-		if ( $this->mTitle->getNamespace() == NS_FILE ) {
+		if ( $this->mTitle->getNamespace() === NS_FILE ) {
 			// Process imagelinks in case the title is or was a redirect
 			self::queueRecursiveJobsForTable( $this->mTitle, 'imagelinks', $action, $agent );
 		}
@@ -515,7 +514,7 @@ class LinksUpdate extends DataUpdate {
 		}
 
 		if ( count( $insertions ) ) {
-			Hooks::run( 'LinksUpdateAfterInsert', [ $this, $table, $insertions ] );
+			$this->getHookRunner()->onLinksUpdateAfterInsert( $this, $table, $insertions );
 		}
 	}
 
@@ -679,7 +678,7 @@ class LinksUpdate extends DataUpdate {
 	 * @param array $existing
 	 * @return array
 	 */
-	function getPropertyInsertions( $existing = [] ) {
+	private function getPropertyInsertions( $existing = [] ) {
 		$diffs = array_diff_assoc( $this->mProperties, $existing );
 
 		$arr = [];
@@ -1041,19 +1040,41 @@ class LinksUpdate extends DataUpdate {
 	 * Set the revision corresponding to this LinksUpdate
 	 *
 	 * @since 1.27
-	 *
+	 * @deprecated since 1.35, use setRevisionRecord
 	 * @param Revision $revision
 	 */
 	public function setRevision( Revision $revision ) {
-		$this->mRevision = $revision;
+		wfDeprecated( __METHOD__, '1.35' );
+		$this->mRevisionRecord = $revision->getRevisionRecord();
+	}
+
+	/**
+	 * Set the RevisionRecord corresponding to this LinksUpdate
+	 *
+	 * @since 1.35
+	 * @param RevisionRecord $revisionRecord
+	 */
+	public function setRevisionRecord( RevisionRecord $revisionRecord ) {
+		$this->mRevisionRecord = $revisionRecord;
 	}
 
 	/**
 	 * @since 1.28
+	 * @deprecated since 1.35, use getRevisionRecord
 	 * @return null|Revision
 	 */
 	public function getRevision() {
-		return $this->mRevision;
+		wfDeprecated( __METHOD__, '1.35' );
+		$revRecord = $this->mRevisionRecord;
+		return $revRecord ? new Revision( $revRecord ) : null;
+	}
+
+	/**
+	 * @since 1.35
+	 * @return RevisionRecord|null
+	 */
+	public function getRevisionRecord() {
+		return $this->mRevisionRecord;
 	}
 
 	/**

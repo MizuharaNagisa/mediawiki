@@ -38,7 +38,7 @@ class SpecialBlockList extends SpecialPage {
 
 	protected $blockType;
 
-	function __construct() {
+	public function __construct() {
 		parent::__construct( 'BlockList' );
 	}
 
@@ -95,19 +95,17 @@ class SpecialBlockList extends SpecialPage {
 			],
 		];
 
-		if ( $this->getConfig()->get( 'EnablePartialBlocks' ) ) {
-			$fields['BlockType'] = [
-				'type' => 'select',
-				'label-message' => 'blocklist-type',
-				'options' => [
-					$this->msg( 'blocklist-type-opt-all' )->escaped() => '',
-					$this->msg( 'blocklist-type-opt-sitewide' )->escaped() => 'sitewide',
-					$this->msg( 'blocklist-type-opt-partial' )->escaped() => 'partial',
-				],
-				'name' => 'blockType',
-				'cssclass' => 'mw-field-block-type',
-			];
-		}
+		$fields['BlockType'] = [
+			'type' => 'select',
+			'label-message' => 'blocklist-type',
+			'options' => [
+				$this->msg( 'blocklist-type-opt-all' )->escaped() => '',
+				$this->msg( 'blocklist-type-opt-sitewide' )->escaped() => 'sitewide',
+				$this->msg( 'blocklist-type-opt-partial' )->escaped() => 'partial',
+			],
+			'name' => 'blockType',
+			'cssclass' => 'mw-field-block-type',
+		];
 
 		$fields['Limit'] = [
 			'type' => 'limitselect',
@@ -115,9 +113,7 @@ class SpecialBlockList extends SpecialPage {
 			'options' => $pager->getLimitSelectList(),
 			'name' => 'limit',
 			'default' => $pager->getLimit(),
-			'cssclass' => $this->getConfig()->get( 'EnablePartialBlocks' ) ?
-				'mw-field-limit mw-has-field-block-type' :
-				'mw-field-limit',
+			'cssclass' => 'mw-field-limit mw-has-field-block-type',
 		];
 
 		$context = new DerivativeContext( $this->getContext() );
@@ -218,7 +214,7 @@ class SpecialBlockList extends SpecialPage {
 
 		# Check for other blocks, i.e. global/tor blocks
 		$otherBlockLink = [];
-		Hooks::run( 'OtherBlockLogLink', [ &$otherBlockLink, $this->target ] );
+		$this->getHookRunner()->onOtherBlockLogLink( $otherBlockLink, $this->target );
 
 		# Show additional header for the local block only when other blocks exists.
 		# Not necessary in a standard installation without such extensions enabled
@@ -245,7 +241,6 @@ class SpecialBlockList extends SpecialPage {
 				) . "\n"
 			);
 			$list = '';
-			// @phan-suppress-next-line PhanEmptyForeach False positive
 			foreach ( $otherBlockLink as $link ) {
 				$list .= Html::rawElement( 'li', [], $link ) . "\n";
 			}

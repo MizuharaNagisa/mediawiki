@@ -21,10 +21,12 @@
  * @ingroup Parser
  */
 
+use MediaWiki\HookContainer\HookContainer;
+use MediaWiki\HookContainer\HookRunner;
 use MediaWiki\MediaWikiServices;
 
 /**
- * @internal
+ * @internal for using in Parser only.
  *
  * @ingroup Parser
  */
@@ -40,7 +42,6 @@ class LinkHolderArray {
 	 * @var Parser
 	 */
 	public $parent;
-	protected $tempIdOffset;
 
 	/**
 	 * Current language converter
@@ -49,21 +50,31 @@ class LinkHolderArray {
 	private $languageConverter;
 
 	/**
+	 * @var HookRunner
+	 */
+	private $hookRunner;
+
+	/**
 	 * @param Parser $parent
 	 * @param ILanguageConverter|null $languageConverter
+	 * @param HookContainer|null $hookContainer
 	 */
-	public function __construct( $parent, ILanguageConverter $languageConverter = null ) {
+	public function __construct( Parser $parent, ILanguageConverter $languageConverter = null,
+		HookContainer $hookContainer = null
+	) {
 		$this->parent = $parent;
-		$this->languageConverter = DeprecationHelper::newArgumentWithDeprecation(
-			__METHOD__,
-			'languageConverter',
-			'1.35',
-			$languageConverter,
-			function () use ( $parent ) {
-				return MediaWikiServices::getInstance()->getLanguageConverterFactory()
-					->getLanguageConverter( $parent->getTargetLanguage() );
-			}
-		);
+
+		if ( !$languageConverter ) {
+			wfDeprecated( __METHOD__ . ' without $languageConverter parameter', '1.35' );
+			$languageConverter = MediaWikiServices::getInstance()
+				->getLanguageConverterFactory()
+				->getLanguageConverter( $parent->getTargetLanguage() );
+		}
+		$this->languageConverter = $languageConverter;
+		if ( !$hookContainer ) {
+			$hookContainer = MediaWikiServices::getInstance()->getHookContainer();
+		}
+		$this->hookRunner = new HookRunner( $hookContainer );
 	}
 
 	/**
@@ -71,7 +82,7 @@ class LinkHolderArray {
 	 */
 	public function __destruct() {
 		// @phan-suppress-next-line PhanTypeSuspiciousNonTraversableForeach
-		foreach ( $this as $name => $value ) {
+		foreach ( $this as $name => $_ ) {
 			unset( $this->$name );
 		}
 	}
@@ -119,42 +130,31 @@ class LinkHolderArray {
 	 *
 	 * @param Title $nt
 	 * @param string $text
-	 * @param array $query [optional]
 	 * @param string $trail [optional]
 	 * @param string $prefix [optional]
 	 * @return string
 	 */
-	public function makeHolder( $nt, $text = '', $query = [], $trail = '', $prefix = '' ) {
-		if ( !is_object( $nt ) ) {
-			# Fail gracefully
-			$retVal = "<!-- ERROR -->{$prefix}{$text}{$trail}";
+	public function makeHolder( Title $nt, $text = '', $trail = '', $prefix = '' ) {
+		# Separate the link trail from the rest of the link
+		list( $inside, $trail ) = Linker::splitTrail( $trail );
+
+		$key = $this->parent->nextLinkID();
+		$entry = [
+			'title' => $nt,
+			'text' => $prefix . $text . $inside,
+			'pdbk' => $nt->getPrefixedDBkey(),
+		];
+
+		$this->size++;
+		if ( $nt->isExternal() ) {
+			// Use a globally unique ID to keep the objects mergable
+			$this->interwikis[$key] = $entry;
+			return "<!--IWLINK'\" $key-->{$trail}";
 		} else {
-			# Separate the link trail from the rest of the link
-			list( $inside, $trail ) = Linker::splitTrail( $trail );
-
-			$entry = [
-				'title' => $nt,
-				'text' => $prefix . $text . $inside,
-				'pdbk' => $nt->getPrefixedDBkey(),
-			];
-			if ( $query !== [] ) {
-				$entry['query'] = $query;
-			}
-
-			if ( $nt->isExternal() ) {
-				// Use a globally unique ID to keep the objects mergable
-				$key = $this->parent->nextLinkID();
-				$this->interwikis[$key] = $entry;
-				$retVal = "<!--IWLINK'\" $key-->{$trail}";
-			} else {
-				$key = $this->parent->nextLinkID();
-				$ns = $nt->getNamespace();
-				$this->internals[$ns][$key] = $entry;
-				$retVal = "<!--LINK'\" $ns:$key-->{$trail}";
-			}
-			$this->size++;
+			$ns = $nt->getNamespace();
+			$this->internals[$ns][$key] = $entry;
+			return "<!--LINK'\" $ns:$key-->{$trail}";
 		}
-		return $retVal;
 	}
 
 	/**
@@ -194,10 +194,8 @@ class LinkHolderArray {
 		$lb->setCaller( __METHOD__ );
 
 		foreach ( $this->internals as $ns => $entries ) {
-			foreach ( $entries as $entry ) {
+			foreach ( $entries as [ 'title' => $title, 'pdbk' => $pdbk ] ) {
 				/** @var Title $title */
-				$title = $entry['title'];
-				$pdbk = $entry['pdbk'];
 
 				# Skip invalid entries.
 				# Result will be ugly, but prevents crash.
@@ -251,9 +249,9 @@ class LinkHolderArray {
 			}
 			unset( $res );
 		}
-		if ( count( $linkcolour_ids ) ) {
+		if ( $linkcolour_ids !== [] ) {
 			// pass an array of page_ids to an extension
-			Hooks::run( 'GetLinkColours', [ $linkcolour_ids, &$colours, $this->parent->getTitle() ] );
+			$this->hookRunner->onGetLinkColours( $linkcolour_ids, $colours, $this->parent->getTitle() );
 		}
 
 		# Do a second query for different language variants of links and categories
@@ -268,31 +266,29 @@ class LinkHolderArray {
 				$pdbk = $entry['pdbk'];
 				$title = $entry['title'];
 				$query = $entry['query'] ?? [];
-				$key = "$ns:$index";
-				$searchkey = "<!--LINK'\" $key-->";
-				$displayText = $entry['text'];
+				$searchkey = "<!--LINK'\" $ns:$index-->";
+				$displayTextHtml = $entry['text'];
 				if ( isset( $entry['selflink'] ) ) {
-					$replacePairs[$searchkey] = Linker::makeSelfLinkObj( $title, $displayText, $query );
+					$replacePairs[$searchkey] = Linker::makeSelfLinkObj( $title, $displayTextHtml, $query );
 					continue;
 				}
-				if ( $displayText === '' ) {
+				if ( $displayTextHtml === '' ) {
 					$displayText = null;
 				} else {
-					$displayText = new HtmlArmor( $displayText );
+					$displayText = new HtmlArmor( $displayTextHtml );
 				}
 				if ( !isset( $colours[$pdbk] ) ) {
 					$colours[$pdbk] = 'new';
 				}
-				$attribs = [];
 				if ( $colours[$pdbk] == 'new' ) {
 					$linkCache->addBadLinkObj( $title );
 					$output->addLink( $title, 0 );
 					$link = $linkRenderer->makeBrokenLink(
-						$title, $displayText, $attribs, $query
+						$title, $displayText, [], $query
 					);
 				} else {
 					$link = $linkRenderer->makePreloadedLink(
-						$title, $displayText, $colours[$pdbk], $attribs, $query
+						$title, $displayText, $colours[$pdbk], [], $query
 					);
 				}
 
@@ -360,14 +356,13 @@ class LinkHolderArray {
 			if ( $ns == NS_SPECIAL ) {
 				continue;
 			}
-			foreach ( $entries as $index => $entry ) {
-				$pdbk = $entry['pdbk'];
+			foreach ( $entries as $index => [ 'title' => $title, 'pdbk' => $pdbk ] ) {
 				// we only deal with new links (in its first query)
 				if ( !isset( $colours[$pdbk] ) || $colours[$pdbk] === 'new' ) {
-					$titlesAttrs[] = [ $index, $entry['title'] ];
+					$titlesAttrs[] = [ $index, $title ];
 					// separate titles with \0 because it would never appears
 					// in a valid title
-					$titlesToBeConverted .= $entry['title']->getText() . "\0";
+					$titlesToBeConverted .= $title->getText() . "\0";
 				}
 			}
 		}
@@ -375,21 +370,19 @@ class LinkHolderArray {
 		// Now do the conversion and explode string to text of titles
 		$titlesAllVariants = $this->languageConverter->
 			autoConvertToAllVariants( rtrim( $titlesToBeConverted, "\0" ) );
-		$allVariantsName = array_keys( $titlesAllVariants );
 		foreach ( $titlesAllVariants as &$titlesVariant ) {
 			$titlesVariant = explode( "\0", $titlesVariant );
 		}
 
 		// Then add variants of links to link batch
 		$parentTitle = $this->parent->getTitle();
-		foreach ( $titlesAttrs as $i => $attrs ) {
+		foreach ( $titlesAttrs as $i => [ $index, $title ] ) {
 			/** @var Title $title */
-			list( $index, $title ) = $attrs;
 			$ns = $title->getNamespace();
 			$text = $title->getText();
 
-			foreach ( $allVariantsName as $variantName ) {
-				$textVariant = $titlesAllVariants[$variantName][$i];
+			foreach ( $titlesAllVariants as $variantName => $textVariants ) {
+				$textVariant = $textVariants[$i];
 				if ( $textVariant === $text ) {
 					continue;
 				}
@@ -483,10 +476,10 @@ class LinkHolderArray {
 					}
 				}
 			}
-			Hooks::run( 'GetLinkColours', [ $linkcolour_ids, &$colours, $this->parent->getTitle() ] );
+			$this->hookRunner->onGetLinkColours( $linkcolour_ids, $colours, $this->parent->getTitle() );
 
 			// rebuild the categories in original order (if there are replacements)
-			if ( count( $varCategories ) > 0 ) {
+			if ( $varCategories !== [] ) {
 				$newCats = [];
 				$originalCats = $output->getCategories();
 				foreach ( $originalCats as $cat => $sortkey ) {

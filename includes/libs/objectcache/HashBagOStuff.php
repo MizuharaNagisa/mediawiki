@@ -26,6 +26,7 @@
  *
  * Data will not persist and is not shared with other processes.
  *
+ * @newable
  * @ingroup Cache
  */
 class HashBagOStuff extends MediumSpecificBagOStuff {
@@ -40,11 +41,12 @@ class HashBagOStuff extends MediumSpecificBagOStuff {
 	/** @var int CAS token counter */
 	private static $casCounter = 0;
 
-	const KEY_VAL = 0;
-	const KEY_EXP = 1;
-	const KEY_CAS = 2;
+	public const KEY_VAL = 0;
+	public const KEY_EXP = 1;
+	public const KEY_CAS = 2;
 
 	/**
+	 * @stable to call
 	 * @param array $params Additional parameters include:
 	 *   - maxKeys : only allow this many keys (using oldest-first eviction)
 	 * @codingStandardsIgnoreStart
@@ -63,6 +65,7 @@ class HashBagOStuff extends MediumSpecificBagOStuff {
 	}
 
 	protected function doGet( $key, $flags = 0, &$casToken = null ) {
+		$getToken = ( $casToken === self::PASS_BY_REF );
 		$casToken = null;
 
 		if ( !$this->hasKey( $key ) || $this->expire( $key ) ) {
@@ -74,7 +77,9 @@ class HashBagOStuff extends MediumSpecificBagOStuff {
 		unset( $this->bag[$key] );
 		$this->bag[$key] = $temp;
 
-		$casToken = $this->bag[$key][self::KEY_CAS];
+		if ( $getToken ) {
+			$casToken = $this->bag[$key][self::KEY_CAS];
+		}
 
 		return $this->bag[$key][self::KEY_VAL];
 	}
@@ -147,6 +152,16 @@ class HashBagOStuff extends MediumSpecificBagOStuff {
 		$this->doDelete( $key );
 
 		return true;
+	}
+
+	public function setNewPreparedValues( array $valueByKey ) {
+		// Do not bother with serialization as this class does not serialize values
+		$sizes = [];
+		foreach ( $valueByKey as $value ) {
+			$sizes[] = $this->guessSerialValueSize( $value );
+		}
+
+		return $sizes;
 	}
 
 	/**

@@ -27,7 +27,7 @@ use Wikimedia\IPUtils;
  * Uses asynchronous I/O, allowing purges to be done in a highly parallel
  * manner.
  *
- * @todo Consider using MultiHttpClient.
+ * @deprecated Since 1.35 Use MultiHttpClient
  */
 class SquidPurgeClient {
 	/** @var string */
@@ -51,10 +51,10 @@ class SquidPurgeClient {
 	/** @var mixed */
 	protected $currentRequestIndex;
 
-	const EINTR = SOCKET_EINTR;
-	const EAGAIN = SOCKET_EAGAIN;
-	const EINPROGRESS = SOCKET_EINPROGRESS;
-	const BUFFER_SIZE = 8192;
+	public const EINTR = SOCKET_EINTR;
+	public const EAGAIN = SOCKET_EAGAIN;
+	public const EINPROGRESS = SOCKET_EINPROGRESS;
+	public const BUFFER_SIZE = 8192;
 
 	/**
 	 * @var resource|false|null The socket resource, or null for unconnected, or false

@@ -21,6 +21,7 @@
  */
 
 use Liuggio\StatsdClient\Sender\SocketSender;
+use MediaWiki\HookContainer\ProtectedHookAccessorTrait;
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
 use Psr\Log\LoggerInterface;
@@ -33,6 +34,8 @@ use Wikimedia\Rdbms\ILBFactory;
  * The MediaWiki class is the helper class for the index.php entry point.
  */
 class MediaWiki {
+	use ProtectedHookAccessorTrait;
+
 	/** @var IContextSource */
 	private $context;
 	/** @var Config */
@@ -44,9 +47,9 @@ class MediaWiki {
 	private $postSendStrategy;
 
 	/** @var int Use fastcgi_finish_request() */
-	const DEFER_FASTCGI_FINISH_REQUEST = 1;
+	private const DEFER_FASTCGI_FINISH_REQUEST = 1;
 	/** @var int Use ob_end_flush() after explicitly setting the Content-Length */
-	const DEFER_SET_LENGTH_AND_FLUSH = 2;
+	private const DEFER_SET_LENGTH_AND_FLUSH = 2;
 
 	/**
 	 * @param IContextSource|null $context
@@ -85,7 +88,7 @@ class MediaWiki {
 			$ret = Title::newFromURL( $title );
 			// Alias NS_MEDIA page URLs to NS_FILE...we only use NS_MEDIA
 			// in wikitext links to tell Parser to make a direct file link
-			if ( $ret !== null && $ret->getNamespace() == NS_MEDIA ) {
+			if ( $ret !== null && $ret->getNamespace() === NS_MEDIA ) {
 				$ret = Title::makeTitle( NS_FILE, $ret->getDBkey() );
 			}
 			$contLang = MediaWikiServices::getInstance()->getContentLanguage();
@@ -108,8 +111,14 @@ class MediaWiki {
 			$oldid = $oldid ?: $request->getInt( 'diff' );
 			// Allow oldid to override a changed or missing title
 			if ( $oldid ) {
-				$rev = Revision::newFromId( $oldid );
-				$ret = $rev ? $rev->getTitle() : $ret;
+				$revRecord = MediaWikiServices::getInstance()
+					->getRevisionLookup()
+					->getRevisionById( $oldid );
+				if ( $revRecord ) {
+					$ret = Title::newFromLinkTarget(
+						$revRecord->getPageAsLinkTarget()
+					);
+				}
 			}
 		}
 
@@ -152,7 +161,7 @@ class MediaWiki {
 	 *
 	 * @return string Action
 	 */
-	public function getAction() {
+	public function getAction() : string {
 		if ( $this->action === null ) {
 			$this->action = Action::getActionName( $this->context );
 		}
@@ -184,8 +193,7 @@ class MediaWiki {
 			$output->setPrintable();
 		}
 
-		$unused = null; // To pass it by reference
-		Hooks::run( 'BeforeInitialize', [ &$title, &$unused, &$output, &$user, $request, $this ] );
+		$this->getHookRunner()->onBeforeInitialize( $title, null, $output, $user, $request, $this );
 
 		// Invalid titles. T23776: The interwikis must redirect even if the page name is empty.
 		if ( $title === null || ( $title->getDBkey() == '' && !$title->isExternal() )
@@ -205,7 +213,8 @@ class MediaWiki {
 		// We will check again in Article::view().
 		$permErrors = $title->isSpecial( 'RunJobs' )
 			? [] // relies on HMAC key signature alone
-			: $title->getUserPermissionsErrors( 'read', $user );
+			: MediaWikiServices::getInstance()->getPermissionManager()
+				->getPermissionErrors( 'read', $user, $title );
 		if ( count( $permErrors ) ) {
 			// T34276: allowing the skin to generate output with $wgTitle or
 			// $this->context->title set to the input title would allow anonymous users to
@@ -284,7 +293,7 @@ class MediaWiki {
 							$this->action = null;
 							$title = $target;
 							$output->addJsConfigVars( [
-								'wgInternalRedirectTargetUrl' => $target->getFullURL( $query ),
+								'wgInternalRedirectTargetUrl' => $target->getLinkURL( $query ),
 							] );
 							$output->addModules( 'mediawiki.action.view.redirect' );
 						}
@@ -344,7 +353,7 @@ class MediaWiki {
 			|| ( $request->getCheck( 'title' )
 				&& $title->getPrefixedDBkey() == $request->getVal( 'title' ) )
 			|| count( $request->getValueNames( [ 'action', 'title' ] ) )
-			|| !Hooks::run( 'TestCanonicalRedirect', [ $request, $title, $output ] )
+			|| !$this->getHookRunner()->onTestCanonicalRedirect( $request, $title, $output )
 		) {
 			return false;
 		}
@@ -438,8 +447,8 @@ class MediaWiki {
 			// Give extensions a change to ignore/handle redirects as needed
 			$ignoreRedirect = $target = false;
 
-			Hooks::run( 'InitializeArticleMaybeRedirect',
-				[ &$title, &$request, &$ignoreRedirect, &$target, &$article ] );
+			$this->getHookRunner()->onInitializeArticleMaybeRedirect( $title, $request,
+				$ignoreRedirect, $target, $article );
 			$page = $article->getPage(); // reflect any hook changes
 
 			// Follow redirects only for... redirects.
@@ -477,23 +486,23 @@ class MediaWiki {
 	/**
 	 * Perform one of the "standard" actions
 	 *
-	 * @param Page $page
+	 * @param Article $article
 	 * @param Title $requestTitle The original title, before any redirects were applied
 	 */
-	private function performAction( Page $page, Title $requestTitle ) {
+	private function performAction( Article $article, Title $requestTitle ) {
 		$request = $this->context->getRequest();
 		$output = $this->context->getOutput();
 		$title = $this->context->getTitle();
 		$user = $this->context->getUser();
 
-		if ( !Hooks::run( 'MediaWikiPerformAction',
-				[ $output, $page, $title, $user, $request, $this ] )
+		if ( !$this->getHookRunner()->onMediaWikiPerformAction(
+			$output, $article, $title, $user, $request, $this )
 		) {
 			return;
 		}
 
 		$act = $this->getAction();
-		$action = Action::factory( $act, $page, $this->context );
+		$action = Action::factory( $act, $article, $this->context );
 
 		if ( $action instanceof Action ) {
 			// Narrow DB query expectations for this HTTP request
@@ -564,10 +573,10 @@ class MediaWiki {
 			}
 			// GUI-ify and stash the page output in MediaWiki::doPreOutputCommit() while
 			// ChronologyProtector synchronizes DB positions or replicas across all datacenters.
-			MWExceptionHandler::handleException( $e );
-		} catch ( Error $e ) {
+			MWExceptionHandler::handleException( $e, MWExceptionHandler::CAUGHT_BY_ENTRYPOINT );
+		} catch ( Throwable $e ) {
 			// Type errors and such: at least handle it now and clean up the LBFactory state
-			MWExceptionHandler::handleException( $e );
+			MWExceptionHandler::handleException( $e, MWExceptionHandler::CAUGHT_BY_ENTRYPOINT );
 		}
 
 		$this->doPostOutputShutdown();
@@ -614,7 +623,7 @@ class MediaWiki {
 		}
 
 		// Note that DeferredUpdates will catch and log an errors (T88312)
-		DeferredUpdates::addCallableUpdate( function () use ( $n ) {
+		DeferredUpdates::addUpdate( new TransactionRoundDefiningUpdate( function () use ( $n ) {
 			$logger = LoggerFactory::getInstance( 'runJobs' );
 			if ( $this->config->get( 'RunJobsAsync' ) ) {
 				// Send an HTTP request to the job RPC entry point if possible
@@ -622,12 +631,12 @@ class MediaWiki {
 				if ( !$invokedWithSuccess ) {
 					// Fall back to blocking on running the job(s)
 					$logger->warning( "Jobs switched to blocking; Special:RunJobs disabled" );
-					$this->triggerSyncJobs( $n, $logger );
+					$this->triggerSyncJobs( $n );
 				}
 			} else {
-				$this->triggerSyncJobs( $n, $logger );
+				$this->triggerSyncJobs( $n );
 			}
-		} );
+		}, __METHOD__ ) );
 	}
 
 	/**
@@ -656,7 +665,8 @@ class MediaWiki {
 		$config = $context->getConfig();
 		$request = $context->getRequest();
 		$output = $context->getOutput();
-		$lbFactory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
+		$services = MediaWikiServices::getInstance();
+		$lbFactory = $services->getDBLoadBalancerFactory();
 
 		// Try to make sure that all RDBMs, session, and other storage updates complete
 		ignore_user_abort( true );
@@ -705,8 +715,10 @@ class MediaWiki {
 					);
 					$output->redirect( $safeUrl );
 				} else {
-					$e = new LogicException( "No redirect; cannot append cpPosIndex parameter." );
-					MWExceptionHandler::logException( $e );
+					MWExceptionHandler::logException(
+						new LogicException( "No redirect; cannot append cpPosIndex parameter." ),
+						MWExceptionHandler::CAUGHT_BY_ENTRYPOINT
+					);
 				}
 			}
 		}
@@ -733,7 +745,7 @@ class MediaWiki {
 			}
 
 			// Avoid long-term cache pollution due to message cache rebuild timeouts (T133069)
-			if ( MessageCache::singleton()->isDisabled() ) {
+			if ( $services->getMessageCache()->isDisabled() ) {
 				$maxAge = $config->get( 'CdnMaxageSubstitute' );
 				$output->lowerCdnMaxage( $maxAge );
 				$request->response()->header( "X-Response-Substitute: true" );
@@ -751,7 +763,7 @@ class MediaWiki {
 				// EditPage), or when the HTTP response is personalised for other reasons (e.g. viewing
 				// articles within the same browsing session after making an edit).
 				$user = $context->getUser();
-				MediaWikiServices::getInstance()->getBlockManager()
+				$services->getBlockManager()
 					->trackBlockWithCookie( $user, $request->response() );
 			}
 		}
@@ -823,9 +835,9 @@ class MediaWiki {
 		try {
 			// Show visible profiling data if enabled (which cannot be post-send)
 			Profiler::instance()->logDataPageOutputOnly();
-		} catch ( Exception $e ) {
+		} catch ( Throwable $e ) {
 			// An error may already have been shown in run(), so just log it to be safe
-			MWExceptionHandler::logException( $e );
+			MWExceptionHandler::logException( $e, MWExceptionHandler::CAUGHT_BY_ENTRYPOINT );
 		}
 
 		// Disable WebResponse setters for post-send processing (T191537).
@@ -835,9 +847,12 @@ class MediaWiki {
 		$callback = function () {
 			try {
 				$this->restInPeace();
-			} catch ( Exception $e ) {
+			} catch ( Throwable $e ) {
 				// If this is post-send, then displaying errors can cause broken HTML
-				MWExceptionHandler::rollbackMasterChangesAndLog( $e );
+				MWExceptionHandler::rollbackMasterChangesAndLog(
+					$e,
+					MWExceptionHandler::CAUGHT_BY_ENTRYPOINT
+				);
 			}
 		};
 
@@ -898,54 +913,8 @@ class MediaWiki {
 			$trxProfiler->setExpectations( $trxLimits['POST'], __METHOD__ );
 		}
 
-		// If the user has forceHTTPS set to true, or if the user
-		// is in a group requiring HTTPS, or if they have the HTTPS
-		// preference set, redirect them to HTTPS.
-		// Note: Do this after $wgTitle is setup, otherwise the hooks run from
-		// isLoggedIn() will do all sorts of weird stuff.
-		if (
-			$request->getProtocol() == 'http' &&
-			// switch to HTTPS only when supported by the server
-			preg_match( '#^https://#', wfExpandUrl( $request->getRequestURL(), PROTO_HTTPS ) ) &&
-			(
-				$request->getSession()->shouldForceHTTPS() ||
-				// Check the cookie manually, for paranoia
-				$request->getCookie( 'forceHTTPS', '' ) ||
-				// check for prefixed version that was used for a time in older MW versions
-				$request->getCookie( 'forceHTTPS' ) ||
-				// Avoid checking the user and groups unless it's enabled.
-				(
-					$this->context->getUser()->isLoggedIn()
-					&& $this->context->getUser()->requiresHTTPS()
-				)
-			)
-		) {
-			$oldUrl = $request->getFullRequestURL();
-			$redirUrl = preg_replace( '#^http://#', 'https://', $oldUrl );
-
-			// ATTENTION: This hook is likely to be removed soon due to overall design of the system.
-			if ( Hooks::run( 'BeforeHttpsRedirect', [ $this->context, &$redirUrl ] ) ) {
-				if ( $request->wasPosted() ) {
-					// This is weird and we'd hope it almost never happens. This
-					// means that a POST came in via HTTP and policy requires us
-					// redirecting to HTTPS. It's likely such a request is going
-					// to fail due to post data being lost, but let's try anyway
-					// and just log the instance.
-
-					// @todo FIXME: See if we could issue a 307 or 308 here, need
-					// to see how clients (automated & browser) behave when we do
-					wfDebugLog( 'RedirectedPosts', "Redirected from HTTP to HTTPS: $oldUrl" );
-				}
-				// Setup dummy Title, otherwise OutputPage::redirect will fail
-				$title = Title::newFromText( 'REDIR', NS_MAIN );
-				$this->context->setTitle( $title );
-				// Since we only do this redir to change proto, always send a vary header
-				$output->addVaryHeader( 'X-Forwarded-Proto' );
-				$output->redirect( $redirUrl );
-				$output->output();
-
-				return;
-			}
+		if ( $this->maybeDoHttpsRedirect() ) {
+			return;
 		}
 
 		if ( $title->canExist() && HTMLFileCache::useFileCache( $this->context ) ) {
@@ -989,6 +958,93 @@ class MediaWiki {
 		$this->schedulePostSendJobs();
 		// If no exceptions occurred then send the output since it is safe now
 		$this->outputResponsePayload( $outputWork() );
+	}
+
+	/**
+	 * Check if an HTTP->HTTPS redirect should be done. It may still be aborted
+	 * by a hook, so this is not the final word.
+	 *
+	 * @return bool
+	 */
+	private function shouldDoHttpRedirect() {
+		$request = $this->context->getRequest();
+
+		// Don't redirect if we're already on HTTPS
+		if ( $request->getProtocol() !== 'http' ) {
+			return false;
+		}
+
+		$force = $this->config->get( 'ForceHTTPS' );
+
+		// Don't redirect if $wgServer is explicitly HTTP. We test for this here
+		// by checking whether wfExpandUrl() is able to force HTTPS.
+		if ( !preg_match( '#^https://#', wfExpandUrl( $request->getRequestURL(), PROTO_HTTPS ) ) ) {
+			if ( $force ) {
+				throw new RuntimeException( '$wgForceHTTPS is true but the server is not HTTPS' );
+			}
+			return false;
+		}
+
+		// Configured $wgForceHTTPS overrides the remaining conditions
+		if ( $force ) {
+			return true;
+		}
+
+		// Check if HTTPS is required by the session or user preferences
+		return $request->getSession()->shouldForceHTTPS() ||
+			// Check the cookie manually, for paranoia
+			$request->getCookie( 'forceHTTPS', '' ) ||
+			// Avoid checking the user and groups unless it's enabled.
+			(
+				$this->context->getUser()->isLoggedIn()
+				&& $this->context->getUser()->requiresHTTPS()
+			);
+	}
+
+	/**
+	 * If the stars are suitably aligned, do an HTTP->HTTPS redirect
+	 *
+	 * Note: Do this after $wgTitle is setup, otherwise the hooks run from
+	 * isLoggedIn() will do all sorts of weird stuff.
+	 *
+	 * @return bool True if the redirect was done. Handling of the request
+	 *   should be aborted. False if no redirect was done.
+	 */
+	private function maybeDoHttpsRedirect() {
+		if ( !$this->shouldDoHttpRedirect() ) {
+			return false;
+		}
+
+		$request = $this->context->getRequest();
+		$oldUrl = $request->getFullRequestURL();
+		$redirUrl = preg_replace( '#^http://#', 'https://', $oldUrl );
+
+		// ATTENTION: This hook is likely to be removed soon due to overall design of the system.
+		if ( !$this->getHookRunner()->onBeforeHttpsRedirect( $this->context, $redirUrl ) ) {
+			return false;
+		}
+
+		if ( $request->wasPosted() ) {
+			// This is weird and we'd hope it almost never happens. This
+			// means that a POST came in via HTTP and policy requires us
+			// redirecting to HTTPS. It's likely such a request is going
+			// to fail due to post data being lost, but let's try anyway
+			// and just log the instance.
+
+			// @todo FIXME: See if we could issue a 307 or 308 here, need
+			// to see how clients (automated & browser) behave when we do
+			wfDebugLog( 'RedirectedPosts', "Redirected from HTTP to HTTPS: $oldUrl" );
+		}
+		// Setup dummy Title, otherwise OutputPage::redirect will fail
+		$title = Title::newFromText( 'REDIR', NS_MAIN );
+		$this->context->setTitle( $title );
+		// Since we only do this redir to change proto, always send a vary header
+		$output = $this->context->getOutput();
+		$output->addVaryHeader( 'X-Forwarded-Proto' );
+		$output->redirect( $redirUrl );
+		$output->output();
+
+		return true;
 	}
 
 	/**
@@ -1063,7 +1119,7 @@ class MediaWiki {
 		$lbFactory->commitMasterChanges( __METHOD__ );
 		$lbFactory->shutdown( $lbFactory::SHUTDOWN_NO_CHRONPROT );
 
-		wfDebug( "Request ended normally\n" );
+		wfDebug( "Request ended normally" );
 	}
 
 	/**
@@ -1088,8 +1144,8 @@ class MediaWiki {
 				$statsdClient->send( $stats->getData() );
 
 				$stats->clearData(); // empty buffer for the next round
-			} catch ( Exception $ex ) {
-				MWExceptionHandler::logException( $ex );
+			} catch ( Exception $e ) {
+				MWExceptionHandler::logException( $e, MWExceptionHandler::CAUGHT_BY_ENTRYPOINT );
 			}
 		}
 	}
@@ -1127,26 +1183,25 @@ class MediaWiki {
 				if ( !$invokedWithSuccess ) {
 					// Fall back to blocking on running the job(s)
 					$logger->warning( "Jobs switched to blocking; Special:RunJobs disabled" );
-					$this->triggerSyncJobs( $n, $logger );
+					$this->triggerSyncJobs( $n );
 				}
 			} else {
-				$this->triggerSyncJobs( $n, $logger );
+				$this->triggerSyncJobs( $n );
 			}
 		} catch ( JobQueueError $e ) {
 			// Do not make the site unavailable (T88312)
-			MWExceptionHandler::logException( $e );
+			MWExceptionHandler::logException( $e, MWExceptionHandler::CAUGHT_BY_ENTRYPOINT );
 		}
 	}
 
 	/**
 	 * @param int $n Number of jobs to try to run
-	 * @param LoggerInterface $runJobsLogger
 	 */
-	private function triggerSyncJobs( $n, LoggerInterface $runJobsLogger ) {
+	private function triggerSyncJobs( $n ) {
 		$trxProfiler = Profiler::instance()->getTransactionProfiler();
 		$old = $trxProfiler->setSilenced( true );
 		try {
-			$runner = new JobRunner( $runJobsLogger );
+			$runner = MediaWikiServices::getInstance()->getJobRunner();
 			$runner->run( [ 'maxJobs' => $n ] );
 		} finally {
 			$trxProfiler->setSilenced( $old );

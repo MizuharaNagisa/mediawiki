@@ -526,7 +526,7 @@ abstract class RevisionRecord {
 			$permissionManager = MediaWikiServices::getInstance()->getPermissionManager();
 			$permissionlist = implode( ', ', $permissions );
 			if ( $title === null ) {
-				wfDebug( "Checking for $permissionlist due to $field match on $bitfield\n" );
+				wfDebug( "Checking for $permissionlist due to $field match on $bitfield" );
 				foreach ( $permissions as $perm ) {
 					if ( $permissionManager->userHasRight( $user, $perm ) ) {
 						return true;
@@ -535,7 +535,7 @@ abstract class RevisionRecord {
 				return false;
 			} else {
 				$text = $title->getPrefixedText();
-				wfDebug( "Checking for $permissionlist on $text due to $field match on $bitfield\n" );
+				wfDebug( "Checking for $permissionlist on $text due to $field match on $bitfield" );
 
 				foreach ( $permissions as $perm ) {
 					if ( $permissionManager->userCan( $perm, $user, $title ) ) {
@@ -572,6 +572,15 @@ abstract class RevisionRecord {
 			&& $this->getComment( self::RAW ) !== null
 			&& $this->getUser( self::RAW ) !== null
 			&& $this->mSlots->getSlotRoles() !== [];
+	}
+
+	/**
+	 * Checks whether the revision record is a stored current revision.
+	 * @since 1.35
+	 * @return bool
+	 */
+	public function isCurrent() {
+		return false;
 	}
 
 }

@@ -52,7 +52,7 @@ class BlockListPager extends TablePager {
 		$this->mDefaultDirection = IndexPager::DIR_DESCENDING;
 	}
 
-	function getFieldNames() {
+	protected function getFieldNames() {
 		static $headers = null;
 
 		if ( $headers === null ) {
@@ -78,7 +78,7 @@ class BlockListPager extends TablePager {
 	 * @return string
 	 * @suppress PhanTypeArraySuspicious
 	 */
-	function formatValue( $name, $value ) {
+	public function formatValue( $name, $value ) {
 		static $msg = null;
 		if ( $msg === null ) {
 			$keys = [
@@ -208,7 +208,7 @@ class BlockListPager extends TablePager {
 			case 'ipb_params':
 				$properties = [];
 
-				if ( $this->getConfig()->get( 'EnablePartialBlocks' ) && $row->ipb_sitewide ) {
+				if ( $row->ipb_sitewide ) {
 					$properties[] = htmlspecialchars( $msg['blocklist-editing-sitewide'] );
 				}
 
@@ -331,7 +331,7 @@ class BlockListPager extends TablePager {
 		);
 	}
 
-	function getQueryInfo() {
+	public function getQueryInfo() {
 		$commentQuery = CommentStore::getStore()->getJoin( 'ipb_reason' );
 		$actorQuery = ActorMigration::newMigration()->getJoin( 'ipb_by' );
 
@@ -383,14 +383,15 @@ class BlockListPager extends TablePager {
 	 *
 	 * @return int Total number of unexpired active autoblocks
 	 */
-	function getTotalAutoblocks() {
+	public function getTotalAutoblocks() {
 		$dbr = $this->getDatabase();
 		$res = $dbr->selectField( 'ipblocks',
 			'COUNT(*)',
 			[
 				'ipb_auto' => '1',
 				'ipb_expiry >= ' . $dbr->addQuotes( $dbr->timestamp() ),
-			]
+			],
+			__METHOD__
 		);
 		if ( $res ) {
 			return $res;
@@ -402,15 +403,15 @@ class BlockListPager extends TablePager {
 		return parent::getTableClass() . ' mw-blocklist';
 	}
 
-	function getIndexField() {
-		return 'ipb_timestamp';
+	public function getIndexField() {
+		return [ [ 'ipb_timestamp', 'ipb_id' ] ];
 	}
 
-	function getDefaultSort() {
-		return 'ipb_timestamp';
+	public function getDefaultSort() {
+		return '';
 	}
 
-	function isFieldSortable( $name ) {
+	protected function isFieldSortable( $name ) {
 		return false;
 	}
 
@@ -418,7 +419,7 @@ class BlockListPager extends TablePager {
 	 * Do a LinkBatch query to minimise database load when generating all these links
 	 * @param IResultWrapper $result
 	 */
-	function preprocessResults( $result ) {
+	public function preprocessResults( $result ) {
 		# Do a link batch query
 		$lb = new LinkBatch;
 		$lb->setCaller( __METHOD__ );

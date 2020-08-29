@@ -86,7 +86,8 @@ class RebuildLocalisationCache extends Maintenance {
 		}
 
 		$conf = $wgLocalisationCacheConf;
-		$conf['manualRecache'] = false; // Allow fallbacks to create CDB files
+		// Allow fallbacks to create CDB files
+		$conf['manualRecache'] = false;
 		$conf['forceRecache'] = $force || !empty( $conf['forceRecache'] );
 		if ( $this->hasOption( 'outdir' ) ) {
 			$conf['storeDirectory'] = $this->getOption( 'outdir' );
@@ -108,10 +109,13 @@ class RebuildLocalisationCache extends Maintenance {
 				MediaWikiServices::getInstance()->getResourceLoader()
 					->getMessageBlobStore()->clear();
 			} ],
-			MediaWikiServices::getInstance()->getLanguageNameUtils()
+			MediaWikiServices::getInstance()->getLanguageNameUtils(),
+			MediaWikiServices::getInstance()->getHookContainer()
 		);
 
-		$allCodes = array_keys( Language::fetchLanguageNames( null, 'mwfile' ) );
+		$allCodes = array_keys( MediaWikiServices::getInstance()
+			->getLanguageNameUtils()
+			->getLanguageNames( null, 'mwfile' ) );
 		if ( $this->hasOption( 'lang' ) ) {
 			# Validate requested languages
 			$codes = array_intersect( $allCodes,
@@ -175,8 +179,8 @@ class RebuildLocalisationCache extends Maintenance {
 	/**
 	 * Helper function to rebuild list of languages codes. Prints the code
 	 * for each language which is rebuilt.
-	 * @param array $codes List of language codes to rebuild.
-	 * @param LocalisationCache $lc Instance of LocalisationCacheBulkLoad (?)
+	 * @param string[] $codes List of language codes to rebuild.
+	 * @param LocalisationCache $lc
 	 * @param bool $force Rebuild up-to-date languages
 	 * @return int Number of rebuilt languages
 	 */

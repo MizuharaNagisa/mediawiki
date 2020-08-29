@@ -3,6 +3,8 @@
 namespace MediaWiki\Tests\Revision;
 
 use Content;
+use InvalidArgumentException;
+use LogicException;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Revision\MutableRevisionRecord;
 use MediaWiki\Revision\MutableRevisionSlots;
@@ -14,24 +16,23 @@ use MediaWiki\Revision\RevisionStoreRecord;
 use MediaWiki\Revision\SlotRecord;
 use MediaWiki\Revision\SuppressedDataException;
 use MediaWiki\User\UserIdentityValue;
-use MediaWikiTestCase;
+use MediaWikiIntegrationTestCase;
 use ParserOptions;
 use ParserOutput;
 use PHPUnit\Framework\MockObject\MockObject;
 use Title;
-use User;
 use Wikimedia\TestingAccessWrapper;
 use WikitextContent;
 
 /**
  * @covers \MediaWiki\Revision\RenderedRevision
  */
-class RenderedRevisionTest extends MediaWikiTestCase {
+class RenderedRevisionTest extends MediaWikiIntegrationTestCase {
 
 	/** @var callable */
 	private $combinerCallback;
 
-	public function setUp() : void {
+	protected function setUp() : void {
 		parent::setUp();
 
 		$this->combinerCallback = function ( RenderedRevision $rr, array $hints = [] ) {
@@ -120,13 +121,6 @@ class RenderedRevisionTest extends MediaWikiTestCase {
 			->willReturnCallback( function ( Title $other ) use ( $mock ) {
 				return $mock->getPrefixedText() === $other->getPrefixedText();
 			} );
-		$mock->expects( $this->any() )
-			->method( 'userCan' )
-			->willReturnCallback( function ( $perm, User $user ) use ( $mock ) {
-				return MediaWikiServices::getInstance()
-					->getPermissionManager()
-					->userHasRight( $user, $perm );
-			} );
 
 		return $mock;
 	}
@@ -186,6 +180,24 @@ class RenderedRevisionTest extends MediaWikiTestCase {
 		}
 
 		return $mock;
+	}
+
+	public function testConstructorInvalidArguments() {
+		$title = $this->getMockTitle( 0, 21 );
+		$rev = $this->getMockRevision( RevisionStoreRecord::class, $title );
+		$options = ParserOptions::newCanonical( 'canonical' );
+
+		$this->expectException( InvalidArgumentException::class );
+		$this->expectExceptionMessage(
+			'User must be specified when setting audience to FOR_THIS_USER'
+		);
+		$rr = new RenderedRevision(
+			$title,
+			$rev,
+			$options,
+			$this->combinerCallback,
+			RevisionRecord::FOR_THIS_USER
+		);
 	}
 
 	public function testGetRevisionParserOutput_new() {
@@ -583,6 +595,28 @@ class RenderedRevisionTest extends MediaWikiTestCase {
 
 		$rr->updateRevision( $savedRev ); // should do nothing
 		$this->assertSame( $updatedOutput, $rr->getRevisionParserOutput(), 'no more reset needed' );
+	}
+
+	public function testUpdateRevision_revIdSet() {
+		$title = $this->getMockTitle( 7, 21 );
+
+		$rev = new MutableRevisionRecord( $title );
+		$rev->setId( 123 );
+		$rev->setContent( SlotRecord::MAIN, new WikitextContent( 'FooBar' ) );
+
+		$options = ParserOptions::newCanonical( 'canonical' );
+		$rr = new RenderedRevision( $title, $rev, $options, $this->combinerCallback );
+
+		$newRev = new MutableRevisionRecord( $title );
+		$newRev->setId( 321 ); // Different
+		$newRev->setContent( SlotRecord::MAIN, new WikitextContent( 'FooBar' ) );
+
+		$this->expectException( LogicException::class );
+		$this->expectExceptionMessage(
+			'RenderedRevision already has a revision with ID 123, ' .
+			'can\'t update to revision with ID 321'
+		);
+		$rr->updateRevision( $newRev );
 	}
 
 }

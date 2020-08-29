@@ -20,12 +20,16 @@
  * @file
  */
 
+use MediaWiki\ExtensionInfo;
+
 /**
  * @ingroup API
  */
 class ApiParamInfo extends ApiBase {
 
 	private $helpFormat;
+
+	/** @var RequestContext */
 	private $context;
 
 	public function __construct( ApiMain $main, $action ) {
@@ -163,9 +167,9 @@ class ApiParamInfo extends ApiBase {
 	 * @return string[]
 	 */
 	private function listAllSubmodules( ApiBase $module, $recursive ) {
+		$paths = [];
 		$manager = $module->getModuleManager();
 		if ( $manager ) {
-			$paths = [];
 			$names = $manager->getNames();
 			sort( $names );
 			foreach ( $names as $name ) {
@@ -263,7 +267,7 @@ class ApiParamInfo extends ApiBase {
 			if ( isset( $sourceInfo['license-name'] ) ) {
 				$ret['licensetag'] = $sourceInfo['license-name'];
 				$ret['licenselink'] = (string)$link;
-			} elseif ( SpecialVersion::getExtLicenseFileName( dirname( $sourceInfo['path'] ) ) ) {
+			} elseif ( ExtensionInfo::getLicenseFileNames( dirname( $sourceInfo['path'] ) ) ) {
 				$ret['licenselink'] = (string)$link;
 			}
 		}

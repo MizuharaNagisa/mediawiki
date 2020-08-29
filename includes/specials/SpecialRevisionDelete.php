@@ -70,6 +70,9 @@ class SpecialRevisionDelete extends UnlistedSpecialPage {
 	/** @var PermissionManager */
 	private $permissionManager;
 
+	/** @var RepoGroup */
+	private $repoGroup;
+
 	/**
 	 * UI labels for each type.
 	 */
@@ -115,11 +118,13 @@ class SpecialRevisionDelete extends UnlistedSpecialPage {
 	 * @inheritDoc
 	 *
 	 * @param PermissionManager $permissionManager
+	 * @param RepoGroup $repoGroup
 	 */
-	public function __construct( PermissionManager $permissionManager ) {
+	public function __construct( PermissionManager $permissionManager, RepoGroup $repoGroup ) {
 		parent::__construct( 'Revisiondelete', 'deleterevision' );
 
 		$this->permissionManager = $permissionManager;
+		$this->repoGroup = $repoGroup;
 	}
 
 	public function doesWrites() {
@@ -230,7 +235,6 @@ class SpecialRevisionDelete extends UnlistedSpecialPage {
 		}
 
 		if ( $this->permissionManager->userHasRight( $user, 'deletedhistory' ) ) {
-			$qc = $this->getLogQueryCond();
 			# Show relevant lines from the deletion log
 			$deleteLogPage = new LogPage( 'delete' );
 			$output->addHTML( "<h2>" . $deleteLogPage->getName()->escaped() . "</h2>\n" );
@@ -239,7 +243,7 @@ class SpecialRevisionDelete extends UnlistedSpecialPage {
 				'delete',
 				$this->targetObj,
 				'', /* user */
-				[ 'lim' => 25, 'conds' => $qc, 'useMaster' => $this->wasSaved ]
+				[ 'lim' => 25, 'conds' => $this->getLogQueryCond(), 'useMaster' => $this->wasSaved ]
 			);
 		}
 		# Show relevant lines from the suppression log
@@ -251,7 +255,7 @@ class SpecialRevisionDelete extends UnlistedSpecialPage {
 				'suppress',
 				$this->targetObj,
 				'',
-				[ 'lim' => 25, 'conds' => $qc, 'useMaster' => $this->wasSaved ]
+				[ 'lim' => 25, 'conds' => $this->getLogQueryCond(), 'useMaster' => $this->wasSaved ]
 			);
 		}
 	}
@@ -322,7 +326,7 @@ class SpecialRevisionDelete extends UnlistedSpecialPage {
 	 * @throws PermissionsError
 	 */
 	protected function tryShowFile( $archiveName ) {
-		$repo = RepoGroup::singleton()->getLocalRepo();
+		$repo = $this->repoGroup->getLocalRepo();
 		$oimage = $repo->newFromArchiveName( $this->targetObj, $archiveName );
 		$oimage->load();
 		// Check if user is allowed to see this file

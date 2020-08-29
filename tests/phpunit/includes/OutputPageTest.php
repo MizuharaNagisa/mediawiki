@@ -1,6 +1,7 @@
 <?php
 
 use MediaWiki\MediaWikiServices;
+use Wikimedia\DependencyStore\KeyValueDependencyStore;
 use Wikimedia\TestingAccessWrapper;
 
 /**
@@ -9,16 +10,16 @@ use Wikimedia\TestingAccessWrapper;
  * @group Database
  * @group Output
  */
-class OutputPageTest extends MediaWikiTestCase {
-	const SCREEN_MEDIA_QUERY = 'screen and (min-width: 982px)';
-	const SCREEN_ONLY_MEDIA_QUERY = 'only screen and (min-width: 982px)';
+class OutputPageTest extends MediaWikiIntegrationTestCase {
+	private const SCREEN_MEDIA_QUERY = 'screen and (min-width: 982px)';
+	private const SCREEN_ONLY_MEDIA_QUERY = 'only screen and (min-width: 982px)';
 
 	// @codingStandardsIgnoreStart Generic.Files.LineLength
-	const RSS_RC_LINK = '<link rel="alternate" type="application/rss+xml" title=" RSS feed" href="/w/index.php?title=Special:RecentChanges&amp;feed=rss"/>';
-	const ATOM_RC_LINK = '<link rel="alternate" type="application/atom+xml" title=" Atom feed" href="/w/index.php?title=Special:RecentChanges&amp;feed=atom"/>';
+	private const RSS_RC_LINK = '<link rel="alternate" type="application/rss+xml" title=" RSS feed" href="/w/index.php?title=Special:RecentChanges&amp;feed=rss"/>';
+	private const ATOM_RC_LINK = '<link rel="alternate" type="application/atom+xml" title=" Atom feed" href="/w/index.php?title=Special:RecentChanges&amp;feed=atom"/>';
 
-	const RSS_TEST_LINK = '<link rel="alternate" type="application/rss+xml" title="&quot;Test&quot; RSS feed" href="fake-link"/>';
-	const ATOM_TEST_LINK = '<link rel="alternate" type="application/atom+xml" title="&quot;Test&quot; Atom feed" href="fake-link"/>';
+	private const RSS_TEST_LINK = '<link rel="alternate" type="application/rss+xml" title="&quot;Test&quot; RSS feed" href="fake-link"/>';
+	private const ATOM_TEST_LINK = '<link rel="alternate" type="application/atom+xml" title="&quot;Test&quot; Atom feed" href="fake-link"/>';
 	// @codingStandardsIgnoreEnd
 
 	// Ensure that we don't affect the global ResourceLoader state.
@@ -93,7 +94,7 @@ class OutputPageTest extends MediaWikiTestCase {
 				'Some syndication links should be there' );
 		} else {
 			$this->assertFalse( $outputPage->isSyndicated(), 'No syndication should be offered' );
-			$this->assertSame( 0, count( $outputPage->getSyndicationLinks() ),
+			$this->assertSame( [], $outputPage->getSyndicationLinks(),
 				'No syndication links should be there' );
 		}
 	}
@@ -385,6 +386,24 @@ class OutputPageTest extends MediaWikiTestCase {
 
 		$this->assertStringContainsString( "\nq\n<d>&amp;\ng\nx\n",
 			'' . $op->headElement( $op->getContext()->getSkin() ) );
+	}
+
+	/**
+	 * @covers OutputPage::addParserOutputMetadata
+	 * @covers OutputPage::addParserOutput
+	 */
+	public function testCSPParserOutput() {
+		$this->setMwGlobals( [ 'wgCSPHeader' => [] ] );
+		foreach ( [ 'Default', 'Script', 'Style' ] as $type ) {
+			$op = $this->newInstance();
+			$ltype = strtolower( $type );
+			$stubPO1 = $this->createParserOutputStub( "getExtraCSP{$type}Srcs", [ "{$ltype}src.com" ] );
+			$op->addParserOutputMetadata( $stubPO1 );
+			$csp = TestingAccessWrapper::newFromObject( $op->getCSP() );
+			$actual = $csp->makeCSPDirectives( [ 'default-src' => [] ], false );
+			$regex = '/(^|;)\s*' . $ltype . '-src\s[^;]*' . $ltype . 'src\.com[\s;]/';
+			$this->assertRegExp( $regex, $actual, $type );
+		}
 	}
 
 	/**
@@ -1457,10 +1476,14 @@ class OutputPageTest extends MediaWikiTestCase {
 			'getCategories',
 			'getFileSearchOptions',
 			'getHeadItems',
+			'getImages',
 			'getIndicators',
 			'getLanguageLinks',
 			'getOutputHooks',
 			'getTemplateIds',
+			'getExtraCSPDefaultSrcs',
+			'getExtraCSPStyleSrcs',
+			'getExtraCSPScriptSrcs',
 		];
 
 		foreach ( $arrayReturningMethods as $method ) {
@@ -2160,7 +2183,7 @@ class OutputPageTest extends MediaWikiTestCase {
 			->will( $this->returnValue( $cookies ) );
 		TestingAccessWrapper::newFromObject( $op )->mVaryHeader = [];
 
-		$this->hideDeprecated( 'addVaryHeader $option is ignored' );
+		$this->filterDeprecated( '/The \$option parameter to addVaryHeader is ignored/' );
 		foreach ( $calls as $call ) {
 			$op->addVaryHeader( ...$call );
 		}
@@ -2462,6 +2485,7 @@ class OutputPageTest extends MediaWikiTestCase {
 		$nonce->setValue( $out->getCSP(), 'secret' );
 		$rl = $out->getResourceLoader();
 		$rl->setMessageBlobStore( $this->createMock( MessageBlobStore::class ) );
+		$rl->setDependencyStore( $this->createMock( KeyValueDependencyStore::class ) );
 		$rl->register( [
 			'test.foo' => [
 				'class' => ResourceLoaderTestModule::class,
@@ -3003,7 +3027,7 @@ class OutputPageTest extends MediaWikiTestCase {
 		] );
 
 		$output->enableClientCache( $options['enableClientCache'] ?? true );
-		$output->setCdnMaxAge( $options['cdnMaxAge'] ?? 0 );
+		$output->setCdnMaxage( $options['cdnMaxAge'] ?? 0 );
 
 		if ( isset( $options['lastModified'] ) ) {
 			$output->setLastModified( $options['lastModified'] );

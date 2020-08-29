@@ -49,11 +49,15 @@ class DatabaseSqliteTest extends \MediaWikiIntegrationTestCase {
 				'flags' => DBO_DEFAULT,
 				'variables' => [],
 				'profiler' => null,
+				'topologyRole' => Database::ROLE_STREAMING_MASTER,
+				'topologicalMaster' => null,
 				'trxProfiler' => new TransactionProfiler(),
 				'connLogger' => new NullLogger(),
 				'queryLogger' => new NullLogger(),
+				'replLogger' => new NullLogger(),
 				'errorLogger' => null,
-				'deprecationLogger' => null,
+				'deprecationLogger' => new NullLogger(),
+				'srvCache' => new HashBagOStuff(),
 			] ] )->setMethods( array_merge(
 				[ 'query' ],
 				$version ? [ 'getServerVersion' ] : []
@@ -257,7 +261,7 @@ class DatabaseSqliteTest extends \MediaWikiIntegrationTestCase {
 		$index = $indexList->next();
 		$this->assertEquals( 'baz_index2', $index->name );
 		$this->assertSame( '1', $index->unique );
-		$this->assertSame( 0,
+		$this->assertSame( '0',
 			$db->selectField( 'sqlite_master', 'COUNT(*)', [ 'name' => 'baz' ] ),
 			'Create a temporary duplicate only'
 		);
@@ -331,11 +335,10 @@ class DatabaseSqliteTest extends \MediaWikiIntegrationTestCase {
 
 	/**
 	 * Runs upgrades of older databases and compares results with current schema
-	 * @todo Currently only checks list of tables
 	 * @coversNothing
 	 */
 	public function testUpgrades() {
-		global $IP, $wgVersion;
+		global $IP;
 
 		// Versions tested
 		$versions = [
@@ -359,12 +362,13 @@ class DatabaseSqliteTest extends \MediaWikiIntegrationTestCase {
 
 		$currentDB = DatabaseSqlite::newStandaloneInstance( ':memory:' );
 		$currentDB->sourceFile( "$IP/maintenance/tables.sql" );
+		$currentDB->sourceFile( "$IP/maintenance/sqlite/tables-generated.sql" );
 
 		$currentTables = $this->getTables( $currentDB );
 		sort( $currentTables );
 
 		foreach ( $versions as $version ) {
-			$versions = "upgrading from $version to $wgVersion";
+			$versions = "upgrading from $version to " . MW_VERSION;
 			$db = $this->prepareTestDB( $version );
 			$tables = $this->getTables( $db );
 			$this->assertEquals( $currentTables, $tables, "Different tables $versions" );
@@ -389,6 +393,12 @@ class DatabaseSqliteTest extends \MediaWikiIntegrationTestCase {
 							(bool)$cols[$name]->notnull,
 							"NOT NULL status does not match for column $fullName $versions"
 						);
+						if ( $cols[$name]->dflt_value === 'NULL' ) {
+							$cols[$name]->dflt_value = null;
+						}
+						if ( $column->dflt_value === 'NULL' ) {
+							$column->dflt_value = null;
+						}
 						$this->assertEquals(
 							$column->dflt_value,
 							$cols[$name]->dflt_value,
@@ -539,7 +549,7 @@ class DatabaseSqliteTest extends \MediaWikiIntegrationTestCase {
 		$insertion = $db->insert( 'a', [ 'a_1' => 10 ], __METHOD__ );
 		$this->assertTrue( $insertion, "Insertion failed" );
 		$res = $db->select( 'a', '*' );
-		$this->assertEquals( 1, $db->numFields( $res ), "wrong number of fields" );
+		$this->assertSame( 1, $db->numFields( $res ), "wrong number of fields" );
 
 		$this->assertTrue( $db->close(), "closing database" );
 	}
@@ -584,38 +594,61 @@ class DatabaseSqliteTest extends \MediaWikiIntegrationTestCase {
 	public function provideNativeInserts() {
 		return [
 			[
-				'3.7.11',
+				'3.8.0',
 				'a',
 				[ 'a_1' => 1 ],
-				'INSERT  INTO a (a_1) VALUES (\'1\');'
+				'INSERT INTO a (a_1) VALUES (1);'
 			],
 			[
-				'3.7.10',
-				'a',
-				[ 'a_1' => 1 ],
-				'INSERT  INTO a (a_1) VALUES (\'1\');'
-			],
-			[
-				'3.7.11',
+				'3.8.0',
 				'a',
 				[
 					[ 'a_1' => 2 ],
 					[ 'a_1' => 3 ]
 				],
-				'INSERT  INTO a (a_1) VALUES (\'2\'),(\'3\');'
+				'INSERT INTO a (a_1) VALUES (2),(3);'
+			],
+		];
+	}
+
+	/**
+	 * @covers \Wikimedia\Rdbms\DatabaseSqlite::replace()
+	 * @param string $version
+	 * @param string $table
+	 * @param array $ukeys
+	 * @param array $rows
+	 * @param string $expectedSql
+	 * @dataProvider provideNativeReplaces
+	 */
+	public function testNativeReplaceSupport( $version, $table, $ukeys, $rows, $expectedSql ) {
+		$sqlDump = '';
+		$db = $this->newMockDb( $version, $sqlDump );
+		$db->query( 'CREATE TABLE a ( a_1 PRIMARY KEY, a_2 )', __METHOD__ );
+
+		$sqlDump = '';
+		$db->replace( $table, $ukeys, $rows, __METHOD__ );
+		$this->assertEquals( $expectedSql, $sqlDump );
+	}
+
+	public function provideNativeReplaces() {
+		return [
+			[
+				'3.8.0',
+				'a',
+				[ 'a_1' ],
+				[ 'a_1' => 1, 'a_2' => 'x' ],
+				'REPLACE INTO a (a_1,a_2) VALUES (1,\'x\');'
 			],
 			[
-				'3.7.10',
+				'3.8.0',
 				'a',
+				[ 'a_1' ],
 				[
-					[ 'a_1' => 2 ],
-					[ 'a_1' => 3 ]
+					[ 'a_1' => 2, 'a_2' => 'x' ],
+					[ 'a_1' => 3, 'a_2' => 'y' ]
 				],
-				'BEGIN;' .
-				'INSERT  INTO a (a_1) VALUES (\'2\');' .
-				'INSERT  INTO a (a_1) VALUES (\'3\');' .
-				'COMMIT;'
-			]
+				'REPLACE INTO a (a_1,a_2) VALUES (2,\'x\'),(3,\'y\');'
+			],
 		];
 	}
 }

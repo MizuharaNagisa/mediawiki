@@ -1,14 +1,14 @@
 {
 	"@metadata": {
 		"authors": [
-			"Elisardojm",
-			"Toliño",
-			"아라",
-			"Vivaelcelta",
-			"Macofe",
 			"Banjo",
+			"Elisardojm",
+			"Macofe",
+			"Maria zaos",
 			"Seb35",
-			"Maria zaos"
+			"Toliño",
+			"Vivaelcelta",
+			"아라"
 		]
 	},
 	"config-desc": "O programa de instalación de MediaWiki",
@@ -40,7 +40,6 @@
 	"config-page-install": "Instalar",
 	"config-page-complete": "Completo!",
 	"config-page-restart": "Reiniciar a instalación",
-	"config-page-readme": "Léame",
 	"config-page-releasenotes": "Notas de lanzamento",
 	"config-page-copying": "Copiar",
 	"config-page-upgradedoc": "Actualizar",

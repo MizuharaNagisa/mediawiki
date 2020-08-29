@@ -20,6 +20,7 @@
  * @file
  */
 
+use MediaWiki\HookContainer\ProtectedHookAccessorTrait;
 use MediaWiki\Linker\LinkTarget;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Session\SessionManager;
@@ -44,6 +45,8 @@ use Wikimedia\WrappedStringList;
  * @todo document
  */
 class OutputPage extends ContextSource {
+	use ProtectedHookAccessorTrait;
+
 	/** @var string[][] Should be private. Used with addMeta() which adds "<meta>" */
 	protected $mMetatags = [];
 
@@ -147,6 +150,12 @@ class OutputPage extends ContextSource {
 	 */
 	public $mPageLinkTitle = '';
 
+	/**
+	 * Additional <html> classes; This should be rarely modified; prefer mAdditionalBodyClasses.
+	 * @var array
+	 */
+	protected $mAdditionalHtmlClasses = [];
+
 	/** @var array Array of elements in "<head>". Parser might add its own headers! */
 	protected $mHeadItems = [];
 
@@ -246,7 +255,7 @@ class OutputPage extends ContextSource {
 	 */
 	protected $mPreventClickjacking = true;
 
-	/** @var int To include the variable {{REVISIONID}} */
+	/** @var int|null To include the variable {{REVISIONID}} */
 	private $mRevisionId = null;
 
 	/** @var string */
@@ -339,7 +348,8 @@ class OutputPage extends ContextSource {
 		$this->setContext( $context );
 		$this->CSP = new ContentSecurityPolicy(
 			$context->getRequest()->response(),
-			$context->getConfig()
+			$context->getConfig(),
+			$this->getHookContainer()
 		);
 	}
 
@@ -564,7 +574,7 @@ class OutputPage extends ContextSource {
 	}
 
 	/**
-	 * Load the styles of one or more ResourceLoader modules on this page.
+	 * Load the styles of one or more style-only ResourceLoader modules on this page.
 	 *
 	 * Module styles added through this function will be loaded as a stylesheet,
 	 * using a standard `<link rel=stylesheet>` HTML tag, rather than as a combined
@@ -624,6 +634,17 @@ class OutputPage extends ContextSource {
 	}
 
 	/**
+	 * Add a class to the <html> element. This should rarely be used.
+	 * Instead use OutputPage::addBodyClasses() if possible.
+	 *
+	 * @unstable Experimental since 1.35. Prefer OutputPage::addBodyClasses()
+	 * @param string|string[] $classes One or more classes to add
+	 */
+	public function addHtmlClasses( $classes ) {
+		$this->mAdditionalHtmlClasses = array_merge( $this->mAdditionalHtmlClasses, (array)$classes );
+	}
+
+	/**
 	 * Get an array of head items
 	 *
 	 * @return array
@@ -636,7 +657,7 @@ class OutputPage extends ContextSource {
 	 * Add or replace a head item to the output
 	 *
 	 * Whenever possible, use more specific options like ResourceLoader modules,
-	 * OutputPage::addLink(), OutputPage::addMetaLink() and OutputPage::addFeedLink()
+	 * OutputPage::addLink(), OutputPage::addMeta() and OutputPage::addFeedLink()
 	 * Fallback options for those are: OutputPage::addStyle, OutputPage::addScript(),
 	 * OutputPage::addInlineScript() and OutputPage::addInlineStyle()
 	 * This would be your very LAST fallback.
@@ -733,12 +754,12 @@ class OutputPage extends ContextSource {
 	 */
 	public function checkLastModified( $timestamp ) {
 		if ( !$timestamp || $timestamp == '19700101000000' ) {
-			wfDebug( __METHOD__ . ": CACHE DISABLED, NO TIMESTAMP\n" );
+			wfDebug( __METHOD__ . ": CACHE DISABLED, NO TIMESTAMP" );
 			return false;
 		}
 		$config = $this->getConfig();
 		if ( !$config->get( 'CachePages' ) ) {
-			wfDebug( __METHOD__ . ": CACHE DISABLED\n" );
+			wfDebug( __METHOD__ . ": CACHE DISABLED" );
 			return false;
 		}
 
@@ -754,7 +775,7 @@ class OutputPage extends ContextSource {
 				$config->get( 'CdnMaxAge' )
 			) );
 		}
-		Hooks::run( 'OutputPageCheckLastModified', [ &$modifiedTimes, $this ] );
+		$this->getHookRunner()->onOutputPageCheckLastModified( $modifiedTimes, $this );
 
 		$maxModified = max( $modifiedTimes );
 		$this->mLastModified = wfTimestamp( TS_RFC2822, $maxModified );
@@ -775,7 +796,7 @@ class OutputPage extends ContextSource {
 		Wikimedia\restoreWarnings();
 		if ( !$clientHeaderTime ) {
 			wfDebug( __METHOD__
-				. ": unable to parse the client's If-Modified-Since header: $clientHeader\n" );
+				. ": unable to parse the client's If-Modified-Since header: $clientHeader" );
 			return false;
 		}
 		$clientHeaderTime = wfTimestamp( TS_MW, $clientHeaderTime );
@@ -1359,12 +1380,9 @@ class OutputPage extends ContextSource {
 			}
 		}
 
-		// Avoid PHP 7.1 warning of passing $this by reference
-		$outputPage = $this;
 		# Add the remaining categories to the skin
-		if ( Hooks::run(
-			'OutputPageMakeCategoryLinks',
-			[ &$outputPage, $categories, &$this->mCategoryLinks ] )
+		if ( $this->getHookRunner()->onOutputPageMakeCategoryLinks(
+			$this, $categories, $this->mCategoryLinks )
 		) {
 			$services = MediaWikiServices::getInstance();
 			$linkRenderer = $services->getLinkRenderer();
@@ -1630,27 +1648,10 @@ class OutputPage extends ContextSource {
 	/**
 	 * Get/set the ParserOptions object to use for wikitext parsing
 	 *
-	 * @param ParserOptions|null $options Either the ParserOption to use or null to only get the
-	 *   current ParserOption object. This parameter is deprecated since 1.31.
 	 * @return ParserOptions
 	 * @suppress PhanUndeclaredProperty For isBogus
 	 */
-	public function parserOptions( $options = null ) {
-		if ( $options !== null ) {
-			wfDeprecated( __METHOD__ . ' with non-null $options', '1.31' );
-		}
-
-		if ( $options !== null && !empty( $options->isBogus ) ) {
-			// Someone is trying to set a bogus pre-$wgUser PO. Check if it has
-			// been changed somehow, and keep it if so.
-			$anonPO = ParserOptions::newFromAnon();
-			$anonPO->setAllowUnsafeRawHtml( false );
-			if ( !$options->matches( $anonPO ) ) {
-				wfLogWarning( __METHOD__ . ': Setting a changed bogus ParserOptions: ' . wfGetAllCallers( 5 ) );
-				$options->isBogus = false;
-			}
-		}
-
+	public function parserOptions() {
 		if ( !$this->mParserOptions ) {
 			if ( !$this->getUser()->isSafeToLoad() ) {
 				// $wgUser isn't unstubbable yet, so don't try to get a
@@ -1659,9 +1660,6 @@ class OutputPage extends ContextSource {
 				$po = ParserOptions::newFromAnon();
 				$po->setAllowUnsafeRawHtml( false );
 				$po->isBogus = true;
-				if ( $options !== null ) {
-					$this->mParserOptions = empty( $options->isBogus ) ? $options : null;
-				}
 				return $po;
 			}
 
@@ -1669,13 +1667,7 @@ class OutputPage extends ContextSource {
 			$this->mParserOptions->setAllowUnsafeRawHtml( false );
 		}
 
-		if ( $options !== null && !empty( $options->isBogus ) ) {
-			// They're trying to restore the bogus pre-$wgUser PO. Do the right
-			// thing.
-			return wfSetVar( $this->mParserOptions, null, true );
-		} else {
-			return wfSetVar( $this->mParserOptions, $options );
-		}
+		return $this->mParserOptions;
 	}
 
 	/**
@@ -1693,7 +1685,7 @@ class OutputPage extends ContextSource {
 	/**
 	 * Get the displayed revision ID
 	 *
-	 * @return int
+	 * @return int|null
 	 */
 	public function getRevisionId() {
 		return $this->mRevisionId;
@@ -1902,6 +1894,40 @@ class OutputPage extends ContextSource {
 		$this->addJsConfigVars( $parserOutput->getJsConfigVars() );
 		$this->mPreventClickjacking = $this->mPreventClickjacking
 			|| $parserOutput->preventClickjacking();
+		$scriptSrcs = $parserOutput->getExtraCSPScriptSrcs();
+		foreach ( $scriptSrcs as $src ) {
+			$this->getCSP()->addScriptSrc( $src );
+		}
+		$defaultSrcs = $parserOutput->getExtraCSPDefaultSrcs();
+		foreach ( $defaultSrcs as $src ) {
+			$this->getCSP()->addDefaultSrc( $src );
+		}
+		$styleSrcs = $parserOutput->getExtraCSPStyleSrcs();
+		foreach ( $styleSrcs as $src ) {
+			$this->getCSP()->addStyleSrc( $src );
+		}
+
+		// If $wgImagePreconnect is true, and if the output contains
+		// images, give the user-agent a hint about foreign repos from
+		// which those images may be served.  See T123582.
+		//
+		// TODO: We don't have an easy way to know from which remote(s)
+		// the image(s) will be served.  For now, we only hint the first
+		// valid one.
+		if ( $this->getConfig()->get( 'ImagePreconnect' ) && count( $parserOutput->getImages() ) ) {
+			$preconnect = [];
+			$repoGroup = MediaWikiServices::getInstance()->getRepoGroup();
+			$repoGroup->forEachForeignRepo( function ( $repo ) use ( &$preconnect ) {
+				$preconnect[] = wfParseUrl( $repo->getZoneUrl( 'thumb' ) )['host'];
+			} );
+			$preconnect[] = wfParseUrl( $repoGroup->getLocalRepo()->getZoneUrl( 'thumb' ) )['host'];
+			foreach ( $preconnect as $host ) {
+				if ( $host ) {
+					$this->addLink( [ 'rel' => 'preconnect', 'href' => '//' . $host ] );
+					break;
+				}
+			}
+		}
 
 		// Template versioning...
 		foreach ( (array)$parserOutput->getTemplateIds() as $ns => $dbks ) {
@@ -1938,10 +1964,8 @@ class OutputPage extends ContextSource {
 		// Link flags are ignored for now, but may in the future be
 		// used to mark individual language links.
 		$linkFlags = [];
-		// Avoid PHP 7.1 warning of passing $this by reference
-		$outputPage = $this;
-		Hooks::run( 'LanguageLinks', [ $this->getTitle(), &$this->mLanguageLinks, &$linkFlags ] );
-		Hooks::runWithoutAbort( 'OutputPageParserOutput', [ &$outputPage, $parserOutput ] );
+		$this->getHookRunner()->onLanguageLinks( $this->getTitle(), $this->mLanguageLinks, $linkFlags );
+		$this->getHookRunner()->onOutputPageParserOutput( $this, $parserOutput );
 
 		// This check must be after 'OutputPageParserOutput' runs in addParserOutputMetadata
 		// so that extensions may modify ParserOutput to toggle TOC.
@@ -1978,9 +2002,7 @@ class OutputPage extends ContextSource {
 	 */
 	public function addParserOutputText( ParserOutput $parserOutput, $poOptions = [] ) {
 		$text = $parserOutput->getText( $poOptions );
-		// Avoid PHP 7.1 warning of passing $this by reference
-		$outputPage = $this;
-		Hooks::runWithoutAbort( 'OutputPageBeforeHTML', [ &$outputPage, &$text ] );
+		$this->getHookRunner()->onOutputPageBeforeHTML( $this, $text );
 		$this->addHTML( $text );
 	}
 
@@ -2083,7 +2105,7 @@ class OutputPage extends ContextSource {
 		}
 
 		$popts = $this->parserOptions();
-		$oldTidy = $popts->setTidy( true );
+
 		$oldInterface = $popts->setInterfaceMessage( (bool)$interface );
 
 		$parserOutput = MediaWikiServices::getInstance()->getParser()->getFreshParser()->parse(
@@ -2091,7 +2113,6 @@ class OutputPage extends ContextSource {
 			$linestart, true, $this->mRevisionId
 		);
 
-		$popts->setTidy( $oldTidy );
 		$popts->setInterfaceMessage( $oldInterface );
 
 		return $parserOutput;
@@ -2206,7 +2227,7 @@ class OutputPage extends ContextSource {
 				],
 				$config->get( 'CacheVaryCookies' )
 			) ) );
-			Hooks::run( 'GetCacheVaryCookies', [ $this, &self::$cacheVaryCookies ] );
+			$this->getHookRunner()->onGetCacheVaryCookies( $this, self::$cacheVaryCookies );
 		}
 		return self::$cacheVaryCookies;
 	}
@@ -2221,11 +2242,11 @@ class OutputPage extends ContextSource {
 		$request = $this->getRequest();
 		foreach ( $this->getCacheVaryCookies() as $cookieName ) {
 			if ( $request->getCookie( $cookieName, '', '' ) !== '' ) {
-				wfDebug( __METHOD__ . ": found $cookieName\n" );
+				wfDebug( __METHOD__ . ": found $cookieName" );
 				return true;
 			}
 		}
-		wfDebug( __METHOD__ . ": no cache-varying cookies found\n" );
+		wfDebug( __METHOD__ . ": no cache-varying cookies found" );
 		return false;
 	}
 
@@ -2240,7 +2261,9 @@ class OutputPage extends ContextSource {
 	 */
 	public function addVaryHeader( $header, array $option = null ) {
 		if ( $option !== null && count( $option ) > 0 ) {
-			wfDeprecated( 'addVaryHeader $option is ignored', '1.34' );
+			wfDeprecatedMsg(
+				'The $option parameter to addVaryHeader is ignored since MediaWiki 1.34',
+				'1.34' );
 		}
 		if ( !array_key_exists( $header, $this->mVaryHeader ) ) {
 			$this->mVaryHeader[$header] = null;
@@ -2507,7 +2530,7 @@ class OutputPage extends ContextSource {
 			$redirect = $this->mRedirect;
 			$code = $this->mRedirectCode;
 
-			if ( Hooks::run( "BeforePageRedirect", [ $this, &$redirect, &$code ] ) ) {
+			if ( $this->getHookRunner()->onBeforePageRedirect( $this, $redirect, $code ) ) {
 				if ( $code == '301' || $code == '303' ) {
 					if ( !$config->get( 'DebugRedirects' ) ) {
 						$response->statusHeader( $code );
@@ -2568,9 +2591,8 @@ class OutputPage extends ContextSource {
 			$response->header( "Feature-Policy-Report-Only: $featurePolicyReportOnly" );
 		}
 
-		$this->CSP->sendHeaders();
-
 		if ( $this->mArticleBodyOnly ) {
+			$this->CSP->sendHeaders();
 			echo $this->mBodytext;
 		} else {
 			// Enable safe mode if requested (T152169)
@@ -2583,11 +2605,11 @@ class OutputPage extends ContextSource {
 
 			MWDebug::addModules( $this );
 
-			// Avoid PHP 7.1 warning of passing $this by reference
-			$outputPage = $this;
 			// Hook that allows last minute changes to the output page, e.g.
-			// adding of CSS or Javascript by extensions.
-			Hooks::runWithoutAbort( 'BeforePageDisplay', [ &$outputPage, &$sk ] );
+			// adding of CSS or Javascript by extensions, adding CSP sources.
+			$this->getHookRunner()->onBeforePageDisplay( $this, $sk );
+
+			$this->CSP->sendHeaders();
 
 			try {
 				$sk->outputPage();
@@ -2599,7 +2621,7 @@ class OutputPage extends ContextSource {
 
 		try {
 			// This hook allows last minute changes to final overall output by modifying output buffer
-			Hooks::runWithoutAbort( 'AfterFinalPageOutput', [ $this ] );
+			$this->getHookRunner()->onAfterFinalPageOutput( $this );
 		} catch ( Exception $e ) {
 			ob_end_clean(); // bug T129657
 			throw $e;
@@ -2772,7 +2794,7 @@ class OutputPage extends ContextSource {
 	/**
 	 * Format a list of error messages
 	 *
-	 * @param array $errors Array of arrays returned by Title::getUserPermissionsErrors
+	 * @param array $errors Array of arrays returned by PermissionManager::getPermissionErrors
 	 * @param string|null $action Action that was denied or null if unknown
 	 * @return string The wikitext error-messages, formatted into a list.
 	 */
@@ -2954,14 +2976,12 @@ class OutputPage extends ContextSource {
 			$this->addModules( [
 				'user',
 				'user.options',
-				'user.tokens',
 			] );
 			$this->addModuleStyles( [
 				'site.styles',
 				'noscript',
 				'user.styles',
 			] );
-			$this->getSkin()->setupSkinUserCss( $this );
 
 			// Prepare exempt modules for buildExemptModules()
 			$exemptGroups = [ 'site' => [], 'noscript' => [], 'private' => [], 'user' => [] ];
@@ -3030,10 +3050,10 @@ class OutputPage extends ContextSource {
 		$sitedir = MediaWikiServices::getInstance()->getContentLanguage()->getDir();
 
 		$pieces = [];
-		$htmlAttribs = Sanitizer::mergeAttributes(
+		$htmlAttribs = Sanitizer::mergeAttributes( Sanitizer::mergeAttributes(
 			$this->getRlClient()->getDocumentAttributes(),
 			$sk->getHtmlElementAttributes()
-		);
+		), [ 'class' => implode( ' ', $this->mAdditionalHtmlClasses ) ] );
 		$pieces[] = Html::htmlHeader( $htmlAttribs );
 		$pieces[] = Html::openElement( 'head' );
 
@@ -3058,17 +3078,6 @@ class OutputPage extends ContextSource {
 		$pieces[] = $this->buildExemptModules();
 		$pieces = array_merge( $pieces, array_values( $this->getHeadLinksArray() ) );
 		$pieces = array_merge( $pieces, array_values( $this->mHeadItems ) );
-
-		// This library is intended to run on older browsers that MediaWiki no longer
-		// supports as Grade A. For these Grade C browsers, we provide an experience
-		// using only HTML and CSS. But, where standards-compliant browsers are able to
-		// style unknown HTML elements without issue, old IE ignores these styles.
-		// The html5shiv library fixes that.
-		// Use an IE conditional comment to serve the script only to old IE
-		$shivUrl = $config->get( 'ResourceBasePath' ) . '/resources/lib/html5shiv/html5shiv.js';
-		$pieces[] = '<!--[if lt IE 9]>' .
-			Html::linkedScript( $shivUrl, $this->CSP->getNonce() ) .
-			'<![endif]-->';
 
 		$pieces[] = Html::closeElement( 'head' );
 
@@ -3102,14 +3111,25 @@ class OutputPage extends ContextSource {
 		$bodyClasses[] =
 			'action-' . Sanitizer::escapeClass( Action::getActionName( $this->getContext() ) );
 
+		if ( $sk->isResponsive() ) {
+			$bodyClasses[] = 'skin--responsive';
+		}
+
 		$bodyAttrs = [];
 		// While the implode() is not strictly needed, it's used for backwards compatibility
 		// (this used to be built as a string and hooks likely still expect that).
 		$bodyAttrs['class'] = implode( ' ', $bodyClasses );
 
 		// Allow skins and extensions to add body attributes they need
-		$sk->addToBodyAttributes( $this, $bodyAttrs );
-		Hooks::run( 'OutputPageBodyAttributes', [ $this, $sk, &$bodyAttrs ] );
+		// Get ones from deprecated method
+		if ( method_exists( $sk, 'addToBodyAttributes' ) ) {
+			/** @phan-suppress-next-line PhanUndeclaredMethod */
+			$sk->addToBodyAttributes( $this, $bodyAttrs );
+			wfDeprecated( 'Skin::addToBodyAttributes method to add body attributes', '1.35' );
+		}
+
+		// Then run the hook, the recommended way of adding body attributes now
+		$this->getHookRunner()->onOutputPageBodyAttributes( $this, $sk, $bodyAttrs );
 
 		$pieces[] = Html::openElement( 'body', $bodyAttrs );
 
@@ -3242,7 +3262,7 @@ class OutputPage extends ContextSource {
 		$relevantTitle = $sk->getRelevantTitle();
 		$relevantUser = $sk->getRelevantUser();
 
-		if ( $ns == NS_SPECIAL ) {
+		if ( $ns === NS_SPECIAL ) {
 			list( $canonicalSpecialPageName, /*...*/ ) =
 				$services->getSpecialPageFactory()->
 					resolveAlias( $title->getDBkey() );
@@ -3272,7 +3292,7 @@ class OutputPage extends ContextSource {
 
 		// Internal variables for MediaWiki core
 		$vars = [
-			// @internal For mediawiki.page.startup
+			// @internal For mediawiki.page.ready
 			'wgBreakFrames' => $this->getFrameOptions() == 'DENY',
 
 			// @internal For jquery.tablesorter
@@ -3280,7 +3300,6 @@ class OutputPage extends ContextSource {
 			'wgDigitTransformTable' => $compactDigitTransTable,
 			'wgDefaultDateFormat' => $lang->getDefaultDateFormat(),
 			'wgMonthNames' => $lang->getMonthNamesArray(),
-			'wgMonthNamesShort' => $lang->getMonthAbbreviationsArray(),
 
 			// @internal For debugging purposes
 			'wgRequestId' => WebRequest::getRequestId(),
@@ -3318,7 +3337,12 @@ class OutputPage extends ContextSource {
 			// Get the revision ID of the oldest new message on the user's talk
 			// page. This can be used for constructing new message alerts on
 			// the client side.
-			$vars['wgUserNewMsgRevisionId'] = $user->getNewMessageRevisionId();
+			$userNewMsgRevId = $this->getLastSeenUserTalkRevId();
+			// Only occupy precious space in the <head> when it is non-null (T53640)
+			// mw.config.get returns null by default.
+			if ( $userNewMsgRevId ) {
+				$vars['wgUserNewMsgRevisionId'] = $userNewMsgRevId;
+			}
 		}
 		$contLang = $services->getContentLanguage();
 		if ( $contLang->hasVariants() ) {
@@ -3350,10 +3374,45 @@ class OutputPage extends ContextSource {
 		// Use the 'ResourceLoaderGetConfigVars' hook if the variable is not
 		// page-dependant but site-wide (without state).
 		// Alternatively, you may want to use OutputPage->addJsConfigVars() instead.
-		Hooks::run( 'MakeGlobalVariablesScript', [ &$vars, $this ] );
+		$this->getHookRunner()->onMakeGlobalVariablesScript( $vars, $this );
 
 		// Merge in variables from addJsConfigVars last
 		return array_merge( $vars, $this->getJsConfigVars() );
+	}
+
+	/**
+	 * Get the revision ID for the last user talk page revision viewed by the talk page owner.
+	 *
+	 * @return int|null
+	 */
+	private function getLastSeenUserTalkRevId() {
+		$services = MediaWikiServices::getInstance();
+		$user = $this->getUser();
+		$userHasNewMessages = $services
+			->getTalkPageNotificationManager()
+			->userHasNewMessages( $user );
+		if ( !$userHasNewMessages ) {
+			return null;
+		}
+
+		$timestamp = $services
+			->getTalkPageNotificationManager()
+			->getLatestSeenMessageTimestamp( $user );
+
+		if ( !$timestamp ) {
+			return null;
+		}
+
+		$revRecord = $services->getRevisionLookup()->getRevisionByTimestamp(
+			$user->getTalkPage(),
+			$timestamp
+		);
+
+		if ( !$revRecord ) {
+			return null;
+		}
+
+		return $revRecord->getId();
 	}
 
 	/**
@@ -3385,7 +3444,8 @@ class OutputPage extends ContextSource {
 		}
 
 		$title = $this->getTitle();
-		$errors = $title->getUserPermissionsErrors( 'edit', $user );
+		$errors = MediaWikiServices::getInstance()->getPermissionManager()
+			->getPermissionErrors( 'edit', $user, $title );
 		if ( count( $errors ) !== 0 ) {
 			return false;
 		}
@@ -3412,8 +3472,6 @@ class OutputPage extends ContextSource {
 	 * @return array Array in format "link name or number => 'link html'".
 	 */
 	public function getHeadLinksArray() {
-		global $wgVersion;
-
 		$tags = [];
 		$config = $this->getConfig();
 
@@ -3421,7 +3479,7 @@ class OutputPage extends ContextSource {
 
 		$tags['meta-generator'] = Html::element( 'meta', [
 			'name' => 'generator',
-			'content' => "MediaWiki $wgVersion",
+			'content' => 'MediaWiki ' . MW_VERSION,
 		] );
 
 		if ( $config->get( 'ReferrerPolicy' ) !== false ) {
@@ -3633,7 +3691,7 @@ class OutputPage extends ContextSource {
 			# Allow extensions to change the list pf feeds. This hook is primarily for changing,
 			# manipulating or removing existing feed tags. If you want to add new feeds, you should
 			# use OutputPage::addFeedLink() instead.
-			Hooks::run( 'AfterBuildFeedLinks', [ &$feedLinks ] );
+			$this->getHookRunner()->onAfterBuildFeedLinks( $feedLinks );
 
 			$tags += $feedLinks;
 		}
@@ -3674,7 +3732,7 @@ class OutputPage extends ContextSource {
 		// (or addHeadItems() for multiple items) method instead.
 		// This hook is provided as a last resort for extensions to modify these
 		// links before the output is sent to client.
-		Hooks::run( 'OutputPageAfterGetHeadLinksArray', [ &$tags, $this ] );
+		$this->getHookRunner()->onOutputPageAfterGetHeadLinksArray( $tags, $this );
 
 		return $tags;
 	}
@@ -3925,7 +3983,7 @@ class OutputPage extends ContextSource {
 	 * Transform "media" attribute based on request parameters
 	 *
 	 * @param string $media Current value of the "media" attribute
-	 * @return string Modified value of the "media" attribute, or null to skip
+	 * @return string|null Modified value of the "media" attribute, or null to skip
 	 * this stylesheet
 	 */
 	public static function transformCssMedia( $media ) {

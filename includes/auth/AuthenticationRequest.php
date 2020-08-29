@@ -31,6 +31,7 @@ use Message;
  * An AuthenticationRequest represents a set of form fields that are needed on
  * and provided from a login, account creation, password change or similar form.
  *
+ * @stable to extend
  * @ingroup Auth
  * @since 1.27
  */
@@ -83,6 +84,7 @@ abstract class AuthenticationRequest {
 	 * This value might be exposed to the user in web forms so it should not
 	 * contain private information.
 	 *
+	 * @stable to override
 	 * @return string
 	 */
 	public function getUniqueId() {
@@ -134,6 +136,7 @@ abstract class AuthenticationRequest {
 	 * individual subclasses, but the contents of the array should be primitive types so that they
 	 * can be transformed into JSON or similar formats.
 	 *
+	 * @stable to override
 	 * @return array A (possibly nested) array with primitive types
 	 */
 	public function getMetadata() {
@@ -148,6 +151,7 @@ abstract class AuthenticationRequest {
 	 * to $this->$key. Most subclasses won't need to override this; if you do override it,
 	 * make sure to always return false if self::getFieldInfo() returns an empty array.
 	 *
+	 * @stable to override
 	 * @param array $data Submitted data as an associative array (keys will correspond
 	 *   to getFieldInfo())
 	 * @return bool Whether the request data was successfully loaded
@@ -218,6 +222,8 @@ abstract class AuthenticationRequest {
 	 * and ACTION_REMOVE and for requests returned in
 	 * AuthenticationResponse::$linkRequest to create useful user interfaces.
 	 *
+	 * @stable to override
+	 *
 	 * @return Message[] with the following keys:
 	 *  - provider: A Message identifying the service that provides
 	 *    the credentials, e.g. the name of the third party authentication
@@ -235,14 +241,19 @@ abstract class AuthenticationRequest {
 
 	/**
 	 * Update a set of requests with form submit data, discarding ones that fail
+	 *
 	 * @param AuthenticationRequest[] $reqs
 	 * @param array $data
 	 * @return AuthenticationRequest[]
 	 */
 	public static function loadRequestsFromSubmission( array $reqs, array $data ) {
-		return array_values( array_filter( $reqs, function ( $req ) use ( $data ) {
-			return $req->loadFromSubmission( $data );
-		} ) );
+		$result = [];
+		foreach ( $reqs as $req ) {
+			if ( $req->loadFromSubmission( $data ) ) {
+				$result[] = $req;
+			}
+		}
+		return $result;
 	}
 
 	/**
@@ -309,19 +320,23 @@ abstract class AuthenticationRequest {
 		$merged = [];
 
 		// fields that are required by some primary providers but not others are not actually required
-		$primaryRequests = array_filter( $reqs, function ( $req ) {
-			return $req->required === AuthenticationRequest::PRIMARY_REQUIRED;
-		} );
-		$sharedRequiredPrimaryFields = array_reduce( $primaryRequests, function ( $shared, $req ) {
-			$required = array_keys( array_filter( $req->getFieldInfo(), function ( $options ) {
-				return empty( $options['optional'] );
-			} ) );
-			if ( $shared === null ) {
-				return $required;
-			} else {
-				return array_intersect( $shared, $required );
+		$sharedRequiredPrimaryFields = null;
+		foreach ( $reqs as $req ) {
+			if ( $req->required !== self::PRIMARY_REQUIRED ) {
+				continue;
 			}
-		}, null );
+			$required = [];
+			foreach ( $req->getFieldInfo() as $fieldName => $options ) {
+				if ( empty( $options['optional'] ) ) {
+					$required[] = $fieldName;
+				}
+			}
+			if ( $sharedRequiredPrimaryFields === null ) {
+				$sharedRequiredPrimaryFields = $required;
+			} else {
+				$sharedRequiredPrimaryFields = array_intersect( $sharedRequiredPrimaryFields, $required );
+			}
+		}
 
 		foreach ( $reqs as $req ) {
 			$info = $req->getFieldInfo();

@@ -3,13 +3,13 @@
 		"authors": [
 			"Antofa",
 			"Cornelia",
+			"DannyS712",
 			"Felis",
 			"Jun Misugi",
 			"Kaganer",
-			"Midnight Gambler",
-			"아라",
 			"Macofe",
-			"DannyS712"
+			"Midnight Gambler",
+			"아라"
 		]
 	},
 	"tog-underline": "Sotturìnia li cullegamenti:",
@@ -248,7 +248,7 @@
 	"error": "Errori",
 	"databaseerror": "Errori di la bancadati",
 	"databaseerror-error": "Errori: $1",
-	"laggedslavemode": "Attinzioni: la pàgina pudia no cuntinì l'aggiornamenti più rizzenti.",
+	"laggedreplicamode": "Attinzioni: la pàgina pudia no cuntinì l'aggiornamenti più rizzenti.",
 	"readonly": "Bancadati broccadda",
 	"enterlockreason": "Indica lu mutibu di lu broccu, ippizzifichendi candu po’ assé chi venghia buggaddu.",
 	"readonlytext": "Attuarmenti la bancadati è broccadda e nò so pussìbiri aggiunti o mudìfigghi a li pàgini. Lu broccu soritamenti è liaddu a operazioni di manutinzioni urdhinària, a lu tèimmini di li quari la bancadati è di nobu mudifiggabiri.\n\nL'amministhradori di sisthema chi l'à broccadda à lassaddu chistha giusthifiggazioni: $1",
@@ -517,8 +517,8 @@
 	"rev-deleted-comment": "(cummentu buggaddu)",
 	"rev-deleted-user": "(innòmu utenti buggaddu)",
 	"rev-deleted-event": "(azioni di lu rigisthru buggadda)",
-	"rev-deleted-text-permission": "Chistha versioni di la pàgina è isthadda buggadda da l'archìbi visìbiri a lu pùbbriggu.\nCunsulthà lu [{{fullurl:{{#Special:Log}}/suppress|page={{FULLPAGENAMEE}}}} rigisthru di canzilladdura] pa althri dettàgli.",
-	"rev-deleted-text-view": "Chistha versioni di la pàgina è isthadda buggadda da l'archìbi visìbiri a lu pùbbriggu.\nLu testhu pò assé visuarizzaddu soru da l'amministhradori di lu situ.\nCunsulthà lu [{{fullurl:{{#Special:Log}}/suppress|page={{FULLPAGENAMEE}}}} rigisthru di canzilladdura] pa althri dettàgli.",
+	"rev-deleted-text-permission": "Chistha versioni di la pàgina è isthadda buggadda da l'archìbi visìbiri a lu pùbbriggu.\nCunsulthà lu [{{fullurl:{{#Special:Log}}/suppress|page=$1}} rigisthru di canzilladdura] pa althri dettàgli.",
+	"rev-deleted-text-view": "Chistha versioni di la pàgina è isthadda buggadda da l'archìbi visìbiri a lu pùbbriggu.\nLu testhu pò assé visuarizzaddu soru da l'amministhradori di lu situ.\nCunsulthà lu [{{fullurl:{{#Special:Log}}/suppress|page=$1}} rigisthru di canzilladdura] pa althri dettàgli.",
 	"rev-delundel": "musthrà/cuà",
 	"rev-showdeleted": "musthra",
 	"revisiondelete": "Canzella o ricùpara versioni",

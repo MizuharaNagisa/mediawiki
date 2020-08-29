@@ -6,9 +6,11 @@
  */
 
 use MediaWiki\Config\ServiceOptions;
+use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\Linker\LinkTarget;
+use MediaWiki\MediaWikiServices;
 
-class NamespaceInfoTest extends MediaWikiTestCase {
+class NamespaceInfoTest extends MediaWikiIntegrationTestCase {
 	use TestAllServiceOptionsUsed;
 
 	/**********************************************************************************************
@@ -17,7 +19,7 @@ class NamespaceInfoTest extends MediaWikiTestCase {
 	 */
 	private $scopedCallback;
 
-	public function setUp() : void {
+	protected function setUp() : void {
 		parent::setUp();
 
 		// Boo, there's still some global state in the class :(
@@ -30,7 +32,7 @@ class NamespaceInfoTest extends MediaWikiTestCase {
 			ExtensionRegistry::getInstance()->setAttributeForTest( 'ExtensionNamespaces', [] );
 	}
 
-	public function tearDown() : void {
+	protected function tearDown() : void {
 		$this->scopedCallback = null;
 
 		parent::tearDown();
@@ -59,12 +61,22 @@ class NamespaceInfoTest extends MediaWikiTestCase {
 		'NonincludableNamespaces' => [],
 	];
 
+	/**
+	 * @return HookContainer
+	 */
+	private function getHookContainer() {
+		return MediaWikiServices::getInstance()->getHookContainer();
+	}
+
 	private function newObj( array $options = [] ) : NamespaceInfo {
-		return new NamespaceInfo( new LoggedServiceOptions(
-			self::$serviceOptionsAccessLog,
-			NamespaceInfo::CONSTRUCTOR_OPTIONS,
-			$options, self::DEFAULT_OPTIONS
-		) );
+		return new NamespaceInfo(
+			new LoggedServiceOptions(
+				self::$serviceOptionsAccessLog,
+				NamespaceInfo::CONSTRUCTOR_OPTIONS,
+				$options, self::DEFAULT_OPTIONS
+			),
+			$this->getHookContainer()
+		);
 	}
 
 	// %} End shared code
@@ -85,7 +97,7 @@ class NamespaceInfoTest extends MediaWikiTestCase {
 			$this->expectException( \Wikimedia\Assert\PreconditionException::class );
 			$this->expectExceptionMessage( $expectedExceptionText );
 		}
-		new NamespaceInfo( $options );
+		new NamespaceInfo( $options, $this->getHookContainer() );
 		$this->assertTrue( true );
 	}
 
@@ -110,6 +122,10 @@ class NamespaceInfoTest extends MediaWikiTestCase {
 	 * @param bool $allowImageMoving
 	 */
 	public function testIsMovable( $expected, $ns, $allowImageMoving = true ) {
+		if ( $allowImageMoving === false ) {
+			$this->filterDeprecated( '/Setting \$wgAllowImageMoving to false/' );
+		}
+
 		$obj = $this->newObj( [ 'AllowImageMoving' => $allowImageMoving ] );
 		$this->assertSame( $expected, $obj->isMovable( $ns ) );
 	}

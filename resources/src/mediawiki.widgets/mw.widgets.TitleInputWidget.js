@@ -103,7 +103,7 @@
 	 *
 	 * @param {OO.ui.MenuOptionWidget} item Selected item
 	 */
-	mw.widgets.TitleInputWidget.prototype.onLookupMenuItemChoose = function ( item ) {
+	mw.widgets.TitleInputWidget.prototype.onLookupMenuChoose = function ( item ) {
 		this.closeLookupMenu();
 		this.setLookupsDisabled( true );
 		this.setValue( item.getData() );
@@ -136,9 +136,9 @@
 		// Parent method
 		value = mw.widgets.TitleInputWidget.parent.prototype.cleanUpValue.call( this, value );
 
-		return trimByteLength( this.value, value, this.maxLength, function ( value ) {
-			var title = widget.getMWTitle( value );
-			return title ? title.getMain() : value;
+		return trimByteLength( this.value, value, this.maxLength, function ( val ) {
+			var title = widget.getMWTitle( val );
+			return title ? title.getMain() : val;
 		} ).newVal;
 	};
 

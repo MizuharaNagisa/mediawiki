@@ -5,6 +5,7 @@ namespace MediaWiki\Rest;
 use ExtensionRegistry;
 use IContextSource;
 use MediaWiki;
+use MediaWiki\Config\ServiceOptions;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Rest\BasicAccess\MWBasicAuthorizer;
 use MediaWiki\Rest\Validator\Validator;
@@ -22,6 +23,13 @@ class EntryPoint {
 	private $router;
 	/** @var RequestContext */
 	private $context;
+	/** @var ServiceOptions */
+	private $options;
+
+	/** @var array */
+	private const CONSTRUCTOR_OPTIONS = [
+		'AllowCrossOrigin',
+	];
 
 	/**
 	 * @param IContextSource $context
@@ -48,15 +56,27 @@ class EntryPoint {
 			RequestContext::getMain()->getUser()
 		);
 
+		// Always include the "official" routes. Include additional routes if specified.
+		$routeFiles = array_merge(
+			[ 'includes/Rest/coreRoutes.json' ],
+			$conf->get( 'RestAPIAdditionalRouteFiles' )
+		);
+		array_walk( $routeFiles, function ( &$val, $key ) {
+			global $IP;
+			$val = "$IP/$val";
+		} );
+
 		return new Router(
-			[ "$IP/includes/Rest/coreRoutes.json" ],
+			$routeFiles,
 			ExtensionRegistry::getInstance()->getAttribute( 'RestRoutes' ),
+			$conf->get( 'CanonicalServer' ),
 			$conf->get( 'RestPath' ),
 			$services->getLocalServerObjectCache(),
 			$responseFactory,
 			$authorizer,
 			$objectFactory,
-			$restValidator
+			$restValidator,
+			$services->getHookContainer()
 		);
 	}
 
@@ -74,12 +94,6 @@ class EntryPoint {
 		$services = MediaWikiServices::getInstance();
 		$conf = $services->getMainConfig();
 
-		if ( !$conf->get( 'EnableRestAPI' ) ) {
-			wfHttpError( 403, 'Access Denied',
-				'Set $wgEnableRestAPI to true to enable the experimental REST API' );
-			return;
-		}
-
 		$request = new RequestFromGlobals( [
 			'cookiePrefix' => $conf->get( 'CookiePrefix' )
 		] );
@@ -90,7 +104,9 @@ class EntryPoint {
 			$context,
 			$request,
 			$wgRequest->response(),
-			$router );
+			$router,
+			new ServiceOptions( self::CONSTRUCTOR_OPTIONS, $conf )
+		);
 		$entryPoint->execute();
 	}
 
@@ -114,12 +130,13 @@ class EntryPoint {
 	}
 
 	public function __construct( RequestContext $context, RequestInterface $request,
-		WebResponse $webResponse, Router $router
+		WebResponse $webResponse, Router $router, ServiceOptions $options
 	) {
 		$this->context = $context;
 		$this->request = $request;
 		$this->webResponse = $webResponse;
 		$this->router = $router;
+		$this->options = $options;
 	}
 
 	public function execute() {
@@ -130,6 +147,10 @@ class EntryPoint {
 			'HTTP/' . $response->getProtocolVersion() . ' ' .
 			$response->getStatusCode() . ' ' .
 			$response->getReasonPhrase() );
+
+		if ( $this->options->get( 'AllowCrossOrigin' ) ) {
+			$this->webResponse->header( 'Access-Control-Allow-Origin: *' );
+		}
 
 		foreach ( $response->getRawHeaderLines() as $line ) {
 			$this->webResponse->header( $line );

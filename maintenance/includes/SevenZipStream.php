@@ -56,15 +56,14 @@ class SevenZipStream {
 			// Suppress the stupid messages on stderr
 			$command .= ' 2>/dev/null';
 		}
-		$this->stream = popen( $command, $mode[0] ); // popen() doesn't like two-letter modes
+		// popen() doesn't like two-letter modes
+		$this->stream = popen( $command, $mode[0] );
 		return ( $this->stream !== false );
 	}
 
 	public function url_stat( $path, $flags ) {
 		return stat( $this->stripPath( $path ) );
 	}
-
-	// This is all so lame; there should be a default class we can extend
 
 	public function stream_close() {
 		return fclose( $this->stream );

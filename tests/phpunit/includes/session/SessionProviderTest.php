@@ -3,7 +3,7 @@
 namespace MediaWiki\Session;
 
 use MediaWiki\MediaWikiServices;
-use MediaWikiTestCase;
+use MediaWikiIntegrationTestCase;
 use Wikimedia\TestingAccessWrapper;
 
 /**
@@ -11,12 +11,13 @@ use Wikimedia\TestingAccessWrapper;
  * @group Database
  * @covers MediaWiki\Session\SessionProvider
  */
-class SessionProviderTest extends MediaWikiTestCase {
+class SessionProviderTest extends MediaWikiIntegrationTestCase {
 
 	public function testBasics() {
 		$manager = new SessionManager();
 		$logger = new \TestLogger();
 		$config = new \HashConfig();
+		$hookContainer = $this->createHookContainer();
 
 		$provider = $this->getMockForAbstractClass( SessionProvider::class );
 		$priv = TestingAccessWrapper::newFromObject( $provider );
@@ -28,6 +29,8 @@ class SessionProviderTest extends MediaWikiTestCase {
 		$provider->setManager( $manager );
 		$this->assertSame( $manager, $priv->manager );
 		$this->assertSame( $manager, $provider->getManager() );
+		$provider->setHookContainer( $hookContainer );
+		$this->assertSame( $hookContainer, $priv->getHookContainer() );
 
 		$provider->invalidateSessionsForUser( new \User );
 
@@ -40,6 +43,7 @@ class SessionProviderTest extends MediaWikiTestCase {
 		$this->assertNull( $provider->getRememberUserDuration() );
 
 		$this->assertNull( $provider->whyNoSession() );
+		$this->assertFalse( $provider->safeAgainstCsrf() );
 
 		$info = new SessionInfo( SessionInfo::MIN_PRIORITY, [
 			'id' => 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',

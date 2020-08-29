@@ -38,7 +38,7 @@ class TitleCleanup extends TableCleanup {
 	public function __construct() {
 		parent::__construct();
 		$this->addDescription( 'Script to clean up broken, unparseable titles' );
-		$this->batchSize = 1000;
+		$this->setBatchSize( 1000 );
 	}
 
 	/**
@@ -54,7 +54,8 @@ class TitleCleanup extends TableCleanup {
 			&& $title->getNamespace() == $row->page_namespace
 			&& $title->getDBkey() === $row->page_title
 		) {
-			$this->progress( 0 ); // all is fine
+			// all is fine
+			$this->progress( 0 );
 
 			return;
 		}

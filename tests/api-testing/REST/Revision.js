@@ -1,3 +1,5 @@
+'use strict';
+
 const { action, assert, REST, utils } = require( 'api-testing' );
 
 describe( 'Revision', () => {
@@ -21,6 +23,7 @@ describe( 'Revision', () => {
 		} );
 
 		it( 'should successfully get diff between 2 valid revisions', async () => {
+			// XXX: this test requires php-wikidiff2 1.10 or later to be installed
 			const { newrevid: revId1 } = await mindy.edit( page, { text: 'Mindy Edit 1' } );
 			const { newrevid: revId2 } = await mindy.edit( page, { text: 'Mindy Edit 2' } );
 			const { status, body } = await client.get( `/revision/${revId1}/compare/${revId2}` );
@@ -44,14 +47,14 @@ describe( 'Revision', () => {
 		} );
 	} );
 
-	describe( 'GET /revision/{id}/bare', async () => {
+	describe( 'GET /revision/{id}/bare', () => {
 		it( 'should successfully get information about revision', async () => {
 			const page = utils.title( 'Revision' );
 			const { newrevid, pageid, param_summary } = await mindy.edit( page, {
 				text: 'Hello World',
 				summary: 'creating page'
 			} );
-			const { status, body } = await client.get( `/revision/${newrevid}/bare` );
+			const { status, body, headers } = await client.get( `/revision/${newrevid}/bare` );
 
 			assert.strictEqual( status, 200 );
 			assert.strictEqual( body.id, newrevid );
@@ -60,6 +63,8 @@ describe( 'Revision', () => {
 			assert.nestedProperty( body, 'timestamp' );
 			assert.nestedPropertyVal( body, 'user.name', mindy.username );
 			assert.strictEqual( body.comment, param_summary );
+			assert.isOk( headers.etag, 'etag' );
+			assert.equal( Date.parse( body.timestamp ), Date.parse( headers[ 'last-modified' ] ) );
 		} );
 
 		it( 'should return 404 for revision that does not exist', async () => {

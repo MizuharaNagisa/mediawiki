@@ -1,6 +1,5 @@
 <?php
 /**
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -38,7 +37,9 @@ class ApiComparePages extends ApiBase {
 	/** @var \MediaWiki\Revision\SlotRoleRegistry */
 	private $slotRoleRegistry;
 
-	private $guessedTitle = false, $props;
+	/** @var Title|false */
+	private $guessedTitle = false;
+	private $props;
 
 	/** @var IContentHandlerFactory */
 	private $contentHandlerFactory;
@@ -132,7 +133,8 @@ class ApiComparePages extends ApiBase {
 					if ( !$toRev ) {
 						$title = Title::newFromLinkTarget( $title );
 						$this->dieWithError(
-							[ 'apierror-missingrev-title', wfEscapeWikiText( $title->getPrefixedText() ) ], 'nosuchrevid'
+							[ 'apierror-missingrev-title', wfEscapeWikiText( $title->getPrefixedText() ) ],
+							'nosuchrevid'
 						);
 					}
 					$toRelRev = $toRev;
@@ -404,7 +406,8 @@ class ApiComparePages extends ApiBase {
 				if ( !$suppliedContent ) {
 					if ( $title->exists() ) {
 						$this->dieWithError(
-							[ 'apierror-missingrev-title', wfEscapeWikiText( $title->getPrefixedText() ) ], 'nosuchrevid'
+							[ 'apierror-missingrev-title', wfEscapeWikiText( $title->getPrefixedText() ) ],
+							'nosuchrevid'
 						);
 					} else {
 						$this->dieWithError(
@@ -584,6 +587,12 @@ class ApiComparePages extends ApiBase {
 			if ( isset( $this->props['size'] ) ) {
 				$vals["{$prefix}size"] = $rev->getSize();
 			}
+			if ( isset( $this->props['timestamp'] ) ) {
+				$revTimestamp = $rev->getTimestamp();
+				if ( $revTimestamp ) {
+					$vals["{$prefix}timestamp"] = wfTimestamp( TS_ISO_8601, $revTimestamp );
+				}
+			}
 
 			$anyHidden = false;
 			if ( $rev->isDeleted( RevisionRecord::DELETED_TEXT ) ) {
@@ -720,6 +729,7 @@ class ApiComparePages extends ApiBase {
 				'comment',
 				'parsedcomment',
 				'size',
+				'timestamp',
 			],
 			ApiBase::PARAM_ISMULTI => true,
 			ApiBase::PARAM_HELP_MSG_PER_VALUE => [],

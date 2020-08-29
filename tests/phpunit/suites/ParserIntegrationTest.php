@@ -30,6 +30,7 @@ use Wikimedia\ScopedCallback;
 class ParserIntegrationTest extends PHPUnit\Framework\TestCase {
 
 	use MediaWikiCoversValidator;
+	use MediaWikiTestCaseTrait;
 
 	/** @var array */
 	private $ptTest;
@@ -40,14 +41,21 @@ class ParserIntegrationTest extends PHPUnit\Framework\TestCase {
 	/** @var ScopedCallback */
 	private $ptTeardownScope;
 
-	public function __construct( $runner, $fileName, $test ) {
+	/** @var string|null */
+	private $skipMessage = null;
+
+	public function __construct( $runner, $fileName, $test, $skipMessage = null ) {
 		parent::__construct( 'testParse', [ '[details omitted]' ],
 			basename( $fileName ) . ': ' . $test['desc'] );
 		$this->ptTest = $test;
 		$this->ptRunner = $runner;
+		$this->skipMessage = $skipMessage;
 	}
 
 	public function testParse() {
+		if ( $this->skipMessage !== null ) {
+			$this->markTestSkipped( $this->skipMessage );
+		}
 		$this->ptRunner->getRecorder()->setTestCase( $this );
 		$result = $this->ptRunner->runTest( $this->ptTest );
 		if ( $result === false ) {
@@ -57,11 +65,12 @@ class ParserIntegrationTest extends PHPUnit\Framework\TestCase {
 		$this->assertEquals( $result->expected, $result->actual );
 	}
 
-	public function setUp() : void {
+	protected function setUp() : void {
 		$this->ptTeardownScope = $this->ptRunner->staticSetup();
+		$this->hideDeprecated( 'Hooks::clear' );
 	}
 
-	public function tearDown() : void {
+	protected function tearDown() : void {
 		if ( $this->ptTeardownScope ) {
 			ScopedCallback::consume( $this->ptTeardownScope );
 		}

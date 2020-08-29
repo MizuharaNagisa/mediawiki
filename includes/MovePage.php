@@ -21,9 +21,14 @@
 
 use MediaWiki\Config\ServiceOptions;
 use MediaWiki\Content\IContentHandlerFactory;
+use MediaWiki\EditPage\SpamChecker;
+use MediaWiki\HookContainer\HookContainer;
+use MediaWiki\HookContainer\HookRunner;
 use MediaWiki\MediaWikiServices;
-use MediaWiki\Page\MovePageFactory;
 use MediaWiki\Permissions\PermissionManager;
+use MediaWiki\Revision\MutableRevisionRecord;
+use MediaWiki\Revision\RevisionRecord;
+use MediaWiki\Revision\RevisionStore;
 use MediaWiki\Revision\SlotRecord;
 use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\Rdbms\ILoadBalancer;
@@ -82,6 +87,33 @@ class MovePage {
 	private $contentHandlerFactory;
 
 	/**
+	 * @var RevisionStore
+	 */
+	private $revisionStore;
+
+	/**
+	 * @var SpamChecker
+	 */
+	private $spamChecker;
+
+	/**
+	 * @var HookContainer
+	 */
+	private $hookContainer;
+
+	/**
+	 * @var HookRunner
+	 */
+	private $hookRunner;
+
+	/**
+	 * @internal For use by MovePageTest
+	 */
+	public const CONSTRUCTOR_OPTIONS = [
+		'CategoryCollation'
+	];
+
+	/**
 	 * Calling this directly is deprecated in 1.34. Use MovePageFactory instead.
 	 *
 	 * @param Title $oldTitle
@@ -93,6 +125,9 @@ class MovePage {
 	 * @param PermissionManager|null $permMgr
 	 * @param RepoGroup|null $repoGroup
 	 * @param IContentHandlerFactory|null $contentHandlerFactory
+	 * @param RevisionStore|null $revisionStore
+	 * @param SpamChecker|null $spamChecker
+	 * @param HookContainer|null $hookContainer
 	 */
 	public function __construct(
 		Title $oldTitle,
@@ -103,23 +138,32 @@ class MovePage {
 		WatchedItemStoreInterface $watchedItems = null,
 		PermissionManager $permMgr = null,
 		RepoGroup $repoGroup = null,
-		IContentHandlerFactory $contentHandlerFactory = null
+		IContentHandlerFactory $contentHandlerFactory = null,
+		RevisionStore $revisionStore = null,
+		SpamChecker $spamChecker = null,
+		HookContainer $hookContainer = null
 	) {
 		$this->oldTitle = $oldTitle;
 		$this->newTitle = $newTitle;
+
+		$services = MediaWikiServices::getInstance();
 		$this->options = $options ??
-			new ServiceOptions( MovePageFactory::CONSTRUCTOR_OPTIONS,
-				MediaWikiServices::getInstance()->getMainConfig() );
-		$this->loadBalancer =
-			$loadBalancer ?? MediaWikiServices::getInstance()->getDBLoadBalancer();
-		$this->nsInfo = $nsInfo ?? MediaWikiServices::getInstance()->getNamespaceInfo();
-		$this->watchedItems =
-			$watchedItems ?? MediaWikiServices::getInstance()->getWatchedItemStore();
-		$this->permMgr = $permMgr ?? MediaWikiServices::getInstance()->getPermissionManager();
-		$this->repoGroup = $repoGroup ?? MediaWikiServices::getInstance()->getRepoGroup();
-		$this->contentHandlerFactory = (
-			$contentHandlerFactory ?? MediaWikiServices::getInstance()->getContentHandlerFactory()
-		);
+			new ServiceOptions(
+				self::CONSTRUCTOR_OPTIONS,
+				$services->getMainConfig()
+			);
+		$this->loadBalancer = $loadBalancer ?? $services->getDBLoadBalancer();
+		$this->nsInfo = $nsInfo ?? $services->getNamespaceInfo();
+		$this->watchedItems = $watchedItems ?? $services->getWatchedItemStore();
+		$this->permMgr = $permMgr ?? $services->getPermissionManager();
+		$this->repoGroup = $repoGroup ?? $services->getRepoGroup();
+		$this->contentHandlerFactory =
+			$contentHandlerFactory ?? $services->getContentHandlerFactory();
+
+		$this->revisionStore = $revisionStore ?? $services->getRevisionStore();
+		$this->spamChecker = $spamChecker ?? $services->getSpamChecker();
+		$this->hookContainer = $hookContainer ?? $services->getHookContainer();
+		$this->hookRunner = new HookRunner( $this->hookContainer );
 	}
 
 	/**
@@ -147,20 +191,18 @@ class MovePage {
 			}
 		}
 
-		if ( $reason !== null && EditPage::matchSummarySpamRegex( $reason ) !== false ) {
+		if ( $reason !== null && $this->spamChecker->checkSummary( $reason ) !== false ) {
 			// This is kind of lame, won't display nice
 			$status->fatal( 'spamprotectiontext' );
 		}
 
 		$tp = $this->newTitle->getTitleProtection();
-		$permissionManager = MediaWikiServices::getInstance()->getPermissionManager();
-		if ( $tp !== false && !$permissionManager->userHasRight( $user, $tp['permission'] ) ) {
+		if ( $tp !== false && !$this->permMgr->userHasRight( $user, $tp['permission'] ) ) {
 			$status->fatal( 'cantmove-titleprotected' );
 		}
 
-		Hooks::run( 'MovePageCheckPermissions',
-			[ $this->oldTitle, $this->newTitle, $user, $reason, $status ]
-		);
+		$this->hookRunner->onMovePageCheckPermissions(
+			$this->oldTitle, $this->newTitle, $user, $reason, $status );
 
 		return $status;
 	}
@@ -192,7 +234,11 @@ class MovePage {
 		} elseif ( $this->oldTitle->isExternal() ) {
 			$status->fatal( 'immobile-source-namespace-iw' );
 		} elseif ( !$this->oldTitle->isMovable() ) {
-			$status->fatal( 'immobile-source-namespace', $this->oldTitle->getNsText() );
+			$nsText = $this->oldTitle->getNsText();
+			if ( $nsText === '' ) {
+				$nsText = wfMessage( 'blanknamespace' )->text();
+			}
+			$status->fatal( 'immobile-source-namespace', $nsText );
 		} elseif ( !$this->oldTitle->exists() ) {
 			$status->fatal( 'movepage-source-doesnt-exist' );
 		}
@@ -200,25 +246,20 @@ class MovePage {
 		if ( $this->newTitle->isExternal() ) {
 			$status->fatal( 'immobile-target-namespace-iw' );
 		} elseif ( !$this->newTitle->isMovable() ) {
-			$status->fatal( 'immobile-target-namespace', $this->newTitle->getNsText() );
+			$nsText = $this->newTitle->getNsText();
+			if ( $nsText === '' ) {
+				$nsText = wfMessage( 'blanknamespace' )->text();
+			}
+			$status->fatal( 'immobile-target-namespace', $nsText );
 		}
 		if ( !$this->newTitle->isValid() ) {
 			$status->fatal( 'movepage-invalid-target-title' );
 		}
 
 		// Content model checks
-		if ( !$this->options->get( 'ContentHandlerUseDB' ) &&
-			$this->oldTitle->getContentModel() !== $this->newTitle->getContentModel() ) {
-			// can't move a page if that would change the page's content model
-			$status->fatal(
-				'bad-target-model',
-				ContentHandler::getLocalizedName( $this->oldTitle->getContentModel() ),
-				ContentHandler::getLocalizedName( $this->newTitle->getContentModel() )
-			);
-		} elseif (
-			!$this->contentHandlerFactory
-				->getContentHandler( $this->oldTitle->getContentModel() )
-				->canBeUsedOn( $this->newTitle )
+		if ( !$this->contentHandlerFactory
+			->getContentHandler( $this->oldTitle->getContentModel() )
+			->canBeUsedOn( $this->newTitle )
 		) {
 			$status->fatal(
 				'content-not-allowed-here',
@@ -238,7 +279,7 @@ class MovePage {
 		}
 
 		// Hook for extensions to say a title can't be moved for technical reasons
-		Hooks::run( 'MovePageIsValidMove', [ $this->oldTitle, $this->newTitle, $status ] );
+		$this->hookRunner->onMovePageIsValidMove( $this->oldTitle, $this->newTitle, $status );
 
 		return $status;
 	}
@@ -284,21 +325,25 @@ class MovePage {
 			$file = $this->repoGroup->getLocalRepo()->newFile( $this->newTitle );
 			$file->load( File::READ_LATEST );
 			if ( $file->exists() ) {
-				wfDebug( __METHOD__ . ": file exists\n" );
+				wfDebug( __METHOD__ . ": file exists" );
 				return false;
 			}
 		}
 		# Is it a redirect with no history?
 		if ( !$this->newTitle->isSingleRevRedirect() ) {
-			wfDebug( __METHOD__ . ": not a one-rev redirect\n" );
+			wfDebug( __METHOD__ . ": not a one-rev redirect" );
 			return false;
 		}
 		# Get the article text
-		$rev = Revision::newFromTitle( $this->newTitle, false, Revision::READ_LATEST );
+		$rev = $this->revisionStore->getRevisionByTitle(
+			$this->newTitle,
+			0,
+			RevisionStore::READ_LATEST
+		);
 		if ( !is_object( $rev ) ) {
 			return false;
 		}
-		$content = $rev->getContent();
+		$content = $rev->getContent( SlotRecord::MAIN );
 		# Does the redirect point to the source?
 		# Or is it a broken self-redirect, usually caused by namespace collisions?
 		$redirTitle = $content ? $content->getRedirectTarget() : null;
@@ -306,7 +351,7 @@ class MovePage {
 		if ( $redirTitle ) {
 			if ( $redirTitle->getPrefixedDBkey() !== $this->oldTitle->getPrefixedDBkey() &&
 				$redirTitle->getPrefixedDBkey() !== $this->newTitle->getPrefixedDBkey() ) {
-				wfDebug( __METHOD__ . ": redirect points to other page\n" );
+				wfDebug( __METHOD__ . ": redirect points to other page" );
 				return false;
 			} else {
 				return true;
@@ -314,7 +359,7 @@ class MovePage {
 		} else {
 			# Fail safe (not a redirect after all. strange.)
 			wfDebug( __METHOD__ . ": failsafe: database says " . $this->newTitle->getPrefixedDBkey() .
-				" is a redirect, but it doesn't contain a valid redirect.\n" );
+				" is a redirect, but it doesn't contain a valid redirect." );
 			return false;
 		}
 	}
@@ -366,8 +411,7 @@ class MovePage {
 		}
 
 		// Check suppressredirect permission
-		$permissionManager = MediaWikiServices::getInstance()->getPermissionManager();
-		if ( !$permissionManager->userHasRight( $user, 'suppressredirect' ) ) {
+		if ( !$this->permMgr->userHasRight( $user, 'suppressredirect' ) ) {
 			$createRedirect = true;
 		}
 
@@ -425,26 +469,23 @@ class MovePage {
 		$checkPermissions, User $user, $reason, $createRedirect, array $changeTags
 	) {
 		global $wgMaximumMovedPages;
-		$services = MediaWikiServices::getInstance();
 
 		if ( $checkPermissions ) {
-			if ( !$services->getPermissionManager()->userCan(
+			if ( !$this->permMgr->userCan(
 				'move-subpages', $user, $this->oldTitle )
 			) {
 				return Status::newFatal( 'cant-move-subpages' );
 			}
 		}
 
-		$nsInfo = $services->getNamespaceInfo();
-
 		// Do the source and target namespaces support subpages?
-		if ( !$nsInfo->hasSubpages( $this->oldTitle->getNamespace() ) ) {
+		if ( !$this->nsInfo->hasSubpages( $this->oldTitle->getNamespace() ) ) {
 			return Status::newFatal( 'namespace-nosubpages',
-				$nsInfo->getCanonicalName( $this->oldTitle->getNamespace() ) );
+				$this->nsInfo->getCanonicalName( $this->oldTitle->getNamespace() ) );
 		}
-		if ( !$nsInfo->hasSubpages( $this->newTitle->getNamespace() ) ) {
+		if ( !$this->nsInfo->hasSubpages( $this->newTitle->getNamespace() ) ) {
 			return Status::newFatal( 'namespace-nosubpages',
-				$nsInfo->getCanonicalName( $this->newTitle->getNamespace() ) );
+				$this->nsInfo->getCanonicalName( $this->newTitle->getNamespace() ) );
 		}
 
 		// Return a status for the overall result. Its value will be an array with per-title
@@ -512,7 +553,7 @@ class MovePage {
 	 */
 	private function moveUnsafe( User $user, $reason, $createRedirect, array $changeTags ) {
 		$status = Status::newGood();
-		Hooks::run( 'TitleMove', [ $this->oldTitle, $this->newTitle, $user, $reason, &$status ] );
+		$this->hookRunner->onTitleMove( $this->oldTitle, $this->newTitle, $user, $reason, $status );
 		if ( !$status->isOK() ) {
 			// Move was aborted by the hook
 			return $status;
@@ -521,7 +562,7 @@ class MovePage {
 		$dbw = $this->loadBalancer->getConnection( DB_MASTER );
 		$dbw->startAtomic( __METHOD__, IDatabase::ATOMIC_CANCELABLE );
 
-		Hooks::run( 'TitleMoveStarting', [ $this->oldTitle, $this->newTitle, $user ] );
+		$this->hookRunner->onTitleMoveStarting( $this->oldTitle, $this->newTitle, $user );
 
 		$pageid = $this->oldTitle->getArticleID( Title::READ_LATEST );
 		$protected = $this->oldTitle->isProtected();
@@ -648,7 +689,7 @@ class MovePage {
 
 		// If it is a file then move it last.
 		// This is done after all database changes so that file system errors cancel the transaction.
-		if ( $this->oldTitle->getNamespace() == NS_FILE ) {
+		if ( $this->oldTitle->getNamespace() === NS_FILE ) {
 			$status = $this->moveFile( $this->oldTitle, $this->newTitle );
 			if ( !$status->isOK() ) {
 				$dbw->cancelAtomic( __METHOD__ );
@@ -656,30 +697,59 @@ class MovePage {
 			}
 		}
 
-		Hooks::run(
-			'TitleMoveCompleting',
-			[ $this->oldTitle, $this->newTitle,
-				$user, $pageid, $redirid, $reason, $nullRevision ]
+		$this->hookRunner->onPageMoveCompleting(
+			$this->oldTitle, $this->newTitle,
+			$user, $pageid, $redirid, $reason, $nullRevision
 		);
+
+		// Deprecated since 1.35, use PageMoveCompleting
+		if ( $this->hookContainer->isRegistered( 'TitleMoveCompleting' ) ) {
+			// Only create the Revision object if needed
+			$nullRevisionObj = new Revision( $nullRevision );
+			$this->hookRunner->onTitleMoveCompleting(
+				$this->oldTitle,
+				$this->newTitle,
+				$user,
+				$pageid,
+				$redirid,
+				$reason,
+				$nullRevisionObj
+			);
+		}
 
 		$dbw->endAtomic( __METHOD__ );
 
-		$params = [
-			&$this->oldTitle,
-			&$this->newTitle,
-			&$user,
-			$pageid,
-			$redirid,
-			$reason,
-			$nullRevision
-		];
 		// Keep each single hook handler atomic
 		DeferredUpdates::addUpdate(
 			new AtomicSectionUpdate(
 				$dbw,
 				__METHOD__,
-				function () use ( $params ) {
-					Hooks::run( 'TitleMoveComplete', $params );
+				function () use ( $user, $pageid, $redirid, $reason, $nullRevision ) {
+					$this->hookRunner->onPageMoveComplete(
+						$this->oldTitle,
+						$this->newTitle,
+						$user,
+						$pageid,
+						$redirid,
+						$reason,
+						$nullRevision
+					);
+
+					if ( !$this->hookContainer->isRegistered( 'TitleMoveComplete' ) ) {
+						// Don't go on to create a Revision unless its needed
+						return;
+					}
+
+					$nullRevisionObj = new Revision( $nullRevision );
+					// Deprecated since 1.35, use PageMoveComplete
+					$this->hookRunner->onTitleMoveComplete(
+						$this->oldTitle,
+						$this->newTitle,
+						$user, $pageid,
+						$redirid,
+						$reason,
+						$nullRevisionObj
+					);
 				}
 			)
 		);
@@ -691,21 +761,18 @@ class MovePage {
 	 * Move a file associated with a page to a new location.
 	 * Can also be used to revert after a DB failure.
 	 *
-	 * @private
+	 * @internal
 	 * @param Title $oldTitle Old location to move the file from.
 	 * @param Title $newTitle New location to move the file to.
 	 * @return Status
 	 */
 	private function moveFile( $oldTitle, $newTitle ) {
-		$status = Status::newFatal(
-			'cannotdelete',
-			$oldTitle->getPrefixedText()
-		);
-
 		$file = $this->repoGroup->getLocalRepo()->newFile( $oldTitle );
 		$file->load( File::READ_LATEST );
 		if ( $file->exists() ) {
 			$status = $file->move( $newTitle );
+		} else {
+			$status = Status::newGood();
 		}
 
 		// Clear RepoGroup process cache
@@ -726,7 +793,7 @@ class MovePage {
 	 * @param bool $createRedirect Whether to leave a redirect at the old title. Does not check
 	 *   if the user has the suppressredirect right
 	 * @param string[] $changeTags Change tags to apply to the entry in the move log
-	 * @return Revision the revision created by the move
+	 * @return RevisionRecord the revision created by the move
 	 * @throws MWException
 	 */
 	private function moveToInternal( User $user, &$nt, $reason = '', $createRedirect = true,
@@ -749,11 +816,11 @@ class MovePage {
 			$errs = [];
 			$status = $newpage->doDeleteArticleReal(
 				$overwriteMessage,
-				/* $suppress */ false,
-				$nt->getArticleID(),
-				/* $commit */ false,
-				$errs,
 				$user,
+				/* $suppress */ false,
+				/* unused */ null,
+				$errs,
+				/* unused */ null,
 				$changeTags,
 				'delete_redir'
 			);
@@ -767,7 +834,7 @@ class MovePage {
 		}
 
 		if ( $createRedirect ) {
-			if ( $this->oldTitle->getNamespace() == NS_CATEGORY
+			if ( $this->oldTitle->getNamespace() === NS_CATEGORY
 				&& !wfMessage( 'category-move-redirect-override' )->inContentLanguage()->isDisabled()
 			) {
 				$redirectContent = new WikitextContent(
@@ -786,13 +853,6 @@ class MovePage {
 		} else {
 			$redirectContent = null;
 		}
-
-		// Figure out whether the content model is no longer the default
-		$oldDefault = ContentHandler::getDefaultModelFor( $this->oldTitle );
-		$contentModel = $this->oldTitle->getContentModel();
-		$newDefault = ContentHandler::getDefaultModelFor( $nt );
-		$defaultContentModelChanging = ( $oldDefault !== $newDefault
-			&& $oldDefault === $contentModel );
 
 		// T59084: log_page should be the ID of the *moved* page
 		$oldid = $this->oldTitle->getArticleID();
@@ -831,15 +891,26 @@ class MovePage {
 			__METHOD__
 		);
 
+		// Reset $nt before using it to create the null revision (T248789).
+		// But not $this->oldTitle yet, see below (T47348).
+		$nt->resetArticleID( $oldid );
+
+		$commentObj = CommentStoreComment::newUnsavedComment( $comment );
 		# Save a null revision in the page's history notifying of the move
-		$nullRevision = Revision::newNullRevision( $dbw, $oldid, $comment, true, $user );
+		$nullRevision = $this->revisionStore->newNullRevision(
+			$dbw,
+			$nt,
+			$commentObj,
+			true,
+			$user
+		);
 		if ( !is_object( $nullRevision ) ) {
 			throw new MWException( 'Failed to create null revision while moving page ID '
 				. $oldid . ' to ' . $nt->getPrefixedDBkey() );
 		}
 
-		$nullRevId = $nullRevision->insertOn( $dbw );
-		$logEntry->setAssociatedRevId( $nullRevId );
+		$nullRevision = $this->revisionStore->insertRevisionOn( $nullRevision, $dbw );
+		$logEntry->setAssociatedRevId( $nullRevision->getId() );
 
 		/**
 		 * T163966
@@ -854,26 +925,29 @@ class MovePage {
 		}
 
 		$this->oldTitle->resetArticleID( 0 ); // 0 == non existing
-		$nt->resetArticleID( $oldid );
 		$newpage->loadPageData( WikiPage::READ_LOCKING ); // T48397
 
 		$newpage->updateRevisionOn( $dbw, $nullRevision );
 
-		Hooks::run( 'NewRevisionFromEditComplete',
-			[ $newpage, $nullRevision, $nullRevision->getParentId(), $user ] );
+		$fakeTags = [];
+		$this->hookRunner->onRevisionFromEditComplete(
+			$newpage, $nullRevision, $nullRevision->getParentId(), $user, $fakeTags );
+
+		// Hook is hard deprecated since 1.35
+		if ( $this->hookContainer->isRegistered( 'NewRevisionFromEditComplete' ) ) {
+			// Only create the Revision object if needed
+			$nullRevisionObj = new Revision( $nullRevision );
+			$this->hookRunner->onNewRevisionFromEditComplete(
+				$newpage,
+				$nullRevisionObj,
+				$nullRevision->getParentId(),
+				$user,
+				$fakeTags
+			);
+		}
 
 		$newpage->doEditUpdates( $nullRevision, $user,
 			[ 'changed' => false, 'moved' => true, 'oldcountable' => $oldcountable ] );
-
-		// If the default content model changes, we need to populate rev_content_model
-		if ( $defaultContentModelChanging ) {
-			$dbw->update(
-				'revision',
-				[ 'rev_content_model' => $contentModel ],
-				[ 'rev_page' => $nt->getArticleID(), 'rev_content_model IS NULL' ],
-				__METHOD__
-			);
-		}
 
 		WikiPage::onArticleCreate( $nt );
 
@@ -884,20 +958,47 @@ class MovePage {
 			$newid = $redirectArticle->insertOn( $dbw );
 			if ( $newid ) { // sanity
 				$this->oldTitle->resetArticleID( $newid );
-				$redirectRevision = new Revision( [
-					'title' => $this->oldTitle, // for determining the default content model
-					'page' => $newid,
-					'user_text' => $user->getName(),
-					'user' => $user->getId(),
-					'comment' => $comment,
-					'content' => $redirectContent ] );
-				$redirectRevId = $redirectRevision->insertOn( $dbw );
-				$redirectArticle->updateRevisionOn( $dbw, $redirectRevision, 0 );
+				$redirectRevisionRecord = new MutableRevisionRecord( $this->oldTitle );
+				$redirectRevisionRecord->setPageId( $newid );
+				$redirectRevisionRecord->setUser( $user );
+				$redirectRevisionRecord->setComment( $commentObj );
+				$redirectRevisionRecord->setContent( SlotRecord::MAIN, $redirectContent );
+				$redirectRevisionRecord->setTimestamp( MWTimestamp::now( TS_MW ) );
 
-				Hooks::run( 'NewRevisionFromEditComplete',
-					[ $redirectArticle, $redirectRevision, false, $user ] );
+				$inserted = $this->revisionStore->insertRevisionOn(
+					$redirectRevisionRecord,
+					$dbw
+				);
+				$redirectRevId = $inserted->getId();
+				$redirectArticle->updateRevisionOn( $dbw, $inserted, 0 );
 
-				$redirectArticle->doEditUpdates( $redirectRevision, $user, [ 'created' => true ] );
+				$fakeTags = [];
+				$this->hookRunner->onRevisionFromEditComplete(
+					$redirectArticle,
+					$inserted,
+					false,
+					$user,
+					$fakeTags
+				);
+
+				// Hook is hard deprecated since 1.35
+				if ( $this->hookContainer->isRegistered( 'NewRevisionFromEditComplete' ) ) {
+					// Only create the Revision object if needed
+					$redirectRevisionObj = new Revision( $inserted );
+					$this->hookRunner->onNewRevisionFromEditComplete(
+						$redirectArticle,
+						$redirectRevisionObj,
+						false,
+						$user,
+						$fakeTags
+					);
+				}
+
+				$redirectArticle->doEditUpdates(
+					$inserted,
+					$user,
+					[ 'created' => true ]
+				);
 
 				// make a copy because of log entry below
 				$redirectTags = $changeTags;

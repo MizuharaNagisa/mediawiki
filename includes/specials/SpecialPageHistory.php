@@ -19,11 +19,13 @@
  *
  * @file
  * @ingroup SpecialPage
+ * @author DannyS712
  */
 class SpecialPageHistory extends SpecialRedirectWithAction {
 	public function __construct() {
 		parent::__construct( 'PageHistory', 'history', 'pagehistory' );
 	}
+
 	// Messages, for grep:
 	// specialpagehistory-page
 	// specialpagehistory-submit

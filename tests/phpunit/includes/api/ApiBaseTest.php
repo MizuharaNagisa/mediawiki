@@ -23,7 +23,7 @@ class ApiBaseTest extends ApiTestCase {
 	public function testStubMethods( $expected, $method, $args = [] ) {
 		// Some of these are protected
 		$mock = TestingAccessWrapper::newFromObject( new MockApi() );
-		$result = call_user_func_array( [ $mock, $method ], $args );
+		$result = $mock->$method( ...$args );
 		$this->assertSame( $expected, $result );
 	}
 
@@ -1063,6 +1063,15 @@ class ApiBaseTest extends ApiTestCase {
 				[ wfTimestamp( TS_MW, 100 ), wfTimestamp( TS_MW, 101 ) ],
 				[],
 			],
+			'Expiry array' => [
+				'99990123123456|8888-01-23 12:34:56|indefinite',
+				[
+					ApiBase::PARAM_TYPE => 'expiry',
+					ApiBase::PARAM_ISMULTI => 1,
+				],
+				[ '9999-01-23T12:34:56Z', '8888-01-23T12:34:56Z', 'infinity' ],
+				[],
+			],
 			'User' => [
 				'foo_bar',
 				[ ApiBase::PARAM_TYPE => 'user' ],
@@ -1317,7 +1326,7 @@ class ApiBaseTest extends ApiTestCase {
 		$user = $this->getMutableTestUser()->getUser();
 		$block = new DatabaseBlock( [
 			'address' => $user->getName(),
-			'user' => $user->getID(),
+			'user' => $user->getId(),
 			'by' => $this->getTestSysop()->getUser()->getId(),
 			'reason' => __METHOD__,
 			'expiry' => time() + 100500,
@@ -1376,7 +1385,7 @@ class ApiBaseTest extends ApiTestCase {
 		$user = $this->getMutableTestUser()->getUser();
 		$block = new DatabaseBlock( [
 			'address' => $user->getName(),
-			'user' => $user->getID(),
+			'user' => $user->getId(),
 			'by' => $this->getTestSysop()->getUser()->getId(),
 			'reason' => __METHOD__,
 			'expiry' => time() + 100500,

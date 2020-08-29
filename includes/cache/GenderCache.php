@@ -22,8 +22,10 @@
  * @ingroup Cache
  */
 
+use MediaWiki\Linker\LinkTarget;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\User\UserIdentity;
+use MediaWiki\User\UserOptionsLookup;
 use Wikimedia\Rdbms\ILoadBalancer;
 
 /**
@@ -43,16 +45,26 @@ class GenderCache {
 	/** @var ILoadBalancer|null */
 	private $loadBalancer;
 
-	public function __construct( NamespaceInfo $nsInfo = null, ILoadBalancer $loadBalancer = null ) {
+	/** @var UserOptionsLookup */
+	private $userOptionsLookup;
+
+	public function __construct(
+		NamespaceInfo $nsInfo = null,
+		ILoadBalancer $loadBalancer = null,
+		UserOptionsLookup $userOptionsLookup = null
+	) {
 		$this->nsInfo = $nsInfo ?? MediaWikiServices::getInstance()->getNamespaceInfo();
 		$this->loadBalancer = $loadBalancer;
+		$this->userOptionsLookup = $userOptionsLookup ?? MediaWikiServices::getInstance()->getUserOptionsLookup();
 	}
 
 	/**
-	 * @deprecated in 1.28 see MediaWikiServices::getInstance()->getGenderCache()
+	 * @see MediaWikiServices::getInstance()->getGenderCache()
+	 * @deprecated in 1.28 (soft), 1.35 (hard)
 	 * @return GenderCache
 	 */
 	public static function singleton() {
+		wfDeprecated( __METHOD__, '1.28' );
 		return MediaWikiServices::getInstance()->getGenderCache();
 	}
 
@@ -62,7 +74,7 @@ class GenderCache {
 	 */
 	protected function getDefault() {
 		if ( $this->default === null ) {
-			$this->default = User::getDefaultOption( 'gender' );
+			$this->default = $this->userOptionsLookup->getDefaultOption( 'gender' );
 		}
 
 		return $this->default;
@@ -86,7 +98,7 @@ class GenderCache {
 			if ( $this->misses >= $this->missLimit && $wgUser->getName() !== $username ) {
 				if ( $this->misses === $this->missLimit ) {
 					$this->misses++;
-					wfDebug( __METHOD__ . ": too many misses, returning default onwards\n" );
+					wfDebug( __METHOD__ . ": too many misses, returning default onwards" );
 				}
 
 				return $this->getDefault();
@@ -123,19 +135,15 @@ class GenderCache {
 	}
 
 	/**
-	 * Wrapper for doQuery that processes a title or string array.
+	 * Wrapper for doQuery that processes a title array.
 	 *
 	 * @since 1.20
-	 * @param array $titles Array of LinkTarget objects or strings
+	 * @param LinkTarget[] $titles
 	 * @param string $caller The calling method
 	 */
 	public function doTitlesArray( $titles, $caller = '' ) {
 		$users = [];
-		foreach ( $titles as $title ) {
-			$titleObj = is_string( $title ) ? Title::newFromText( $title ) : $title;
-			if ( !$titleObj ) {
-				continue;
-			}
+		foreach ( $titles as $titleObj ) {
 			if ( !$this->nsInfo->hasGenderDistinction( $titleObj->getNamespace() ) ) {
 				continue;
 			}

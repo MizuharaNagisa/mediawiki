@@ -36,6 +36,7 @@ use Wikimedia\Rdbms\IDatabase;
  *
  * Caching is used to avoid hitting servers that are down.
  *
+ * @stable to extend
  * @ingroup LockManager
  * @since 1.19
  */
@@ -52,6 +53,7 @@ abstract class DBLockManager extends QuorumLockManager {
 
 	/**
 	 * Construct a new instance from configuration.
+	 * @stable to call
 	 *
 	 * @param array $config Parameters include:
 	 *   - dbServers   : Associative array of DB names to server configuration.
@@ -95,6 +97,7 @@ abstract class DBLockManager extends QuorumLockManager {
 
 	/**
 	 * @todo change this code to work in one batch
+	 * @stable to override
 	 * @param string $lockSrv
 	 * @param array $pathsByType
 	 * @return StatusValue
@@ -110,6 +113,10 @@ abstract class DBLockManager extends QuorumLockManager {
 
 	abstract protected function doGetLocksOnServer( $lockSrv, array $paths, $type );
 
+	/**
+	 * @inheritDoc
+	 * @stable to override
+	 */
 	protected function freeLocksOnServer( $lockSrv, array $pathsByType ) {
 		return StatusValue::newGood();
 	}
@@ -174,6 +181,7 @@ abstract class DBLockManager extends QuorumLockManager {
 
 	/**
 	 * Do additional initialization for new lock DB connection
+	 * @stable to override
 	 *
 	 * @param string $lockDb
 	 * @param IDatabase $db
@@ -223,7 +231,7 @@ abstract class DBLockManager extends QuorumLockManager {
 	public function __destruct() {
 		$this->releaseAllLocks();
 		foreach ( $this->conns as $db ) {
-			$db->close();
+			$db->close( __METHOD__ );
 		}
 	}
 }

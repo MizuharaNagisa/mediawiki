@@ -1,14 +1,14 @@
 {
 	"@metadata": {
 		"authors": [
+			"Amire80",
 			"Ilham",
 			"Lukman Tomayahu",
 			"Marwan Mohamad",
 			"Matma Rex",
+			"Matěj Suchánek",
 			"NoiX180",
-			"Zhoelyakin",
-			"Amire80",
-			"Matěj Suchánek"
+			"Zhoelyakin"
 		]
 	},
 	"tog-underline": "Garisiyi totibawa wumbuta",
@@ -38,7 +38,7 @@
 	"tog-oldsig": "Pali lo ulu'umu masatiya",
 	"tog-fancysig": "Popopasiya pali lo'ulu'u odelo tuladuwiki (diyalu tuwawu wumbuta otomatis)",
 	"tog-uselivepreview": "Popobilohe pratayang wawu ja detohe ulangi halaman",
-	"tog-forceeditsummary": "Popo'ēlawa wa'u wonu dosi momoli'o dīpo otuwa",
+	"tog-forceeditsummary": "Popo'ēlawa wa'u wonu limbu'o dosi momoli'o dīpo otuwa",
 	"tog-watchlisthideown": "Wanto'a u biloli'u'u to daputari lo he'awasiyalo",
 	"tog-watchlisthidebots": "Wanto'a u biloli'o bot to daputari lo he'awasiyalo",
 	"tog-watchlisthideminor": "Wanto'a u loboli'a ngo'idi to daputari lo he'awasiyalo",
@@ -53,7 +53,7 @@
 	"tog-norollbackdiff": "Japopobilohe hihedeliyo to'u yilapato pilopohuwalingo",
 	"tog-useeditwarning": "Popo'eelawa wa'u wonu molola halaman heboli'olo wonu dipo tilahu",
 	"tog-prefershttps": "Layito momake koneksi amani wonu tumuwoto log",
-	"tog-requireemail": "Paralu email ode mopobohu tahe u'unti",
+	"tog-requireemail": "Molawo email mopobohu tahe u'unti wonu alamat email wawu tanggulo ta ohu'uwo yilohiliyo",
 	"underline-always": "Layito",
 	"underline-never": "Dila tā",
 	"underline-default": "Alipo meyalo browser dudelo",
@@ -299,7 +299,7 @@
 	"databaseerror-function": "Huna: $1",
 	"databaseerror-error": "Tilala: $1",
 	"transaction-duration-limit-exceeded": "Untuk mencegah penundaan replikasi yang tinggi, pengiriman ini dibatalkan karena durasi tulis ($1) melebihi batas $2 {{PLURAL:$2|detik|detik}}.\nJika Anda ingin mengganti banyak butir sekaligus, cobalah melakukan dalam operasi yang lebih kecil.",
-	"laggedslavemode": "<strong>Warning:</strong> Halaman kira ja o tuwango u lobohuwa.",
+	"laggedreplicamode": "<strong>Warning:</strong> Halaman kira ja o tuwango u lobohuwa.",
 	"readonly": "Basis data unti-unti",
 	"enterlockreason": "Masowa alasani longunti wawu omoluwa u'unti hu'oolo",
 	"missingarticle-rev": "(biloli'o#1:$1)",
@@ -433,7 +433,6 @@
 	"wrongpasswordempty": "Yi'o diipo lopotuwoto tahe u'unti.\nToduwoolo mocoba pe'eentapo.",
 	"passwordtooshort": "Tahu u'unti musti mohelu {{PLURAL:$1|1 karakterter|$1 karakter}}.",
 	"passwordtoolong": "Tahe u'unti ja mowali limbata to {{PLURAL:$1|1 karakter|$1 karakter}}.",
-	"passwordtoopopular": "Tahe u'unti biasa u ja mowali pomake. Toduwoolo molulawota u ngopohiya.",
 	"password-name-match": "Tahe u'unti musti hihihede monto tanggulo ta ohu'uwo.",
 	"password-login-forbidden": "Tanggulo ta ohu'uwo wau tahe u'unti botiye ja mowali pomake.",
 	"mailmypassword": "Popobohuwa tahe u'unti",
@@ -906,5 +905,6 @@
 	"logentry-upload-overwrite": "$1 {{GENDER:$2|mopodetohu}} versi bohu lo $3",
 	"searchsuggest-search": "Lolohe {{SITENAME}}",
 	"duration-days": "$1 {{PLURAL:$1|huyi}}",
+	"mw-widgets-mediasearch-noresults": "Diya'a hasili yilotapu",
 	"randomrootpage": "Halaman totonulalo"
 }

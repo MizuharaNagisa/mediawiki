@@ -28,6 +28,7 @@
 
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Revision\SlotRecord;
 
 /**
  * A simple method to retrieve the plain source of an article,
@@ -52,13 +53,15 @@ class RawAction extends FormlessAction {
 	 * @suppress SecurityCheck-XSS Non html mime type
 	 * @return string|null
 	 */
-	function onView() {
+	public function onView() {
 		$this->getOutput()->disable();
 		$request = $this->getRequest();
 		$response = $request->response();
 		$config = $this->context->getConfig();
 
-		if ( $this->getOutput()->checkLastModified( $this->page->getTouched() ) ) {
+		if ( $this->getOutput()->checkLastModified(
+			$this->getWikiPage()->getTouched()
+		) ) {
 			return null; // Client cache fresh and headers sent, nothing more to do.
 		}
 
@@ -161,10 +164,8 @@ class RawAction extends FormlessAction {
 			$response->statusHeader( 404 );
 		}
 
-		// Avoid PHP 7.1 warning of passing $this by reference
-		$rawAction = $this;
-		if ( !Hooks::run( 'RawPageViewBeforeOutput', [ &$rawAction, &$text ] ) ) {
-			wfDebug( __METHOD__ . ": RawPageViewBeforeOutput hook broke raw page output.\n" );
+		if ( !$this->getHookRunner()->onRawPageViewBeforeOutput( $this, $text ) ) {
+			wfDebug( __METHOD__ . ": RawPageViewBeforeOutput hook broke raw page output." );
 		}
 
 		echo $text;
@@ -184,13 +185,15 @@ class RawAction extends FormlessAction {
 		$request = $this->getRequest();
 
 		// Get it from the DB
-		$rev = Revision::newFromTitle( $title, $this->getOldId() );
+		$rev = MediaWikiServices::getInstance()
+			->getRevisionLookup()
+			->getRevisionByTitle( $title, $this->getOldId() );
 		if ( $rev ) {
 			$lastmod = wfTimestamp( TS_RFC2822, $rev->getTimestamp() );
 			$request->response()->header( "Last-modified: $lastmod" );
 
 			// Public-only due to cache headers
-			$content = $rev->getContent();
+			$content = $rev->getContent( SlotRecord::MAIN );
 
 			if ( $content === null ) {
 				// revision not found (or suppressed)
@@ -252,7 +255,7 @@ class RawAction extends FormlessAction {
 				$prevRev = null;
 				if ( !$oldid ) {
 					# get the current revision so we can get the penultimate one
-					$oldid = $this->page->getLatest();
+					$oldid = $this->getWikiPage()->getLatest();
 				}
 				$oldRev = $rl->getRevisionById( $oldid );
 				if ( $oldRev ) {

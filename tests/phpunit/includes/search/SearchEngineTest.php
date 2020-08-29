@@ -1,5 +1,6 @@
 <?php
 
+use MediaWiki\MediaWikiServices;
 use Wikimedia\Rdbms\LoadBalancerSingle;
 
 /**
@@ -43,6 +44,7 @@ class SearchEngineTest extends MediaWikiLangTestCase {
 
 		$lb = LoadBalancerSingle::newFromConnection( $this->db );
 		$this->search = new $searchType( $lb );
+		$this->search->setHookContainer( MediaWikiServices::getInstance()->getHookContainer() );
 	}
 
 	protected function tearDown() : void {
@@ -244,6 +246,11 @@ class SearchEngineTest extends MediaWikiLangTestCase {
 				'Category:Search is not search',
 				[ NS_CATEGORY ],
 			],
+			'Copy-pasted wikilinks with invalid characters will still find the page' => [
+				'[[smithee]]',
+				'Smithee',
+				[ NS_MAIN ],
+			],
 		];
 	}
 
@@ -265,7 +272,7 @@ class SearchEngineTest extends MediaWikiLangTestCase {
 	) {
 		$this->search->setNamespaces( $namespaces );
 		$results = $this->search->completionSearch( $search );
-		$this->assertEquals( 1, $results->getSize() );
+		$this->assertSame( 1, $results->getSize() );
 		$this->assertEquals( $expectedSuggestion, $results->getSuggestions()[0]->getText() );
 	}
 
@@ -310,6 +317,7 @@ class SearchEngineTest extends MediaWikiLangTestCase {
 					$mockFieldBuilder( "testField", SearchIndexField::INDEX_TYPE_TEXT );
 				return true;
 			} );
+		$mockEngine->setHookContainer( MediaWikiServices::getInstance()->getHookContainer() );
 
 		$fields = $mockEngine->getSearchIndexFields();
 		$this->assertArrayHasKey( 'language', $fields );
@@ -381,13 +389,14 @@ class SearchEngineTest extends MediaWikiLangTestCase {
 
 		$engine = new MockCompletionSearchEngine();
 		$engine->setLimitOffset( 10, 0 );
+		$engine->setHookContainer( MediaWikiServices::getInstance()->getHookContainer() );
 		$results = $engine->completionSearch( 'foo' );
 		$this->assertEquals( 5, $results->getSize() );
 		$this->assertTrue( $results->hasMoreResults() );
 
 		$engine->setLimitOffset( 10, 10 );
 		$results = $engine->completionSearch( 'foo' );
-		$this->assertEquals( 1, $results->getSize() );
+		$this->assertSame( 1, $results->getSize() );
 		$this->assertFalse( $results->hasMoreResults() );
 	}
 

@@ -26,19 +26,24 @@ use Wikimedia\Rdbms\IDatabase;
 
 class BatchRowWriter {
 	/**
-	 * @var IDatabase $db The database to write to
+	 * @var IDatabase The database to write to
 	 */
 	protected $db;
 
 	/**
-	 * @var string $table The name of the table to update
+	 * @var string The name of the table to update
 	 */
 	protected $table;
 
 	/**
-	 * @var string|false $clusterName A cluster name valid for use with LBFactory
+	 * @var string|false A cluster name valid for use with LBFactory
 	 */
 	protected $clusterName;
+
+	/**
+	 * For debugging which method is using this class.
+	 */
+	protected $caller;
 
 	/**
 	 * @param IDatabase $db The database to write to
@@ -52,6 +57,19 @@ class BatchRowWriter {
 	}
 
 	/**
+	 * Use ->setCaller( __METHOD__ ) to indicate which code is using this
+	 * class. Only used in debugging output.
+	 * @since 1.36
+	 *
+	 * @param string $caller
+	 * @return self
+	 */
+	public function setCaller( $caller ) {
+		$this->caller = $caller;
+		return $this;
+	}
+
+	/**
 	 * @param array[][] $updates Array of arrays each containing two keys, 'primaryKey'
 	 *  and 'changes'. primaryKey must contain a map of column names to values
 	 *  sufficient to uniquely identify the row. changes must contain a map of column
@@ -62,12 +80,17 @@ class BatchRowWriter {
 		$lbFactory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
 		$ticket = $lbFactory->getEmptyTransactionTicket( __METHOD__ );
 
+		$caller = __METHOD__;
+		if ( (string)$this->caller !== '' ) {
+			$caller .= " (for {$this->caller})";
+		}
+
 		foreach ( $updates as $update ) {
 			$this->db->update(
 				$this->table,
 				$update['changes'],
 				$update['primaryKey'],
-				__METHOD__
+				$caller
 			);
 		}
 

@@ -8,6 +8,7 @@
  * optimizes for the uncommon case at the cost of bloating the size of render-
  * blocking CSS common to all pages.
  */
+@import 'mediawiki.mixins';
 
 /* stylelint-disable selector-class-pattern */
 
@@ -28,19 +29,28 @@
 }
 
 /* Most input fields should be in site direction */
-.sitedir-ltr textarea,
-.sitedir-ltr input {
-	/* @noflip */
-	direction: ltr;
-}
+textarea,
+input {
+	// Doubling of `dir` attribute selector increases specificity to allow
+	// attributes to override content and/or site directionality. See T260993.
+	.sitedir-ltr &,
+	&[ dir='ltr' ][ dir='ltr' ] {
+		/* @noflip */
+		direction: ltr;
+	}
 
-.sitedir-rtl textarea,
-.sitedir-rtl input {
-	/* @noflip */
-	direction: rtl;
+	.sitedir-rtl &,
+	&[ dir='rtl' ][ dir='rtl' ] {
+		/* @noflip */
+		direction: rtl;
+	}
 }
 
 .mw-userlink {
+	// Word-break overlong user names, see T237230.
+	// FIXME: This property is introduced now, but will be separated in a follow-up
+	// caring about 'i18n-directionality', see T247033.
+	.hyphens( auto );
 	unicode-bidi: embed;
 }
 
@@ -65,28 +75,15 @@ input[ type='file' ] {
 	direction: ltr;
 }
 
-/* Override default values */
-textarea[ dir='ltr' ],
-input[ dir='ltr' ] {
-	/* @noflip */
-	direction: ltr;
-}
-
-textarea[ dir='rtl' ],
-input[ dir='rtl' ] {
-	/* @noflip */
-	direction: rtl;
-}
-
 /* Default style for semantic tags */
-abbr[ title ],
+abbr[ title ], /* Note: Duplicate ruleset if skins load `normalize` and `legacy`. */
 .explain[ title ] {
 	border-bottom: 1px dotted;
 	cursor: help;
 }
 
 @supports ( text-decoration: underline dotted ) {
-	abbr[ title ],
+	abbr[ title ], /* FIXME: Remove similar to `abbr` above. */
 	.explain[ title ] {
 		border-bottom: 0;
 		text-decoration: underline dotted;
@@ -324,7 +321,7 @@ a.new {
  */
 .wikitable {
 	background-color: #f8f9fa;
-	color: #222;
+	color: #202122;
 	margin: 1em 0;
 	border: 1px solid #a2a9b1;
 	border-collapse: collapse;
@@ -365,62 +362,6 @@ a.new {
 
 .success {
 	color: #14866d;
-}
-
-.messagebox,
-.errorbox,
-.warningbox,
-.successbox {
-	color: #000;
-	-webkit-box-sizing: border-box;
-	-moz-box-sizing: border-box;
-	box-sizing: border-box;
-	margin-bottom: 16px;
-	border: 1px solid;
-	padding: 12px 24px;
-	word-wrap: break-word;
-	/* Standard property is `overflow-wrap` */
-	overflow-wrap: break-word;
-}
-
-/* Ensure box inner spacing is not all over the place no matter what element is only child. */
-.messagebox :only-child,
-.errorbox :only-child,
-.warningbox :only-child,
-.successbox :only-child {
-	margin: 0;
-}
-
-.messagebox h2,
-.errorbox h2,
-.warningbox h2,
-.successbox h2 {
-	color: inherit;
-	display: inline;
-	margin: 0 0.5em 0 0;
-	border: 0;
-	font-size: 1em;
-	font-weight: bold;
-}
-
-.messagebox {
-	background-color: #eaecf0;
-	border-color: #a2a9b1;
-}
-
-.errorbox {
-	background-color: #fee7e6;
-	border-color: #d33;
-}
-
-.warningbox {
-	background-color: #fef6e7;
-	border-color: #fc3;
-}
-
-.successbox {
-	background-color: #d5fdf4;
-	border-color: #14866d;
 }
 
 /* general info/warning box for SP */
@@ -560,13 +501,6 @@ table.floatleft {
 	clear: left;
 }
 
-div.floatright,
-table.floatright,
-div.floatleft,
-table.floatleft {
-	position: relative;
-}
-
 /* T14205 */
 #mw-credits a {
 	unicode-bidi: embed;
@@ -615,7 +549,7 @@ table.floatleft {
 }
 
 /* Prevent citations and subscripts from interfering with the line-height */
-sup,
+sup, /* FIXME: Remove after adding 'normalize.less' added to all 'legacy.less' calling skins. */
 sub {
 	line-height: 1;
 }

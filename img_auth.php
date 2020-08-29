@@ -43,31 +43,41 @@ define( 'MW_NO_OUTPUT_COMPRESSION', 1 );
 define( 'MW_ENTRY_POINT', 'img_auth' );
 require __DIR__ . '/includes/WebStart.php';
 
-# Set action base paths so that WebRequest::getPathInfo()
-# recognizes the "X" as the 'title' in ../img_auth.php/X urls.
-$wgArticlePath = false; # Don't let a "/*" article path clober our action path
-$wgActionPaths = [ "$wgUploadPath/" ];
-
 wfImageAuthMain();
 
 $mediawiki = new MediaWiki();
 $mediawiki->doPostOutputShutdown();
 
 function wfImageAuthMain() {
-	global $wgImgAuthUrlPathMap;
-	$permissionManager = \MediaWiki\MediaWikiServices::getInstance()->getPermissionManager();
+	global $wgImgAuthUrlPathMap, $wgScriptPath, $wgImgAuthPath;
+
+	$services = \MediaWiki\MediaWikiServices::getInstance();
+	$permissionManager = $services->getPermissionManager();
 
 	$request = RequestContext::getMain()->getRequest();
 	$publicWiki = in_array( 'read', $permissionManager->getGroupPermissions( [ '*' ] ), true );
 
-	// Get the requested file path (source file or thumbnail)
-	$matches = WebRequest::getPathInfo();
-	if ( !isset( $matches['title'] ) ) {
-		wfForbidden( 'img-auth-accessdenied', 'img-auth-nopathinfo' );
+	// Find the path assuming the request URL is relative to the local public zone URL
+	$baseUrl = $services->getRepoGroup()->getLocalRepo()->getZoneUrl( 'public' );
+	if ( $baseUrl[0] === '/' ) {
+		$basePath = $baseUrl;
+	} else {
+		$basePath = parse_url( $baseUrl, PHP_URL_PATH );
+	}
+	$path = WebRequest::getRequestPathSuffix( $basePath );
+
+	if ( $path === false ) {
+		// Try instead assuming img_auth.php is the base path
+		$basePath = $wgImgAuthPath ?: "$wgScriptPath/img_auth.php";
+		$path = WebRequest::getRequestPathSuffix( $basePath );
+	}
+
+	if ( $path === false ) {
+		wfForbidden( 'img-auth-accessdenied', 'img-auth-notindir' );
 		return;
 	}
-	$path = $matches['title'];
-	if ( $path && $path[0] !== '/' ) {
+
+	if ( $path === '' || $path[0] !== '/' ) {
 		// Make sure $path has a leading /
 		$path = "/" . $path;
 	}
@@ -79,17 +89,20 @@ function wfImageAuthMain() {
 	foreach ( $wgImgAuthUrlPathMap as $prefix => $storageDir ) {
 		$prefix = rtrim( $prefix, '/' ) . '/'; // implicit trailing slash
 		if ( strpos( $path, $prefix ) === 0 ) {
-			$be = FileBackendGroup::singleton()->backendFromPath( $storageDir );
+			$be = $services->getFileBackendGroup()->backendFromPath( $storageDir );
 			$filename = $storageDir . substr( $path, strlen( $prefix ) ); // strip prefix
 			// Check basic user authorization
-			if ( !$user->isAllowed( 'read' ) ) {
+			$isAllowedUser = $permissionManager->userHasRight( $user, 'read' );
+			if ( !$isAllowedUser ) {
 				wfForbidden( 'img-auth-accessdenied', 'img-auth-noread', $path );
 				return;
 			}
 			if ( $be->fileExists( [ 'src' => $filename ] ) ) {
 				wfDebugLog( 'img_auth', "Streaming `" . $filename . "`." );
-				$be->streamFile( [ 'src' => $filename ],
-					[ 'Cache-Control: private', 'Vary: Cookie' ] );
+				$be->streamFile( [
+					'src' => $filename,
+					'headers' => [ 'Cache-Control: private', 'Vary: Cookie' ]
+				] );
 			} else {
 				wfForbidden( 'img-auth-accessdenied', 'img-auth-nofile', $path );
 			}
@@ -98,7 +111,7 @@ function wfImageAuthMain() {
 	}
 
 	// Get the local file repository
-	$repo = RepoGroup::singleton()->getRepo( 'local' );
+	$repo = $services->getRepoGroup()->getRepo( 'local' );
 	$zone = strstr( ltrim( $path, '/' ), '/', true );
 
 	// Get the full file storage path and extract the source file name.
@@ -146,7 +159,7 @@ function wfImageAuthMain() {
 		// Run hook for extension authorization plugins
 		/** @var array $result */
 		$result = null;
-		if ( !Hooks::run( 'ImgAuthBeforeStream', [ &$title, &$path, &$name, &$result ] ) ) {
+		if ( !Hooks::runner()->onImgAuthBeforeStream( $title, $path, $name, $result ) ) {
 			wfForbidden( $result[0], $result[1], array_slice( $result, 2 ) );
 			return;
 		}
@@ -172,7 +185,7 @@ function wfImageAuthMain() {
 	}
 
 	// Allow modification of headers before streaming a file
-	Hooks::run( 'ImgAuthModifyHeaders', [ $title->getTitleValue(), &$headers ] );
+	Hooks::runner()->onImgAuthModifyHeaders( $title->getTitleValue(), $headers );
 
 	// Stream the requested file
 	list( $headers, $options ) = HTTPFileStreamer::preprocessHeaders( $headers );

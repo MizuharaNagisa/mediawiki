@@ -1,8 +1,5 @@
 <?php
 /**
- * Internationalisation code.
- * See https://www.mediawiki.org/wiki/Special:MyLanguage/Localisation for more information.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -19,7 +16,6 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup Language
  */
 
 /**
@@ -27,14 +23,19 @@
  */
 
 use CLDRPluralRuleParser\Evaluator;
+use MediaWiki\HookContainer\HookContainer;
+use MediaWiki\HookContainer\HookRunner;
 use MediaWiki\Languages\LanguageConverterFactory;
 use MediaWiki\Languages\LanguageFallback;
 use MediaWiki\Languages\LanguageNameUtils;
+use MediaWiki\Linker\LinkTarget;
 use MediaWiki\MediaWikiServices;
 use Wikimedia\Assert\Assert;
 
 /**
  * Internationalisation code
+ * See https://www.mediawiki.org/wiki/Special:MyLanguage/Localisation for more information.
+ *
  * @ingroup Language
  */
 class Language {
@@ -43,14 +44,14 @@ class Language {
 	 * @since 1.32
 	 * @deprecated since 1.34, LanguageNameUtils::AUTONYMS
 	 */
-	const AS_AUTONYMS = LanguageNameUtils::AUTONYMS;
+	public const AS_AUTONYMS = LanguageNameUtils::AUTONYMS;
 
 	/**
 	 * Return all known languages in fetchLanguageName(s).
 	 * @since 1.32
 	 * @deprecated since 1.34, use LanguageNameUtils::ALL
 	 */
-	const ALL = LanguageNameUtils::ALL;
+	public const ALL = LanguageNameUtils::ALL;
 
 	/**
 	 * Return in fetchLanguageName(s) only the languages for which we have at
@@ -58,7 +59,7 @@ class Language {
 	 * @since 1.32
 	 * @deprecated since 1.34, use LanguageNameUtils::SUPPORTED
 	 */
-	const SUPPORTED = LanguageNameUtils::SUPPORTED;
+	public const SUPPORTED = LanguageNameUtils::SUPPORTED;
 
 	/**
 	 * Use PHP's magic __get handler to handle lazy accessing to
@@ -69,19 +70,34 @@ class Language {
 	 */
 	public function __get( string $name ) {
 		if ( $name == "mConverter" ) {
-			wfDeprecated( 'Language::mConverter', '1.35' );
+			wfDeprecatedMsg(
+				'Access to Language::$mConverter was deprecated in MediaWiki 1.35',
+				'1.35' );
 			return $this->getConverter();
 		}
 		throw new RuntimeException( "Cannot get '$name' property." );
 	}
 
-	public $mVariants, $mCode, $mLoaded = false;
-	public $mMagicExtensions = [];
-	private $mHtmlCode = null;
-	/** @var Language|false */
-	private $mParentLanguage = false;
+	public $mCode;
 
+	/**
+	 * @deprecated since 1.35, use LocalisationCache with custom language config
+	 */
+	public $mMagicExtensions = [];
+
+	private $mHtmlCode = null;
+
+	/**
+	 * memoize
+	 * @deprecated since 1.35, must be private
+	 */
 	public $dateFormatStrings = [];
+
+	/**
+	 * memoize
+	 * @var array[]
+	 * @deprecated since 1.35, must be protected
+	 */
 	public $mExtendedSpecialPageAliases;
 
 	/** @var array|null */
@@ -89,7 +105,8 @@ class Language {
 	protected $mNamespaceIds, $namespaceAliases;
 
 	/**
-	 * ReplacementArray object caches
+	 * ReplacementArray object memoize
+	 * @deprecated since 1.35, must be private
 	 */
 	public $transformData = [];
 
@@ -111,6 +128,16 @@ class Language {
 	private $converterFactory;
 
 	/**
+	 * @var HookContainer
+	 */
+	private $hookContainer;
+
+	/**
+	 * @var HookRunner
+	 */
+	private $hookRunner;
+
+	/**
 	 * @deprecated since 1.35, use LanguageFactory
 	 * @var array
 	 */
@@ -121,14 +148,14 @@ class Language {
 	 * @since 1.32
 	 * @deprecated since 1.35, use LanguageFallback::MESSAGES
 	 */
-	const MESSAGES_FALLBACKS = LanguageFallback::MESSAGES;
+	public const MESSAGES_FALLBACKS = LanguageFallback::MESSAGES;
 
 	/**
 	 * Return a strict fallback chain in getFallbacksFor
 	 * @since 1.32
 	 * @deprecated since 1.35, use LanguageFallback::STRICT
 	 */
-	const STRICT_FALLBACKS = LanguageFallback::STRICT;
+	public const STRICT_FALLBACKS = LanguageFallback::STRICT;
 
 	/**
 	 * @since 1.35
@@ -307,7 +334,7 @@ class Language {
 	 * Get a cached or new language object for a given language code
 	 * @deprecated since 1.35, use LanguageFactory
 	 * @param string $code
-	 * @throws MWException
+	 * @throws MWException if the language code is invalid
 	 * @return Language
 	 */
 	public static function factory( $code ) {
@@ -416,7 +443,8 @@ class Language {
 	 *
 	 * @param string $code
 	 *
-	 * @return bool
+	 * @return bool False if the language code contains dangerous characters, e.g. HTML special
+	 *  characters or characters illegal in MediaWiki titles.
 	 */
 	public static function isValidCode( $code ) {
 		return MediaWikiServices::getInstance()->getLanguageNameUtils()->isValidCode( $code );
@@ -464,20 +492,22 @@ class Language {
 	}
 
 	/**
-	 * Calling this directly is deprecated. Use LanguageFactory instead.
+	 * @internal Calling this directly is deprecated. Use LanguageFactory instead.
 	 *
 	 * @param string|null $code Which code to use. Passing null is deprecated in 1.35.
 	 * @param LocalisationCache|null $localisationCache
 	 * @param LanguageNameUtils|null $langNameUtils
 	 * @param LanguageFallback|null $langFallback
 	 * @param LanguageConverterFactory|null $converterFactory
+	 * @param HookContainer|null $hookContainer
 	 */
 	public function __construct(
 		$code = null,
 		LocalisationCache $localisationCache = null,
 		LanguageNameUtils $langNameUtils = null,
 		LanguageFallback $langFallback = null,
-		LanguageConverterFactory $converterFactory = null
+		LanguageConverterFactory $converterFactory = null,
+		HookContainer $hookContainer = null
 	) {
 		if ( !func_num_args() ) {
 			// Old calling convention, deprecated
@@ -492,6 +522,8 @@ class Language {
 			$this->langNameUtils = $services->getLanguageNameUtils();
 			$this->langFallback = $services->getLanguageFallback();
 			$this->converterFactory = $services->getLanguageConverterFactory();
+			$this->hookContainer = $services->getHookContainer();
+			$this->hookRunner = new HookRunner( $this->hookContainer );
 			return;
 		}
 
@@ -505,12 +537,16 @@ class Language {
 			'Parameters cannot be null unless all are omitted' );
 		Assert::parameter( $converterFactory !== null, '$converterFactory',
 			'Parameters cannot be null unless all are omitted' );
+		Assert::parameter( $hookContainer !== null, '$hookContainer',
+			'Parameters cannot be null unless all are omitted' );
 
 		$this->mCode = $code;
 		$this->localisationCache = $localisationCache;
 		$this->langNameUtils = $langNameUtils;
 		$this->langFallback = $langFallback;
 		$this->converterFactory = $converterFactory;
+		$this->hookContainer = $hookContainer;
+		$this->hookRunner = new HookRunner( $hookContainer );
 	}
 
 	/**
@@ -576,7 +612,7 @@ class Language {
 			# Re-order by namespace ID number...
 			ksort( $this->namespaceNames );
 
-			Hooks::run( 'LanguageGetNamespaces', [ &$this->namespaceNames ] );
+			$this->getHookRunner()->onLanguageGetNamespaces( $this->namespaceNames );
 		}
 
 		return $this->namespaceNames;
@@ -693,7 +729,7 @@ class Language {
 	 * canonical ones defined in Namespace.php.
 	 *
 	 * @param string $text
-	 * @return int|bool An integer if $text is a valid value otherwise false
+	 * @return int|false An integer if $text is a valid value otherwise false
 	 */
 	public function getLocalNsIndex( $text ) {
 		$lctext = $this->lc( $text );
@@ -702,7 +738,8 @@ class Language {
 	}
 
 	/**
-	 * @return array
+	 * @return array<string,int> Map from names to namespace IDs. Note that each
+	 * namepace ID can have multiple alias.
 	 */
 	public function getNamespaceAliases() {
 		if ( $this->namespaceAliases === null ) {
@@ -741,6 +778,11 @@ class Language {
 
 			$this->namespaceAliases = $aliases + $convertedNames;
 
+			// In the case of conflicts between $wgNamespaceAliases and other sources
+			// of aliasing, $wgNamespaceAliases wins.
+			global $wgNamespaceAliases;
+			$this->namespaceAliases = $wgNamespaceAliases + $this->namespaceAliases;
+
 			# Filter out aliases to namespaces that don't exist, e.g. from extensions
 			# that aren't loaded here but are included in the l10n cache.
 			# (array_intersect preserves keys from its first argument)
@@ -758,7 +800,6 @@ class Language {
 	 */
 	public function getNamespaceIds() {
 		if ( $this->mNamespaceIds === null ) {
-			global $wgNamespaceAliases;
 			# Put namespace names and aliases into a hashtable.
 			# If this is too slow, then we should arrange it so that it is done
 			# before caching. The catch is that at pre-cache time, the above
@@ -769,11 +810,6 @@ class Language {
 			}
 			foreach ( $this->getNamespaceAliases() as $name => $index ) {
 				$this->mNamespaceIds[$this->lc( $name )] = $index;
-			}
-			if ( $wgNamespaceAliases ) {
-				foreach ( $wgNamespaceAliases as $name => $index ) {
-					$this->mNamespaceIds[$this->lc( $name )] = $index;
-				}
 			}
 		}
 		return $this->mNamespaceIds;
@@ -865,15 +901,20 @@ class Language {
 	 *
 	 * @deprecated since 1.34, use LanguageNameUtils::getLanguageNames
 	 * @param null|string $inLanguage Code of language in which to return the names
-	 * 		Use self::AS_AUTONYMS for autonyms (native names)
+	 * 		Use LanguageNameUtils::AUTONYMS for autonyms (native names)
 	 * @param string $include One of:
-	 * 		self::ALL all available languages
-	 * 		'mw' only if the language is defined in MediaWiki or wgExtraLanguageNames (default)
-	 * 		self::SUPPORTED only if the language is in 'mw' *and* has a message file
+	 * 		LanguageNameUtils::AUTONYMS all available languages
+	 * 		'mw' only if the language is defined in MediaWiki
+	 * 		 or wgExtraLanguageNames (default)
+	 * 		LanguageNameUtils::SUPPORTED only if the language is in 'mw' *and*
+	 * 		 has a message file
 	 * @return array Language code => language name (sorted by key)
 	 * @since 1.20
 	 */
-	public static function fetchLanguageNames( $inLanguage = self::AS_AUTONYMS, $include = 'mw' ) {
+	public static function fetchLanguageNames(
+		$inLanguage = LanguageNameUtils::AUTONYMS,
+		$include = 'mw'
+	) {
 		return MediaWikiServices::getInstance()->getLanguageNameUtils()
 			->getLanguageNames( $inLanguage, $include );
 	}
@@ -882,15 +923,15 @@ class Language {
 	 * @deprecated since 1.34, use LanguageNameUtils::getLanguageName
 	 * @param string $code The code of the language for which to get the name
 	 * @param null|string $inLanguage Code of language in which to return the name
-	 *   (SELF::AS_AUTONYMS for autonyms)
+	 *   (LanguageNameUtils::AUTONYMS for autonyms)
 	 * @param string $include See fetchLanguageNames()
 	 * @return string Language name or empty
 	 * @since 1.20
 	 */
 	public static function fetchLanguageName(
 		$code,
-		$inLanguage = self::AS_AUTONYMS,
-		$include = self::ALL
+		$inLanguage = LanguageNameUtils::AUTONYMS,
+		$include = LanguageNameUtils::ALL
 	) {
 		return MediaWikiServices::getInstance()->getLanguageNameUtils()
 			->getLanguageName( $code, $inLanguage, $include );
@@ -1661,7 +1702,7 @@ class Language {
 					$zd - 32075;
 		} else {
 			$zjd = 367 * $zy - (int)( ( 7 * ( $zy + 5001 + (int)( ( $zm - 9 ) / 7 ) ) ) / 4 ) +
-								(int)( ( 275 * $zm ) / 9 ) + $zd + 1729777;
+				(int)( ( 275 * $zm ) / 9 ) + $zd + 1729777;
 		}
 
 		$zl = $zjd - 1948440 + 10632;
@@ -1832,8 +1873,8 @@ class Language {
 	 * @return string
 	 */
 	private static function hebrewYearStart( $year ) {
-		$a = intval( ( 12 * ( $year - 1 ) + 17 ) % 19 );
-		$b = intval( ( $year - 1 ) % 4 );
+		$a = ( 12 * ( $year - 1 ) + 17 ) % 19;
+		$b = ( $year - 1 ) % 4;
 		$m = 32.044093161144 + 1.5542417966212 * $a + $b / 4.0 - 0.0031777940220923 * ( $year - 1 );
 		if ( $m < 0 ) {
 			$m--;
@@ -1844,7 +1885,7 @@ class Language {
 		}
 		$m -= $Mar;
 
-		$c = intval( ( $Mar + 3 * ( $year - 1 ) + 5 * $b + 5 ) % 7 );
+		$c = ( $Mar + 3 * ( $year - 1 ) + 5 * $b + 5 ) % 7;
 		if ( $c == 0 && $a > 11 && $m >= 0.89772376543210 ) {
 			$Mar++;
 		} elseif ( $c == 1 && $a > 6 && $m >= 0.63287037037037 ) {
@@ -2011,7 +2052,7 @@ class Language {
 			if ( $num >= $pow10 ) {
 				$s .= $table[$i][(int)floor( $num / $pow10 )];
 			}
-			$num = $num % $pow10;
+			$num %= $pow10;
 		}
 		return $s;
 	}
@@ -2074,7 +2115,7 @@ class Language {
 				}
 			}
 
-			$num = $num % $pow10;
+			$num %= $pow10;
 		}
 
 		$preTransformLength = count( $letters );
@@ -2131,6 +2172,7 @@ class Language {
 			}
 		}
 
+		// @phan-suppress-next-line PhanSuspiciousValueComparison
 		if ( $data[0] == 'System' || $tz == '' ) {
 			# Global offset in minutes.
 			$minDiff = $wgLocalTZoffset;
@@ -2509,7 +2551,7 @@ class Language {
 		$offsetRel = $relativeTo->offsetForUser( $user );
 
 		$ts = '';
-		if ( Hooks::run( 'GetHumanTimestamp', [ &$ts, $time, $relativeTo, $user, $this ] ) ) {
+		if ( $this->getHookRunner()->onGetHumanTimestamp( $ts, $time, $relativeTo, $user, $this ) ) {
 			$ts = $this->getHumanTimestampInternal( $time, $relativeTo, $user );
 		}
 
@@ -2639,13 +2681,14 @@ class Language {
 			// Assume this is an uppercase/uncased ASCII character
 			return (string)$str;
 		} elseif ( $octetCode < 128 ) {
-			//  Assume this is a lowercase/uncased ASCII character
+			// Assume this is a lowercase/uncased ASCII character
 			return ucfirst( $str );
 		}
 
-		return $this->isMultibyte( $str )
+		$first = mb_substr( $str, 0, 1 );
+		return ( strlen( $first ) !== 1 )
 			// Assume this is a multibyte character and mb_internal_encoding() is appropriate
-			? $this->mbUpperChar( mb_substr( $str, 0, 1 ) ) . mb_substr( $str, 1 )
+			? $this->mbUpperChar( $first ) . mb_substr( $str, 1 )
 			// Assume this is a non-multibyte character and LC_CASE is appropriate
 			: ucfirst( $str );
 	}
@@ -2920,7 +2963,7 @@ class Language {
 
 			// Break down Hangul syllables to grab the first jamo
 			$code = mb_ord( $firstChar );
-			if ( $code < 0xac00 || 0xd7a4 <= $code ) {
+			if ( $code < 0xac00 || $code >= 0xd7a4 ) {
 				return $firstChar;
 			} elseif ( $code < 0xb098 ) {
 				return "\u{3131}";
@@ -2968,11 +3011,12 @@ class Language {
 	 * @return string
 	 */
 	public function normalize( $s ) {
-		global $wgAllUnicodeFixes;
+		global $wgAllUnicodeFixes, $IP;
+
 		$s = UtfNormal\Validator::cleanUp( $s );
 		if ( $wgAllUnicodeFixes ) {
-			$s = $this->transformUsingPairFile( 'normalize-ar.php', $s );
-			$s = $this->transformUsingPairFile( 'normalize-ml.php', $s );
+			$s = $this->transformUsingPairFile( 'normalize-ar.php', $s, $IP );
+			$s = $this->transformUsingPairFile( 'normalize-ml.php', $s, $IP );
 		}
 
 		return $s;
@@ -2988,17 +3032,40 @@ class Language {
 	 *
 	 * @param string $file
 	 * @param string $string
+	 * @param string|null $basePath
 	 *
 	 * @throws MWException
 	 * @return string
 	 */
-	protected function transformUsingPairFile( $file, $string ) {
-		if ( !isset( $this->transformData[$file] ) ) {
-			global $IP;
-			$data = require "$IP/languages/data/{$file}";
-			$this->transformData[$file] = new ReplacementArray( $data );
+	protected function transformUsingPairFile( $file, $string, $basePath = null ) {
+		if ( isset( $this->transformData[$file] ) ) {
+			wfDeprecated(
+				'Modification of Language::$transformData is deprecated since MediaWiki 1.35',
+				'1.35'
+			);
+			return $this->transformData[$file]->replace( $string );
 		}
-		return $this->transformData[$file]->replace( $string );
+
+		if ( $basePath === null ) {
+			wfDeprecated( __METHOD__ . ' without $basePath', '1.35' );
+			global $IP;
+			$basePath = $IP;
+		}
+
+		if (
+			$basePath === null
+			|| $basePath === ''
+			|| !file_exists( "{$basePath}/languages/data/{$file}" )
+		) {
+			return $string;
+		}
+
+		if ( !isset( $this->transformData[$basePath][$file] ) ) {
+			$data = require "{$basePath}/languages/data/{$file}";
+			$this->transformData[$basePath][$file] = new ReplacementArray( $data );
+		}
+
+		return $this->transformData[$basePath][$file]->replace( $string );
 	}
 
 	/**
@@ -3729,6 +3796,7 @@ class Language {
 			if ( $tagType == 0 && $lastCh != '/' ) {
 				$openTags[] = $tag; // tag opened (didn't close itself)
 			} elseif ( $tagType == 1 ) {
+				// @phan-suppress-next-line PhanRedundantCondition
 				if ( $openTags && $tag == $openTags[count( $openTags ) - 1] ) {
 					array_pop( $openTags ); // tag closed
 				}
@@ -4242,10 +4310,10 @@ class Language {
 	 *
 	 * @deprecated since 1.35 use LanguageConverter::updateConversionTable instead
 	 *
-	 * @param Title $title The Title of the page being updated
+	 * @param LinkTarget $linkTarget The LinkTarget of the page being updated
 	 */
-	public function updateConversionTable( Title $title ) {
-		$this->getConverter()->updateConversionTable( $title );
+	public function updateConversionTable( LinkTarget $linkTarget ) {
+		$this->getConverter()->updateConversionTable( $linkTarget );
 	}
 
 	/**
@@ -4418,7 +4486,7 @@ class Language {
 	 * @throws InvalidArgumentException
 	 * @return array List of language codes
 	 */
-	public static function getFallbacksFor( $code, $mode = self::MESSAGES_FALLBACKS ) {
+	public static function getFallbacksFor( $code, $mode = LanguageFallback::MESSAGES ) {
 		return MediaWikiServices::getInstance()->getLanguageFallback()->getAll( $code, $mode );
 	}
 
@@ -4777,6 +4845,8 @@ class Language {
 	/**
 	 * Helper function for viewPrevNext() that generates links
 	 *
+	 * @deprecated since 1.35, used with {@link viewPrevNext} only
+	 *
 	 * @param Title $title Title object to link
 	 * @param int $offset
 	 * @param int $limit
@@ -4816,8 +4886,8 @@ class Language {
 	public function getCompiledPluralRules() {
 		$pluralRules =
 			$this->localisationCache->getItem( strtolower( $this->mCode ), 'compiledPluralRules' );
-		$fallbacks = $this->langFallback->getAll( $this->mCode );
 		if ( !$pluralRules ) {
+			$fallbacks = $this->getFallbackLanguages();
 			foreach ( $fallbacks as $fallbackCode ) {
 				$pluralRules = $this->localisationCache
 					->getItem( strtolower( $fallbackCode ), 'compiledPluralRules' );
@@ -4837,8 +4907,8 @@ class Language {
 	public function getPluralRules() {
 		$pluralRules =
 			$this->localisationCache->getItem( strtolower( $this->mCode ), 'pluralRules' );
-		$fallbacks = $this->langFallback->getAll( $this->mCode );
 		if ( !$pluralRules ) {
+			$fallbacks = $this->getFallbackLanguages();
 			foreach ( $fallbacks as $fallbackCode ) {
 				$pluralRules = $this->localisationCache
 					->getItem( strtolower( $fallbackCode ), 'pluralRules' );
@@ -4858,8 +4928,8 @@ class Language {
 	public function getPluralRuleTypes() {
 		$pluralRuleTypes =
 			$this->localisationCache->getItem( strtolower( $this->mCode ), 'pluralRuleTypes' );
-		$fallbacks = $this->langFallback->getAll( $this->mCode );
 		if ( !$pluralRuleTypes ) {
+			$fallbacks = $this->getFallbackLanguages();
 			foreach ( $fallbacks as $fallbackCode ) {
 				$pluralRuleTypes = $this->localisationCache
 					->getItem( strtolower( $fallbackCode ), 'pluralRuleTypes' );
@@ -4894,5 +4964,27 @@ class Language {
 		$index = $this->getPluralRuleIndexNumber( $number );
 		$pluralRuleTypes = $this->getPluralRuleTypes();
 		return $pluralRuleTypes[$index] ?? 'other';
+	}
+
+	/**
+	 * Get a HookContainer, for hook metadata and running extension hooks
+	 *
+	 * @since 1.35
+	 * @return HookContainer
+	 */
+	protected function getHookContainer() {
+		return $this->hookContainer;
+	}
+
+	/**
+	 * Get a HookRunner, for running core hooks
+	 *
+	 * @internal This is for use by core only. Hook interfaces may be removed
+	 *   without notice.
+	 * @since 1.35
+	 * @return HookRunner
+	 */
+	protected function getHookRunner() {
+		return $this->hookRunner;
 	}
 }

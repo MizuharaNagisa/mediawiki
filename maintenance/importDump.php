@@ -24,6 +24,7 @@
  * @ingroup Maintenance
  */
 
+use MediaWiki\Linker\LinkTarget;
 use MediaWiki\MediaWikiServices;
 
 require_once __DIR__ . '/Maintenance.php';
@@ -111,11 +112,13 @@ TEXT
 
 		$this->reportingInterval = intval( $this->getOption( 'report', 100 ) );
 		if ( !$this->reportingInterval ) {
-			$this->reportingInterval = 100; // avoid division by zero
+			// avoid division by zero
+			$this->reportingInterval = 100;
 		}
 
 		$this->dryRun = $this->hasOption( 'dry-run' );
-		$this->uploads = $this->hasOption( 'uploads' ); // experimental!
+		$this->uploads = $this->hasOption( 'uploads' );
+
 		if ( $this->hasOption( 'image-base-path' ) ) {
 			$this->imageBasePath = $this->getOption( 'image-base-path' );
 		}
@@ -157,22 +160,11 @@ TEXT
 	}
 
 	/**
-	 * @param Title|Revision $obj
+	 * @param LinkTarget|null $title
 	 * @throws MWException
 	 * @return bool
 	 */
-	private function skippedNamespace( $obj ) {
-		$title = null;
-		if ( $obj instanceof Title ) {
-			$title = $obj;
-		} elseif ( $obj instanceof Revision ) {
-			$title = $obj->getTitle();
-		} elseif ( $obj instanceof WikiRevision ) {
-			$title = $obj->title;
-		} else {
-			throw new MWException( "Cannot get namespace of object in " . __METHOD__ );
-		}
-
+	private function skippedNamespace( $title ) {
 		if ( $title === null ) {
 			// Probably a log entry
 			return false;
@@ -188,9 +180,9 @@ TEXT
 	}
 
 	/**
-	 * @param Revision $rev
+	 * @param WikiRevision $rev
 	 */
-	public function handleRevision( $rev ) {
+	public function handleRevision( WikiRevision $rev ) {
 		$title = $rev->getTitle();
 		if ( !$title ) {
 			$this->progress( "Got bogus revision with null title!" );
@@ -211,17 +203,16 @@ TEXT
 	}
 
 	/**
-	 * @param Revision $revision
+	 * @param WikiRevision $revision
 	 * @return bool
 	 */
-	public function handleUpload( $revision ) {
+	public function handleUpload( WikiRevision $revision ) {
 		if ( $this->uploads ) {
-			if ( $this->skippedNamespace( $revision ) ) {
+			if ( $this->skippedNamespace( $revision->getTitle() ) ) {
 				return false;
 			}
 			$this->uploadCount++;
 			// $this->report();
-			// @phan-suppress-next-line PhanUndeclaredMethod
 			$this->progress( "upload: " . $revision->getFilename() );
 
 			if ( !$this->dryRun ) {
@@ -236,8 +227,11 @@ TEXT
 		return false;
 	}
 
-	public function handleLogItem( $rev ) {
-		if ( $this->skippedNamespace( $rev ) ) {
+	/**
+	 * @param WikiRevision $rev
+	 */
+	public function handleLogItem( WikiRevision $rev ) {
+		if ( $this->skippedNamespace( $rev->getTitle() ) ) {
 			return;
 		}
 		$this->revCount++;
@@ -271,7 +265,7 @@ TEXT
 				$this->progress( "$this->revCount ($revrate revs/sec)" );
 			}
 		}
-		wfWaitForSlaves();
+		MediaWikiServices::getInstance()->getDBLoadBalancerFactory()->waitForReplication();
 	}
 
 	private function progress( $string ) {

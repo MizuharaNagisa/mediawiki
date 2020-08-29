@@ -14,9 +14,14 @@ use Wikimedia\IPUtils;
  * 'iprangelimits' - Specifies the valid IP ranges for IPv4 and IPv6 in an array.
  *  defaults to IPv4 => 16; IPv6 => 32.
  *
+ * @stable to extend
  * @since 1.26
  */
 class HTMLUserTextField extends HTMLTextField {
+	/**
+	 * @stable to call
+	 * @inheritDoc
+	 */
 	public function __construct( $params ) {
 		$params = wfArrayPlus2d( $params, [
 				'exists' => false,
@@ -33,9 +38,14 @@ class HTMLUserTextField extends HTMLTextField {
 	}
 
 	public function validate( $value, $alldata ) {
-		// Default value (from getDefault()) is null, User::newFromName() expects a string
+		// If the value is null, reset it to an empty string which is what is expected by the parent.
 		if ( $value === null ) {
 			$value = '';
+		}
+
+		// If the value is empty, there are no additional checks that can be performed.
+		if ( $value === '' ) {
+			return parent::validate( $value, $alldata );
 		}
 
 		// check, if a user exists with the given username

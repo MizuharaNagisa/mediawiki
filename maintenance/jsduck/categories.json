@@ -32,7 +32,6 @@
 					"mw.cookie",
 					"mw.experiments",
 					"mw.viewport",
-					"mw.htmlform.*",
 					"mw.visibleTimeout"
 				]
 			},
@@ -90,6 +89,17 @@
 					"jQuery.client",
 					"jQuery.colorUtil",
 					"jQuery.plugin.*"
+				]
+			}
+		]
+	},
+	{
+		"name": "Vue",
+		"groups": [
+			{
+				"name": "Plugins",
+				"classes": [
+					"Vue"
 				]
 			}
 		]

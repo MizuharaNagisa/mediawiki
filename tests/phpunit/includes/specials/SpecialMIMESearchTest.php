@@ -4,12 +4,12 @@
  * @group Database
  * @covers SpecialMIMESearch
  */
-class SpecialMIMESearchTest extends MediaWikiTestCase {
+class SpecialMIMESearchTest extends MediaWikiIntegrationTestCase {
 
 	/** @var SpecialMIMESearch */
 	private $page;
 
-	public function setUp() : void {
+	protected function setUp() : void {
 		$this->page = new SpecialMIMESearch;
 		$context = new RequestContext();
 		$context->setTitle( Title::makeTitle( NS_SPECIAL, 'MIMESearch' ) );

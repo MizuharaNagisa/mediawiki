@@ -22,6 +22,7 @@
  */
 
 /**
+ * @newable
  * @ingroup Cache
  */
 class FileDependency extends CacheDependency {
@@ -30,6 +31,8 @@ class FileDependency extends CacheDependency {
 
 	/**
 	 * Create a file dependency
+	 *
+	 * @stable to call
 	 *
 	 * @param string $filename The name of the file, preferably fully qualified
 	 * @param null|bool|int $timestamp The unix last modified timestamp, or false if the
@@ -54,7 +57,7 @@ class FileDependency extends CacheDependency {
 		return [ 'filename', 'timestamp' ];
 	}
 
-	function loadDependencyValues() {
+	public function loadDependencyValues() {
 		if ( $this->timestamp === null ) {
 			Wikimedia\suppressWarnings();
 			# Dependency on a non-existent file stores "false"
@@ -67,7 +70,7 @@ class FileDependency extends CacheDependency {
 	/**
 	 * @return bool
 	 */
-	function isExpired() {
+	public function isExpired() {
 		Wikimedia\suppressWarnings();
 		$lastmod = filemtime( $this->filename );
 		Wikimedia\restoreWarnings();
@@ -78,14 +81,14 @@ class FileDependency extends CacheDependency {
 			}
 
 			# Deleted
-			wfDebug( "Dependency triggered: {$this->filename} deleted.\n" );
+			wfDebug( "Dependency triggered: {$this->filename} deleted." );
 
 			return true;
 		}
 
 		if ( $lastmod > $this->timestamp ) {
 			# Modified or created
-			wfDebug( "Dependency triggered: {$this->filename} changed.\n" );
+			wfDebug( "Dependency triggered: {$this->filename} changed." );
 
 			return true;
 		}

@@ -1,3 +1,5 @@
+'use strict';
+
 const assert = require( 'assert' );
 const CreateAccountPage = require( '../pageobjects/createaccount.page' );
 const PreferencesPage = require( '../pageobjects/preferences.page' );
@@ -36,12 +38,15 @@ describe( 'User', function () {
 		UserLoginPage.login( username, password );
 
 		// check
-		assert.strictEqual( UserLoginPage.userPage.getText(), username );
+		const actualUsername = browser.execute( () => {
+			return mw.config.get( 'wgUserName' );
+		} );
+		assert.strictEqual( actualUsername, username );
 	} );
 
 	// Disabled due to flakiness (T199446)
 	it.skip( 'should be able to change preferences', function () {
-		var realName = Util.getTestString();
+		const realName = Util.getTestString();
 
 		// create
 		browser.call( async () => {

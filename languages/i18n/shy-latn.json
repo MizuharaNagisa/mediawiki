@@ -1,8 +1,8 @@
 {
 	"@metadata": {
 		"authors": [
-			"Vikoula5",
-			"DannyS712"
+			"DannyS712",
+			"Vikoula5"
 		]
 	},
 	"tog-underline": "Aderrer n iseɣwan:",
@@ -292,7 +292,7 @@
 	"databaseerror-query": "Tuttra : $1",
 	"databaseerror-function": "Tuccḍa: $1",
 	"databaseerror-error": "Agul: $1",
-	"laggedslavemode": "<strong>Aɣtal:</strong> Ahat asebter ur yesɛi ara akk ibeddlen imaynuten.",
+	"laggedreplicamode": "<strong>Aɣtal:</strong> Ahat asebter ur yesɛi ara akk ibeddlen imaynuten.",
 	"readonly": "Database d tamsekkert",
 	"enterlockreason": "Ini ayɣer tsekkreḍ database, ini daɣen melmi ara ad ifukk asekker",
 	"readonlytext": "Taffa n isefka teskweṛ akka tura ɣef sebba n kra n inekcam d usnifel-nniḍen, ahat ɣef kra n uxeddim n uṣeggem, ticki ifuk ad tuɣal.\n\nAndbal n unagraw iṣekṛen taffa yenna-d acimi: $1",
@@ -522,8 +522,6 @@
 	"passwordreset-emailtext-ip": "Yiwen (Ahat kečč/kem, seg tansa IP $1) yessutered awennez n awal n uɛaddi i {{SITENAME}} ($4). {{PLURAL:$3|Amiḍan n useqdac agi yeqqen|imiḍanen n iseqdacen agi qqenen}} s tansa e-mail agi :\n\n$2\n\n{{PLURAL:$3|Awal n uɛaddi uɛḍil agi ad i aff tasewti-s|Awalen n uɛaddi uɛḍilen agi ad affen taseweti nsen}} deg {{PLURAL:$5|yiwen ass|$5 ussan}}. Ilaq tura ad qqeneḍ dɣa ad freneḍ awal n uɛaddi amaynut. Lukan mačči d kečč/kem i xedmen asuter agi, naɣ tecfiḍ tura i awal n uɛaddi inek/inem, tzemreḍ ad eǧǧeḍ izen agi.",
 	"passwordreset-emailtext-user": "Aseqdac $1 ɣef {{SITENAME}} yessutered awennez n awal n uɛaddi i {{SITENAME}} ($4). {{PLURAL:$3|Amiḍan n useqdac agi yeqqen|imiḍanen n iseqdacen agi qqenen}} s tansa e-mail agi :\n\n$2\n\n{{PLURAL:$3|Awal n uɛaddi uɛḍil agi ad i aff tasewti-s|Awalen n uɛaddi uɛḍilen agi ad affen taseweti nsen}} deg {{PLURAL:$5|yiwen ass|$5 ussan}}. Ilaq tura ad qqeneḍ dɣa ad freneḍ awal n uɛaddi amaynut. Lukan mačči d kečč/kem i xedmen asuter agi, naɣ tecfiḍ tura i awal n uɛaddi inek/inem, tzemreḍ ad eǧǧeḍ izen agi.",
 	"passwordreset-emailelement": "Isem n useqdac : \n$1\n\nAwal n uɛddi akudan : \n$2",
-	"passwordreset-emailsentemail": "Ma yella imayl-agi icudd ar umiḍan-ik, awennez n wawal uffir ad yettwazen ar yimayl.",
-	"passwordreset-invalidemail": "Tansa imayl d tarameɣtut",
 	"changeemail": "Beddel neɣ kkes tansa n imayl",
 	"changeemail-no-info": "Ilaq ad qqeneḍ iwakken ad ẓṛeḍ asebter agi.",
 	"changeemail-oldemail": "Tansa e-mail n tura:",
@@ -664,7 +662,6 @@
 	"content-model-javascript": "JavaScript",
 	"content-json-empty-object": "Asentel d ilem",
 	"content-json-empty-array": "Talfelwit d tilemt",
-	"deprecated-self-close-category": "Asebter iseqdacen yir tiṛekkizin HTM tumdilin tiwurmanin",
 	"expensive-parserfunction-warning": "'''Ɣur-wet :''' Asebter agi yesɛa aṭas n tiɣriwin ar tiseɣnin ɣlayen n umsisleḍ taseddast.\nIlaq ad i sɛu ddaw n  $2 {{PLURAL:$2|tiɣri|tiɣriwin }}, wannag tura {{PLURAL:$1|tella $1 tiɣri|llant $1 tiɣriwin}}.",
 	"expensive-parserfunction-category": "Isebtar yesɛan aṭas tiɣriwin ɣlayen n tiseeɣnin n umsisleḍ taseddast",
 	"post-expand-template-inclusion-warning": "<strong>Ɣur-wet:</strong> Asebter agi yesɛa aṭas tilɣatin. Kra n tilɣatin ur zemrent ara ad seqdacent.",
@@ -719,11 +716,11 @@
 	"rev-deleted-user": "(isem n wemseqdac yettwakes)",
 	"rev-deleted-event": "(talqayt n umazray tettwakkes)",
 	"rev-deleted-user-contribs": "[isem n useqdac naɣ tansa IP yetwemḥa - abeddel yeffer deg tiwsitin]",
-	"rev-deleted-text-permission": "Lqem n usebter agi <strong>tetwesfeḍ</strong>.\nTilɣa llant deg [{{fullurl:{{#Special:Log}}/delete|page={{FULLPAGENAMEE}}}} uɣmis n usfeḍ].",
+	"rev-deleted-text-permission": "Lqem n usebter agi <strong>tetwesfeḍ</strong>.\nTilɣa llant deg [{{fullurl:{{#Special:Log}}/delete|page=$1}} uɣmis n usfeḍ].",
 	"rev-deleted-text-unhide": "Lqem n usebter agi <strong>tetwesfeḍ</strong>.\nTilɣa llant deg [{{fullurl:{{#Special:Log}}/delete|page={{FULLPAGENAMEE}}}} uɣmis n usfeḍ].\nTzemreḍ meqqar [$1 ad ẓṛeḍ lqem agi]  ma tebɣiḍ",
 	"rev-suppressed-text-unhide": "Lqem n usebter agi <strong>tetwekkes</strong>.\nTilɣa llant deg [{{fullurl:{{#Special:Log}}/delete|page={{FULLPAGENAMEE}}}} uɣmis n umḥu].\nTzemreḍ meqqar [$1 ad ẓṛeḍ lqem agi]  ma tebɣiḍ",
-	"rev-deleted-text-view": "Lqem n usebter agi <strong>tetwesfeḍ</strong>.\nTzemreḍ att ẓṛeḍ ; tilɣa llant deg [{{fullurl:{{#Special:Log}}/delete|page={{FULLPAGENAMEE}}}} uɣmis n usfeḍ].",
-	"rev-suppressed-text-view": "Lqem n usebter agi <strong>tetwekkes</strong>.\nTzemreḍ att ẓṛeḍ ; tilɣa llant deg [{{fullurl:{{#Special:Log}}/delete|page={{FULLPAGENAMEE}}}} uɣmis n umḥu].",
+	"rev-deleted-text-view": "Lqem n usebter agi <strong>tetwesfeḍ</strong>.\nTzemreḍ att ẓṛeḍ ; tilɣa llant deg [{{fullurl:{{#Special:Log}}/delete|page=$1}} uɣmis n usfeḍ].",
+	"rev-suppressed-text-view": "Lqem n usebter agi <strong>tetwekkes</strong>.\nTzemreḍ att ẓṛeḍ ; tilɣa llant deg [{{fullurl:{{#Special:Log}}/delete|page=$1}} uɣmis n umḥu].",
 	"rev-deleted-no-diff": "Ur tzemreḍ ara ad ẓṛeḍ \"diff\" agi acku yiwet n lqem-is <strong>tetwesfeḍ</strong>.\nTilɣa llant deg [{{fullurl:{{#Special:Log}}/delete|page={{FULLPAGENAMEE}}}} uɣmis n usfeḍ].",
 	"rev-suppressed-no-diff": "Ur tzemreḍ ara ad ẓṛeḍ \"diff\" agi acku yiwet n lqem-is <strong>tetwekkes</strong>.",
 	"rev-deleted-unhide-diff": "Yiwen lqem n tameẓla agi <strong>yetwesfeḍ</strong>.\nTilɣa llant deg [{{fullurl:{{#Special:Log}}/delete|page={{FULLPAGENAMEE}}}} uɣmis n usfeḍ].\nTzemreḍ meqqar [$1 ad ẓṛeḍ tameẓla agi] ma tebɣiḍ",

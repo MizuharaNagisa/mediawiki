@@ -1,5 +1,7 @@
 <?php
 
+use MediaWiki\MediaWikiServices;
+
 /**
  * Test class for SpecialRedirect class
  *
@@ -8,11 +10,11 @@
  * @license GPL-2.0-or-later
  * @group Database
  */
-class SpecialRedirectTest extends MediaWikiTestCase {
+class SpecialRedirectTest extends MediaWikiIntegrationTestCase {
 
 	protected $tablesUsed = [ 'user' ];
 
-	const CREATE_USER = 'create_user';
+	private const CREATE_USER = 'create_user';
 
 	/**
 	 * @dataProvider provideDispatch
@@ -23,7 +25,10 @@ class SpecialRedirectTest extends MediaWikiTestCase {
 	 * @covers SpecialRedirect::dispatchLog()
 	 */
 	public function testDispatch( $method, $type, $value, $expectedStatus ) {
-		$page = new SpecialRedirect();
+		$page = new SpecialRedirect(
+			MediaWikiServices::getInstance()->getPermissionManager(),
+			MediaWikiServices::getInstance()->getRepoGroup()
+		);
 
 		// setup the user object
 		if ( $value === self::CREATE_USER ) {

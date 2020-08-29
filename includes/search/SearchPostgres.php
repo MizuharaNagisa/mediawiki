@@ -67,7 +67,7 @@ class SearchPostgres extends SearchDatabase {
 	 * @return string
 	 */
 	private function parseQuery( $term ) {
-		wfDebug( "parseQuery received: $term \n" );
+		wfDebug( "parseQuery received: $term" );
 
 		# # No backslashes allowed
 		$term = preg_replace( '/\\\/', '', $term );
@@ -117,7 +117,7 @@ class SearchPostgres extends SearchDatabase {
 		$dbr = $this->lb->getConnectionRef( DB_REPLICA );
 		$searchstring = $dbr->addQuotes( $searchstring );
 
-		wfDebug( "parseQuery returned: $searchstring \n" );
+		wfDebug( "parseQuery returned: $searchstring" );
 
 		return $searchstring;
 	}
@@ -136,7 +136,7 @@ class SearchPostgres extends SearchDatabase {
 		# # We need a separate query here so gin does not complain about empty searches
 		$sql = "SELECT to_tsquery($searchstring)";
 		$dbr = $this->lb->getConnectionRef( DB_REPLICA );
-		$res = $dbr->query( $sql );
+		$res = $dbr->query( $sql, __METHOD__ );
 		if ( !$res ) {
 			# # TODO: Better output (example to catch: one 'two)
 			die( "Sorry, that was not a valid search string. Please go back and try again" );
@@ -186,14 +186,14 @@ class SearchPostgres extends SearchDatabase {
 
 		$query .= $dbr->limitResult( '', $this->limit, $this->offset );
 
-		wfDebug( "searchQuery returned: $query \n" );
+		wfDebug( "searchQuery returned: $query" );
 
 		return $query;
 	}
 
 	# # Most of the work of these two functions are done automatically via triggers
 
-	function update( $pageid, $title, $text ) {
+	public function update( $pageid, $title, $text ) {
 		# # We don't want to index older revisions
 		$slotRoleStore = MediaWikiServices::getInstance()->getSlotRoleStore();
 		$sql = "UPDATE pagecontent SET textvector = NULL " .
@@ -208,12 +208,12 @@ class SearchPostgres extends SearchDatabase {
 			" ORDER BY old_rev_text_id DESC OFFSET 1)";
 
 		$dbw = $this->lb->getConnectionRef( DB_MASTER );
-		$dbw->query( $sql );
+		$dbw->query( $sql, __METHOD__ );
 
 		return true;
 	}
 
-	function updateTitle( $id, $title ) {
+	public function updateTitle( $id, $title ) {
 		return true;
 	}
 }

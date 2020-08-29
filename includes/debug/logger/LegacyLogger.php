@@ -22,11 +22,11 @@ namespace MediaWiki\Logger;
 
 use DateTimeZone;
 use Error;
-use Exception;
 use MWDebug;
 use MWExceptionHandler;
 use Psr\Log\AbstractLogger;
 use Psr\Log\LogLevel;
+use RuntimeException;
 use Throwable;
 use UDPTransport;
 use WikiMap;
@@ -137,6 +137,23 @@ class LegacyLogger extends AbstractLogger {
 	}
 
 	/**
+	 * Change an existing Logger singleton to act like NullLogger.
+	 *
+	 * @internal For use by MediaWikiIntegrationTestCase::setNullLogger
+	 * @param null|int $level
+	 * @return int
+	 */
+	public function setMinimumForTest( ?int $level ) {
+		if ( !defined( 'MW_PHPUNIT_TEST' ) ) {
+			throw new RuntimeException( 'Not allowed outside tests' );
+		}
+		// Set LEVEL_INFINITY if given null, or restore the original level.
+		$original = $this->minimumLevel;
+		$this->minimumLevel = $level ?? self::LEVEL_INFINITY;
+		return $original;
+	}
+
+	/**
 	 * Logs with an arbitrary level.
 	 *
 	 * @param string|int $level
@@ -156,17 +173,12 @@ class LegacyLogger extends AbstractLogger {
 			&& isset( $context['sql'] )
 		) {
 			// Also give the query information to the MWDebug tools
-			$enabled = MWDebug::query(
+			MWDebug::query(
 				$context['sql'],
 				$context['method'],
 				$context['runtime'],
 				$context['db_host']
 			);
-			if ( $enabled ) {
-				// If we the toolbar was enabled, return early so that we don't
-				// also log the query to the main debug output.
-				return;
-			}
 		}
 
 		// If this is a DB-related error, and the site has $wgDBerrorLog
@@ -276,34 +288,6 @@ class LegacyLogger extends AbstractLogger {
 		} elseif ( $channel === 'wfLogDBError' ) {
 			$text = self::formatAsWfLogDBError( $channel, $message, $context );
 
-		} elseif ( $channel === 'profileoutput' ) {
-			// Legacy wfLogProfilingData formatitng
-			$forward = '';
-			if ( isset( $context['forwarded_for'] ) ) {
-				$forward = " forwarded for {$context['forwarded_for']}";
-			}
-			if ( isset( $context['client_ip'] ) ) {
-				$forward .= " client IP {$context['client_ip']}";
-			}
-			if ( isset( $context['from'] ) ) {
-				$forward .= " from {$context['from']}";
-			}
-			if ( $forward ) {
-				$forward = "\t(proxied via {$context['proxy']}{$forward})";
-			}
-			if ( $context['anon'] ) {
-				$forward .= ' anon';
-			}
-			if ( !isset( $context['url'] ) ) {
-				$context['url'] = 'n/a';
-			}
-
-			$log = sprintf( "%s\t%04.3f\t%s%s\n",
-				gmdate( 'YmdHis' ), $context['elapsed'], $context['url'], $forward );
-
-			$text = self::formatAsWfDebugLog(
-				$channel, $log . $context['output'], $context );
-
 		} elseif ( !isset( $wgDebugLogGroups[$channel] ) ) {
 			$text = self::formatAsWfDebug(
 				$channel, "[{$channel}] {$message}", $context );
@@ -313,16 +297,16 @@ class LegacyLogger extends AbstractLogger {
 			$text = self::formatAsWfDebugLog( $channel, $message, $context );
 		}
 
-		// Append stacktrace of exception if available
+		// Append stacktrace of throwable if available
 		if ( $wgLogExceptionBacktrace && isset( $context['exception'] ) ) {
 			$e = $context['exception'];
 			$backtrace = false;
 
-			if ( $e instanceof Throwable || $e instanceof Exception ) {
+			if ( $e instanceof Throwable ) {
 				$backtrace = MWExceptionHandler::getRedactedTrace( $e );
 
 			} elseif ( is_array( $e ) && isset( $e['trace'] ) ) {
-				// Exception has already been unpacked as structured data
+				// Throwable has already been unpacked as structured data
 				$backtrace = $e['trace'];
 			}
 
@@ -376,7 +360,7 @@ class LegacyLogger extends AbstractLogger {
 		$date = $d->format( 'D M j G:i:s T Y' );
 
 		$host = wfHostname();
-		$wiki = WikiMap::getWikiIdFromDbDomain( WikiMap::getCurrentWikiDbDomain() );
+		$wiki = WikiMap::getCurrentWikiId();
 
 		$text = "{$date}\t{$host}\t{$wiki}\t{$message}\n";
 		return $text;
@@ -392,7 +376,7 @@ class LegacyLogger extends AbstractLogger {
 	 */
 	protected static function formatAsWfDebugLog( $channel, $message, $context ) {
 		$time = wfTimestamp( TS_DB );
-		$wiki = WikiMap::getWikiIdFromDbDomain( WikiMap::getCurrentWikiDbDomain() );
+		$wiki = WikiMap::getCurrentWikiId();
 		$host = wfHostname();
 		$text = "{$time} {$host} {$wiki}: {$message}\n";
 		return $text;
@@ -454,7 +438,7 @@ class LegacyLogger extends AbstractLogger {
 			return $item->format( 'c' );
 		}
 
-		if ( $item instanceof Throwable || $item instanceof Exception ) {
+		if ( $item instanceof Throwable ) {
 			$which = $item instanceof Error ? 'Error' : 'Exception';
 			return '[' . $which . ' ' . get_class( $item ) . '( ' .
 				$item->getFile() . ':' . $item->getLine() . ') ' .

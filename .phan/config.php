@@ -18,14 +18,14 @@
  * @file
  */
 
+$disableTaintCheck = true;
 $cfg = require __DIR__ . '/../vendor/mediawiki/mediawiki-phan-config/src/config.php';
 
 $cfg['file_list'] = array_merge(
 	$cfg['file_list'],
-	function_exists( 'wikidiff2_do_diff' ) ? [] : [ '.phan/stubs/wikidiff.php' ],
 	class_exists( PEAR::class ) ? [] : [ '.phan/stubs/mail.php' ],
-	defined( 'PASSWORD_ARGON2I' ) ? [] : [ '.phan/stubs/password.php' ],
-	class_exists( ProfilerExcimer::class ) ? [] : [ '.phan/stubs/excimer.php' ],
+	defined( 'PASSWORD_ARGON2ID' ) ? [] : [ '.phan/stubs/password.php' ],
+	class_exists( ValueError::class ) ? [] : [ '.phan/stubs/ValueError.php' ],
 	[
 		// This makes constants and globals known to Phan before processing all other files.
 		// You can check the parser order with --dump-parsed-file-list
@@ -51,6 +51,7 @@ $cfg['analyzed_file_extensions'] = array_merge(
 
 $cfg['autoload_internal_extension_signatures'] = [
 	'dom' => '.phan/internal_stubs/dom.phan_php',
+	'excimer' => '.phan/internal_stubs/excimer.php',
 	'imagick' => '.phan/internal_stubs/imagick.phan_php',
 	'intl' => '.phan/internal_stubs/intl.phan_php',
 	'memcached' => '.phan/internal_stubs/memcached.phan_php',
@@ -61,6 +62,7 @@ $cfg['autoload_internal_extension_signatures'] = [
 	'sockets' => '.phan/internal_stubs/sockets.phan_php',
 	'sqlsrv' => '.phan/internal_stubs/sqlsrv.phan_php',
 	'tideways' => '.phan/internal_stubs/tideways.phan_php',
+	'wikidiff2' => '.phan/internal_stubs/wikidiff.php'
 ];
 
 $cfg['directory_list'] = [
@@ -70,7 +72,7 @@ $cfg['directory_list'] = [
 	'mw-config/',
 	'resources/',
 	'vendor/',
-	'.phan/stubs/',
+	// Do NOT add .phan/stubs/ here: stubs are conditionally loaded in file_list
 ];
 
 $cfg['exclude_analysis_directory_list'] = [
@@ -86,11 +88,6 @@ $cfg['exclude_analysis_directory_list'] = [
 	// External class
 	'includes/libs/objectcache/utils/MemcachedClient.php',
 ];
-
-// This helps a lot in discovering bad code, but unfortunately it will always fail for
-// hooks + pass by reference, see phan issue #2943.
-// @todo Enable when the issue above is resolved and we update our config!
-$cfg['redundant_condition_detection'] = false;
 
 // These are too spammy for now. TODO enable
 $cfg['null_casts_as_any_type'] = true;

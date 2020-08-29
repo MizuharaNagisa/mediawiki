@@ -37,49 +37,49 @@ var toUpperMap,
 	/**
 	 * @private
 	 * @static
-	 * @property NS_MAIN
+	 * @property {number} NS_MAIN
 	 */
 	NS_MAIN = namespaceIds[ '' ],
 
 	/**
 	 * @private
 	 * @static
-	 * @property NS_TALK
+	 * @property {number} NS_TALK
 	 */
 	NS_TALK = namespaceIds.talk,
 
 	/**
 	 * @private
 	 * @static
-	 * @property NS_SPECIAL
+	 * @property {number} NS_SPECIAL
 	 */
 	NS_SPECIAL = namespaceIds.special,
 
 	/**
 	 * @private
 	 * @static
-	 * @property NS_MEDIA
+	 * @property {number} NS_MEDIA
 	 */
 	NS_MEDIA = namespaceIds.media,
 
 	/**
 	 * @private
 	 * @static
-	 * @property NS_FILE
+	 * @property {number} NS_FILE
 	 */
 	NS_FILE = namespaceIds.file,
 
 	/**
 	 * @private
 	 * @static
-	 * @property FILENAME_MAX_BYTES
+	 * @property {number} FILENAME_MAX_BYTES
 	 */
 	FILENAME_MAX_BYTES = 240,
 
 	/**
 	 * @private
 	 * @static
-	 * @property TITLE_MAX_BYTES
+	 * @property {number} TITLE_MAX_BYTES
 	 */
 	TITLE_MAX_BYTES = 255,
 
@@ -116,8 +116,19 @@ var toUpperMap,
 
 	/**
 	 * @private
+	 * @method isKnownNamespace
+	 * @param {number} namespace that may or may not exist
+	 * @return {boolean}
+	 */
+	isKnownNamespace = function ( namespace ) {
+		return namespace === NS_MAIN || mw.config.get( 'wgFormattedNamespaces' )[ namespace ] !== undefined;
+	},
+
+	/**
+	 * @private
 	 * @method getNamespacePrefix_
-	 * @param {number} namespace
+	 * @param {number} namespace that is valid and known. Callers should call
+	 *  `isKnownNamespace` before executing this method.
 	 * @return {string}
 	 */
 	getNamespacePrefix = function ( namespace ) {
@@ -151,9 +162,10 @@ var toUpperMap,
 
 	/**
 	 * Slightly modified from Flinfo. Credit goes to Lupo and Flominator.
+	 *
 	 * @private
 	 * @static
-	 * @property sanitationRules
+	 * @property {Object[]} sanitationRules
 	 */
 	sanitationRules = [
 		// "signature"
@@ -470,7 +482,11 @@ Title.newFromText = function ( title, namespace ) {
  * @return {mw.Title|null} A valid Title object or null if the title is invalid
  */
 Title.makeTitle = function ( namespace, title ) {
-	return mw.Title.newFromText( getNamespacePrefix( namespace ) + title );
+	if ( !isKnownNamespace( namespace ) ) {
+		return null;
+	} else {
+		return mw.Title.newFromText( getNamespacePrefix( namespace ) + title );
+	}
 };
 
 /**
@@ -586,44 +602,10 @@ Title.newFromFileName = function ( uncleanName ) {
  * @return {mw.Title|null} The file title or null if unsuccessful
  */
 Title.newFromImg = function ( img ) {
-	var matches, i, regex, src, decodedSrc,
+	var src = img.jquery ? img[ 0 ].src : img.src,
+		data = mw.util.parseImageUrl( src );
 
-		// thumb.php-generated thumbnails
-		thumbPhpRegex = /thumb\.php/,
-		regexes = [
-			// Thumbnails
-			/\/[\da-f]\/[\da-f]{2}\/([^\s/]+)\/[^\s/]+-[^\s/]*$/,
-
-			// Full size images
-			/\/[\da-f]\/[\da-f]{2}\/([^\s/]+)$/,
-
-			// Thumbnails in non-hashed upload directories
-			/\/([^\s/]+)\/[^\s/]+-(?:\1|thumbnail)[^\s/]*$/,
-
-			// Full-size images in non-hashed upload directories
-			/\/([^\s/]+)$/
-		],
-
-		recount = regexes.length;
-
-	src = img.jquery ? img[ 0 ].src : img.src;
-
-	if ( thumbPhpRegex.test( src ) ) {
-		return mw.Title.newFromText( 'File:' + mw.util.getParamValue( 'f', src ) );
-	}
-
-	decodedSrc = decodeURIComponent( src );
-
-	for ( i = 0; i < recount; i++ ) {
-		regex = regexes[ i ];
-		matches = decodedSrc.match( regex );
-
-		if ( matches && matches[ 1 ] ) {
-			return mw.Title.newFromText( 'File:' + matches[ 1 ] );
-		}
-	}
-
-	return null;
+	return data ? mw.Title.newFromText( 'File:' + data.name ) : null;
 };
 
 /**
@@ -981,7 +963,7 @@ Title.prototype = {
 	},
 
 	/**
-	 * Check the the title can have an associated talk page
+	 * Check the title can have an associated talk page
 	 *
 	 * @return {boolean} The title can have an associated talk page
 	 */
@@ -1001,13 +983,19 @@ Title.prototype = {
 };
 
 /**
- * @alias #getPrefixedDb
+ * Alias of mw.Title#getPrefixedDb
+ *
+ * TODO: Use @-alias when we switch to JSDoc
+ *
  * @method
  */
 Title.prototype.toString = Title.prototype.getPrefixedDb;
 
 /**
- * @alias #getPrefixedText
+ * Alias of mw.Title#getPrefixedText
+ *
+ * TODO: Use @-alias when we switch to JSDoc
+ *
  * @method
  */
 Title.prototype.toText = Title.prototype.getPrefixedText;

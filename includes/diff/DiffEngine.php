@@ -354,7 +354,7 @@ class DiffEngine {
 			if ( $this->m * $this->n > $this->tooLong ) {
 				// limit complexity to D^POW_LIMIT for long sequences
 				$this->maxDifferences = floor( $this->maxDifferences ** ( $this->powLimit - 1.0 ) );
-				wfDebug( "Limiting max number of differences to $this->maxDifferences\n" );
+				wfDebug( "Limiting max number of differences to $this->maxDifferences" );
 			}
 
 			/*
@@ -410,41 +410,6 @@ class DiffEngine {
 		}
 		$this->removed = $removed;
 		$this->added = $added;
-	}
-
-	function diff_range( $from_lines, $to_lines ) {
-		// Diff and store locally
-		$this->diff( $from_lines, $to_lines );
-		unset( $from_lines, $to_lines );
-
-		$ranges = [];
-		$xi = $yi = 0;
-		while ( $xi < $this->m || $yi < $this->n ) {
-			// Matching "snake".
-			while ( $xi < $this->m && $yi < $this->n
-				&& !$this->removed[$xi]
-				&& !$this->added[$yi]
-			) {
-				++$xi;
-				++$yi;
-			}
-			// Find deletes & adds.
-			$xstart = $xi;
-			while ( $xi < $this->m && $this->removed[$xi] ) {
-				++$xi;
-			}
-
-			$ystart = $yi;
-			while ( $yi < $this->n && $this->added[$yi] ) {
-				++$yi;
-			}
-
-			if ( $xi > $xstart || $yi > $ystart ) {
-				$ranges[] = new RangeDifference( $xstart, $xi, $ystart, $yi );
-			}
-		}
-
-		return $ranges;
 	}
 
 	private function lcs_rec( $bottoml1, $topl1, $bottoml2, $topl2, &$V, &$snake ) {
@@ -701,7 +666,7 @@ class DiffEngine {
 		$snake0 = $bottoml1 + $most_progress[0];
 		$snake1 = $bottoml2 + $most_progress[1];
 		$snake2 = 0;
-		wfDebug( "Computing the LCS is too expensive. Using a heuristic.\n" );
+		wfDebug( "Computing the LCS is too expensive. Using a heuristic." );
 		$this->heuristicUsed = true;
 
 		return 5; /*

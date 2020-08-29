@@ -51,7 +51,7 @@ class PermissionManagerTest extends MediaWikiLangTestCase {
 	protected $user, $anonUser, $userUser, $altUser;
 
 	/** Constant for self::testIsBlockedFrom */
-	const USER_TALK_PAGE = '<user talk page>';
+	private const USER_TALK_PAGE = '<user talk page>';
 
 	protected function setUp() : void {
 		parent::setUp();
@@ -122,11 +122,6 @@ class PermissionManagerTest extends MediaWikiLangTestCase {
 
 			$this->user = $this->userUser;
 		}
-	}
-
-	public function tearDown() : void {
-		parent::tearDown();
-		$this->restoreMwServices();
 	}
 
 	protected function setTitle( $ns, $title = "Main_Page" ) {
@@ -311,7 +306,6 @@ class PermissionManagerTest extends MediaWikiLangTestCase {
 		);
 
 		$this->setUser( 'anon' );
-		//$this->setUserPerm( "move" );
 		$this->runGroupPermissions( 'move', 'move', [ [ 'movenotallowedfile' ] ] );
 
 		// $this->setUserPerm( "" );
@@ -339,7 +333,7 @@ class PermissionManagerTest extends MediaWikiLangTestCase {
 			// $this->setUserPerm( "" );
 			$this->runGroupPermissions( '', 'move', [ [ 'movenotallowed' ] ] );
 
-			//$this->setUserPerm( "move" );
+			// $this->setUserPerm( "move" );
 			$this->runGroupPermissions( 'move', 'move', [] );
 
 			$this->setUser( 'anon' );
@@ -741,8 +735,9 @@ class PermissionManagerTest extends MediaWikiLangTestCase {
 			),
 			$services->getSpecialPageFactory(),
 			$revisionLookup,
-			MediaWikiServices::getInstance()->getNamespaceInfo(),
-			MediaWikiServices::getInstance()->getBlockErrorFormatter()
+			$services->getNamespaceInfo(),
+			$services->getBlockErrorFormatter(),
+			$services->getHookContainer()
 		);
 		$this->setService( 'PermissionManager', $permissionManager );
 
@@ -1138,13 +1133,13 @@ class PermissionManagerTest extends MediaWikiLangTestCase {
 		// Check that user is blocked or unblocked from specific actions
 		foreach ( $expected as $action => $blocked ) {
 			$expectedErrorCount = $blocked ? 1 : 0;
-			$this->assertEquals(
+			$this->assertCount(
 				$expectedErrorCount,
-				count( $permissionManager->getPermissionErrors(
+				$permissionManager->getPermissionErrors(
 					$action,
 					$user,
 					$this->title
-				) )
+				)
 			);
 		}
 
@@ -1407,12 +1402,8 @@ class PermissionManagerTest extends MediaWikiLangTestCase {
 				'by' => $this->user->getId(),
 			] ) );
 
-		$this->assertEquals(
-			1,
-			count(
-				MediaWikiServices::getInstance()->getPermissionManager()
-					->getPermissionErrors( 'tester', $user, $this->title )
-			)
+		$this->assertCount( 1, MediaWikiServices::getInstance()->getPermissionManager()
+			->getPermissionErrors( 'tester', $user, $this->title )
 		);
 	}
 
@@ -1424,9 +1415,6 @@ class PermissionManagerTest extends MediaWikiLangTestCase {
 		$user = $this->getMutableTestUser()->getUser();
 		$ut = Title::makeTitle( NS_USER_TALK, $user->getName() );
 		$this->assertNull( $user->getBlock( false ), 'sanity check' );
-		//$this->assertSame( '', $user->blockedBy(), 'sanity check' );
-		//$this->assertSame( '', $user->blockedFor(), 'sanity check' );
-		//$this->assertFalse( (bool)$user->isHidden(), 'sanity check' );
 		$this->assertFalse( MediaWikiServices::getInstance()->getPermissionManager()
 			->isBlockedFrom( $user, $ut ), 'sanity check' );
 
@@ -1445,9 +1433,6 @@ class PermissionManagerTest extends MediaWikiLangTestCase {
 		// Clear cache and confirm it loaded the block properly
 		$user->clearInstanceCache();
 		$this->assertInstanceOf( DatabaseBlock::class, $user->getBlock( false ) );
-		//$this->assertSame( $blocker->getName(), $user->blockedBy() );
-		//$this->assertSame( 'Because', $user->blockedFor() );
-		//$this->assertTrue( (bool)$user->isHidden() );
 		$this->assertTrue( MediaWikiServices::getInstance()->getPermissionManager()
 			->isBlockedFrom( $user, $ut ) );
 
@@ -1457,9 +1442,6 @@ class PermissionManagerTest extends MediaWikiLangTestCase {
 		// Clear cache and confirm it loaded the not-blocked properly
 		$user->clearInstanceCache();
 		$this->assertNull( $user->getBlock( false ) );
-		//$this->assertSame( '', $user->blockedBy() );
-		//$this->assertSame( '', $user->blockedFor() );
-		//$this->assertFalse( (bool)$user->isHidden() );
 		$this->assertFalse( MediaWikiServices::getInstance()->getPermissionManager()
 			->isBlockedFrom( $user, $ut ) );
 	}
@@ -1615,9 +1597,8 @@ class PermissionManagerTest extends MediaWikiLangTestCase {
 		$user = $this->getTestUser( [ 'unittesters', 'testwriters' ] )->getUser();
 		$userWrapper = TestingAccessWrapper::newFromObject( $user );
 
-		$rights = MediaWikiServices::getInstance()
-			->getPermissionManager()
-			->getUserPermissions( $user );
+		$permissionManager = MediaWikiServices::getInstance()->getPermissionManager();
+		$rights = $permissionManager->getUserPermissions( $user );
 		$this->assertContains( 'test', $rights, 'sanity check' );
 		$this->assertContains( 'runtest', $rights, 'sanity check' );
 		$this->assertContains( 'writetest', $rights, 'sanity check' );
@@ -1629,15 +1610,15 @@ class PermissionManagerTest extends MediaWikiLangTestCase {
 			$rights = array_diff( $rights, [ 'writetest' ] );
 		} );
 
-		$rights = MediaWikiServices::getInstance()
-			->getPermissionManager()
-			->getUserPermissions( $user );
+		$permissionManager->invalidateUsersRightsCache( $user );
+		$rights = $permissionManager->getUserPermissions( $user );
 		$this->assertContains( 'test', $rights );
 		$this->assertContains( 'runtest', $rights );
 		$this->assertNotContains( 'writetest', $rights );
 		$this->assertContains( 'nukeworld', $rights );
 
-		// Add a Session that limits rights
+		// Add a Session that limits rights. We're mocking a stdClass because the Session
+		// class is final, and thus not mockable.
 		$mock = $this->getMockBuilder( stdClass::class )
 			->setMethods( [ 'getAllowedUserRights', 'deregisterSession', 'getSessionId' ] )
 			->getMock();
@@ -1772,11 +1753,11 @@ class PermissionManagerTest extends MediaWikiLangTestCase {
 	 */
 	public function testIsEveryoneAllowed() {
 		$result = MediaWikiServices::getInstance()->getPermissionManager()
-								   ->isEveryoneAllowed( 'editmyoptions' );
+			->isEveryoneAllowed( 'editmyoptions' );
 		$this->assertTrue( $result );
 
 		$result = MediaWikiServices::getInstance()->getPermissionManager()
-								   ->isEveryoneAllowed( 'test' );
+			->isEveryoneAllowed( 'test' );
 		$this->assertFalse( $result );
 	}
 

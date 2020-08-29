@@ -24,7 +24,6 @@
  * @author Ævar Arnfjörð Bjarmason <avarab@gmail.com>
  */
 
-use MediaWiki\MediaWikiServices;
 use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\Rdbms\IResultWrapper;
 
@@ -34,11 +33,11 @@ use Wikimedia\Rdbms\IResultWrapper;
  * @ingroup SpecialPage
  */
 class SpecialMostLinkedCategories extends QueryPage {
-	function __construct( $name = 'Mostlinkedcategories' ) {
+	public function __construct( $name = 'Mostlinkedcategories' ) {
 		parent::__construct( $name );
 	}
 
-	function isSyndicated() {
+	public function isSyndicated() {
 		return false;
 	}
 
@@ -52,7 +51,7 @@ class SpecialMostLinkedCategories extends QueryPage {
 		];
 	}
 
-	function sortDescending() {
+	protected function sortDescending() {
 		return true;
 	}
 
@@ -62,7 +61,7 @@ class SpecialMostLinkedCategories extends QueryPage {
 	 * @param IDatabase $db
 	 * @param IResultWrapper $res
 	 */
-	function preprocessResults( $db, $res ) {
+	public function preprocessResults( $db, $res ) {
 		$this->executeLBFromResultWrapper( $res );
 	}
 
@@ -71,7 +70,7 @@ class SpecialMostLinkedCategories extends QueryPage {
 	 * @param object $result Result row
 	 * @return string
 	 */
-	function formatResult( $skin, $result ) {
+	public function formatResult( $skin, $result ) {
 		$nt = Title::makeTitleSafe( NS_CATEGORY, $result->title );
 		if ( !$nt ) {
 			return Html::element(
@@ -84,10 +83,7 @@ class SpecialMostLinkedCategories extends QueryPage {
 			);
 		}
 
-		$converter = MediaWikiServices::getInstance()->getLanguageConverterFactory()
-			->getLanguageConverter();
-
-		$text = $converter->convertHtml( $nt->getText() );
+		$text = $this->getLanguageConverter()->convertHtml( $nt->getText() );
 
 		$plink = $this->getLinkRenderer()->makeLink( $nt, new HtmlArmor( $text ) );
 		$nlinks = $this->msg( 'nmembers' )->numParams( $result->value )->escaped();

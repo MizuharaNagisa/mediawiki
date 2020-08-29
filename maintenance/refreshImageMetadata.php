@@ -29,6 +29,7 @@
 
 require_once __DIR__ . '/Maintenance.php';
 
+use MediaWiki\MediaWikiServices;
 use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\Rdbms\IMaintainableDatabase;
 
@@ -111,7 +112,7 @@ class RefreshImageMetadata extends Maintenance {
 			$this->fatalError( "Batch size is too low...", 12 );
 		}
 
-		$repo = RepoGroup::singleton()->getLocalRepo();
+		$repo = MediaWikiServices::getInstance()->getRepoGroup()->getLocalRepo();
 		$conds = $this->getConditions( $dbw );
 
 		// For the WHERE img_name > 'foo' condition that comes after doing a batch
@@ -126,6 +127,7 @@ class RefreshImageMetadata extends Maintenance {
 		];
 
 		$fileQuery = LocalFile::getQueryInfo();
+		$lbFactory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
 
 		do {
 			$res = $dbw->select(
@@ -194,7 +196,7 @@ class RefreshImageMetadata extends Maintenance {
 				}
 			}
 			$conds2 = [ 'img_name > ' . $dbw->addQuotes( $row->img_name ) ];
-			wfWaitForSlaves();
+			$lbFactory->waitForReplication();
 		} while ( $res->numRows() === $batchSize );
 
 		$total = $upgraded + $leftAlone;

@@ -1,9 +1,5 @@
 [
 	{
-		"path": "/user/{name}/hello",
-		"class": "MediaWiki\\Rest\\Handler\\HelloHandler"
-	},
-	{
 		"path": "/v1/page/{title}/history",
 		"class": "MediaWiki\\Rest\\Handler\\PageHistoryHandler",
 		"services": [
@@ -42,16 +38,29 @@
 		]
 	},
 	{
-		"path": "/coredev/v0/search/page",
+		"path": "/v1/search/page",
 		"class": "MediaWiki\\Rest\\Handler\\SearchHandler",
 		"services": [
+			"MainConfig",
 			"PermissionManager",
 			"SearchEngineFactory",
 			"SearchEngineConfig"
-		]
+		],
+		"mode": "fulltext"
 	},
 	{
-		"path": "/coredev/v0/page/{title}/links/language",
+		"path": "/v1/search/title",
+		"class": "MediaWiki\\Rest\\Handler\\SearchHandler",
+		"services": [
+			"MainConfig",
+			"PermissionManager",
+			"SearchEngineFactory",
+			"SearchEngineConfig"
+		],
+		"mode": "completion"
+	},
+	{
+		"path": "/v1/page/{title}/links/language",
 		"class": "MediaWiki\\Rest\\Handler\\LanguageLinksHandler",
 		"services": [
 			"DBLoadBalancer",
@@ -62,7 +71,7 @@
 		]
 	},
 	{
-		"path": "/coredev/v0/page/{title}",
+		"path": "/v1/page/{title}",
 		"class": "MediaWiki\\Rest\\Handler\\PageSourceHandler",
 		"services": [
 			"MainConfig",
@@ -72,7 +81,7 @@
 		]
 	},
 	{
-		"path": "/coredev/v0/page/{title}/{html_type}",
+		"path": "/v1/page/{title}/bare",
 		"class": "MediaWiki\\Rest\\Handler\\PageHTMLHandler",
 		"services": [
 			"MainConfig",
@@ -80,10 +89,35 @@
 			"RevisionLookup",
 			"TitleFormatter",
 			"VirtualRESTServiceClient"
-		]
+		],
+		"format": "bare"
 	},
 	{
-		"path": "/coredev/v0/page/{title}/links/media",
+		"path": "/v1/page/{title}/html",
+		"class": "MediaWiki\\Rest\\Handler\\PageHTMLHandler",
+		"services": [
+			"MainConfig",
+			"PermissionManager",
+			"RevisionLookup",
+			"TitleFormatter",
+			"VirtualRESTServiceClient"
+		],
+		"format": "html"
+	},
+	{
+		"path": "/v1/page/{title}/with_html",
+		"class": "MediaWiki\\Rest\\Handler\\PageHTMLHandler",
+		"services": [
+			"MainConfig",
+			"PermissionManager",
+			"RevisionLookup",
+			"TitleFormatter",
+			"VirtualRESTServiceClient"
+		],
+		"format": "with_html"
+	},
+	{
+		"path": "/v1/page/{title}/links/media",
 		"class": "MediaWiki\\Rest\\Handler\\MediaLinksHandler",
 		"services": [
 			"PermissionManager",
@@ -92,11 +126,35 @@
 		]
 	},
 	{
-		"path": "/coredev/v0/file/{title}",
+		"path": "/v1/file/{title}",
 		"class": "MediaWiki\\Rest\\Handler\\MediaFileHandler",
 		"services": [
 			"PermissionManager",
 			"RepoGroup"
+		]
+	},
+	{
+		"method": "PUT",
+		"path": "/v1/page/{title}",
+		"class": "MediaWiki\\Rest\\Handler\\UpdateHandler",
+		"services": [
+			"MainConfig",
+			"ContentHandlerFactory",
+			"TitleParser",
+			"TitleFormatter",
+			"RevisionStore"
+		]
+	},
+	{
+		"method": "POST",
+		"path": "/v1/page",
+		"class": "MediaWiki\\Rest\\Handler\\CreationHandler",
+		"services": [
+			"MainConfig",
+			"ContentHandlerFactory",
+			"TitleParser",
+			"TitleFormatter",
+			"RevisionStore"
 		]
 	}
 ]

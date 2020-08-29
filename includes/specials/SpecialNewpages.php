@@ -22,6 +22,10 @@
  */
 
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Revision\MutableRevisionRecord;
+use MediaWiki\Revision\RevisionRecord;
+use MediaWiki\Revision\SlotRecord;
+use MediaWiki\User\UserIdentityValue;
 
 /**
  * A special page that list newly created pages
@@ -64,7 +68,7 @@ class SpecialNewpages extends IncludableSpecialPage {
 		$opts->add( 'size', 0 );
 
 		$this->customFilters = [];
-		Hooks::run( 'SpecialNewPagesFilters', [ $this, &$this->customFilters ] );
+		$this->getHookRunner()->onSpecialNewPagesFilters( $this, $this->customFilters );
 		// @phan-suppress-next-line PhanEmptyForeach False positive
 		foreach ( $this->customFilters as $key => $params ) {
 			$opts->add( $key, $params['default'] );
@@ -316,16 +320,23 @@ class SpecialNewpages extends IncludableSpecialPage {
 	/**
 	 * @param stdClass $result Result row from recent changes
 	 * @param Title $title
-	 * @return bool|Revision
+	 * @return RevisionRecord
 	 */
-	protected function revisionFromRcResult( stdClass $result, Title $title ) {
-		return new Revision( [
-			'comment' => CommentStore::getStore()->getComment( 'rc_comment', $result )->text,
-			'deleted' => $result->rc_deleted,
-			'user_text' => $result->rc_user_text,
-			'user' => $result->rc_user,
-			'actor' => $result->rc_actor,
-		], 0, $title );
+	private function revisionFromRcResult( stdClass $result, Title $title ) : RevisionRecord {
+		$revRecord = new MutableRevisionRecord( $title );
+		$revRecord->setComment(
+			CommentStore::getStore()->getComment( 'rc_comment', $result )
+		);
+		$revRecord->setVisibility( (int)$result->rc_deleted );
+
+		$user = new UserIdentityValue(
+			(int)$result->rc_user,
+			$result->rc_user_text,
+			(int)$result->rc_actor
+		);
+		$revRecord->setUser( $user );
+
+		return $revRecord;
 	}
 
 	/**
@@ -340,7 +351,7 @@ class SpecialNewpages extends IncludableSpecialPage {
 
 		// Revision deletion works on revisions,
 		// so cast our recent change row to a revision row.
-		$rev = $this->revisionFromRcResult( $result, $title );
+		$revRecord = $this->revisionFromRcResult( $result, $title );
 
 		$classes = [];
 		$attribs = [ 'data-mw-revid' => $result->rev_id ];
@@ -397,8 +408,8 @@ class SpecialNewpages extends IncludableSpecialPage {
 			)->escaped()
 		);
 
-		$ulink = Linker::revUserTools( $rev );
-		$comment = Linker::revComment( $rev );
+		$ulink = Linker::revUserTools( $revRecord );
+		$comment = Linker::revComment( $revRecord );
 
 		if ( $this->patrollable( $result ) ) {
 			$classes[] = 'not-patrolled';
@@ -438,7 +449,8 @@ class SpecialNewpages extends IncludableSpecialPage {
 			. "{$tagDisplay} {$oldTitleText}";
 
 		// Let extensions add data
-		Hooks::run( 'NewPagesLineEnding', [ $this, &$ret, $result, &$classes, &$attribs ] );
+		$this->getHookRunner()->onNewPagesLineEnding(
+			$this, $ret, $result, $classes, $attribs );
 		$attribs = array_filter( $attribs,
 			[ Sanitizer::class, 'isReservedDataAttribute' ],
 			ARRAY_FILTER_USE_KEY
@@ -531,20 +543,26 @@ class SpecialNewpages extends IncludableSpecialPage {
 	}
 
 	protected function feedItemDesc( $row ) {
-		$revision = Revision::newFromId( $row->rev_id );
-		if ( !$revision ) {
+		$revisionRecord = MediaWikiServices::getInstance()
+			->getRevisionLookup()
+			->getRevisionById( $row->rev_id );
+		if ( !$revisionRecord ) {
 			return '';
 		}
 
-		$content = $revision->getContent();
+		$content = $revisionRecord->getContent( SlotRecord::MAIN );
 		if ( $content === null ) {
 			return '';
 		}
 
 		// XXX: include content model/type in feed item?
-		return '<p>' . htmlspecialchars( $revision->getUserText() ) .
+		$revUser = $revisionRecord->getUser();
+		$revUserText = $revUser ? $revUser->getName() : '';
+		$revComment = $revisionRecord->getComment();
+		$revCommentText = $revComment ? $revComment->text : '';
+		return '<p>' . htmlspecialchars( $revUserText ) .
 			$this->msg( 'colon-separator' )->inContentLanguage()->escaped() .
-			htmlspecialchars( FeedItem::stripComment( $revision->getComment() ) ) .
+			htmlspecialchars( FeedItem::stripComment( $revCommentText ) ) .
 			"</p>\n<hr />\n<div>" .
 			nl2br( htmlspecialchars( $content->serialize() ) ) . "</div>";
 	}

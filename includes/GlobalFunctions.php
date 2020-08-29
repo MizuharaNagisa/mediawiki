@@ -24,14 +24,13 @@ if ( !defined( 'MEDIAWIKI' ) ) {
 	die( "This file is part of MediaWiki, it is not a valid entry point" );
 }
 
-use MediaWiki\BadFileLookup;
 use MediaWiki\Linker\LinkTarget;
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\ProcOpenError;
-use MediaWiki\Session\SessionManager;
 use MediaWiki\Shell\Shell;
 use Wikimedia\AtEase\AtEase;
+use Wikimedia\ParamValidator\TypeDef\ExpiryDef;
 use Wikimedia\WrappedString;
 
 /**
@@ -160,7 +159,7 @@ function wfAppendToArrayIfNotDefault( $key, $value, $default, &$changed ) {
 }
 
 /**
- * Merge arrays in the style of getUserPermissionsErrors, with duplicate removal
+ * Merge arrays in the style of PermissionManager::getPermissionErrors, with duplicate removal
  * e.g.
  *     wfMergeErrorArrays(
  *       [ [ 'x' ] ],
@@ -346,7 +345,7 @@ function wfUrlencode( $s ) {
  */
 function wfArrayToCgi( $array1, $array2 = null, $prefix = '' ) {
 	if ( $array2 !== null ) {
-		$array1 = $array1 + $array2;
+		$array1 += $array2;
 	}
 
 	$cgi = '';
@@ -768,12 +767,11 @@ function wfUrlProtocolsWithoutProtRel() {
 /**
  * parse_url() work-alike, but non-broken.  Differences:
  *
- * 1) Does not raise warnings on bad URLs (just returns false).
- * 2) Handles protocols that don't use :// (e.g., mailto: and news:, as well as
+ * 1) Handles protocols that don't use :// (e.g., mailto: and news:, as well as
  *    protocol-relative URLs) correctly.
- * 3) Adds a "delimiter" element to the array (see (2)).
- * 4) Verifies that the protocol is on the $wgUrlProtocols whitelist.
- * 5) Rejects some invalid URLs that parse_url doesn't, e.g. the empty string or URLs starting with
+ * 2) Adds a "delimiter" element to the array (see (2)).
+ * 3) Verifies that the protocol is on the $wgUrlProtocols whitelist.
+ * 4) Rejects some invalid URLs that parse_url doesn't, e.g. the empty string or URLs starting with
  *    a line feed character.
  *
  * @param string $url A URL to parse
@@ -783,6 +781,7 @@ function wfUrlProtocolsWithoutProtRel() {
  *       be an empty string for protocol-relative URLs.
  *   - delimiter: either '://', ':' or '//'. Always present.
  *   - host: domain name / IP. Always present, but could be an empty string, e.g. for file: URLs.
+ *   - port: port number. Will be missing when port is not explicitly specified.
  *   - user: user name, e.g. for HTTP Basic auth URLs such as http://user:pass@example.com/
  *       Missing when there is no username.
  *   - pass: password, same as above.
@@ -800,9 +799,7 @@ function wfParseUrl( $url ) {
 	if ( $wasRelative ) {
 		$url = "http:$url";
 	}
-	AtEase::suppressWarnings();
 	$bits = parse_url( $url );
-	AtEase::restoreWarnings();
 	// parse_url() returns an array without scheme for some invalid URLs, e.g.
 	// parse_url("%0Ahttp://example.com") == [ 'host' => '%0Ahttp', 'path' => 'example.com' ]
 	if ( !$bits || !isset( $bits['scheme'] ) ) {
@@ -912,24 +909,12 @@ function wfMatchesDomainList( $url, $domains ) {
  */
 function wfDebug( $text, $dest = 'all', array $context = [] ) {
 	global $wgDebugRawPage, $wgDebugLogPrefix;
-	global $wgDebugTimestamps;
 
 	if ( !$wgDebugRawPage && wfIsDebugRawPage() ) {
 		return;
 	}
 
 	$text = trim( $text );
-
-	if ( $wgDebugTimestamps ) {
-		$context['seconds_elapsed'] = sprintf(
-			'%6.4f',
-			microtime( true ) - $_SERVER['REQUEST_TIME_FLOAT']
-		);
-		$context['memory_used'] = sprintf(
-			'%5.1fM',
-			( memory_get_usage( true ) / ( 1024 * 1024 ) )
-		);
-	}
 
 	if ( $wgDebugLogPrefix !== '' ) {
 		$context['prefix'] = $wgDebugLogPrefix;
@@ -952,10 +937,7 @@ function wfIsDebugRawPage() {
 	// Check for raw action using $_GET not $wgRequest, since the latter might not be initialised yet
 	// phpcs:ignore MediaWiki.Usage.SuperGlobalsUsage.SuperGlobals
 	if ( ( isset( $_GET['action'] ) && $_GET['action'] == 'raw' )
-		|| (
-			isset( $_SERVER['SCRIPT_NAME'] )
-			&& substr( $_SERVER['SCRIPT_NAME'], -8 ) == 'load.php'
-		)
+		|| MW_ENTRY_POINT === 'load'
 	) {
 		$cache = true;
 	} else {
@@ -976,7 +958,7 @@ function wfDebugMem( $exact = false ) {
 	} else {
 		$mem .= ' B';
 	}
-	wfDebug( "Memory usage: $mem\n" );
+	wfDebug( "Memory usage: $mem" );
 }
 
 /**
@@ -1028,7 +1010,7 @@ function wfLogDBError( $text, array $context = [] ) {
 }
 
 /**
- * Throws a warning that $function is deprecated
+ * Logs a warning that $function is deprecated.
  *
  * @param string $function Function that is deprecated.
  * @param string|false $version Version of MediaWiki that the function
@@ -1039,7 +1021,8 @@ function wfLogDBError( $text, array $context = [] ) {
  *    caller. 2 = function that called the function that called
  *    wfDeprecated (Added in 1.20).
  *
- * @throws Exception If the MediaWiki version number is not a string or boolean.
+ * @throws Exception If the MediaWiki version number specified by $version is neither a string nor
+ *    false, an exception is thrown to indicate invalid arguments.
  */
 function wfDeprecated( $function, $version = false, $component = false, $callerOffset = 2 ) {
 	if ( is_string( $version ) || $version === false ) {
@@ -1050,6 +1033,32 @@ function wfDeprecated( $function, $version = false, $component = false, $callerO
 			"Example valid version: '1.33'"
 		);
 	}
+}
+
+/**
+ * Log a deprecation warning with arbitrary message text. A caller
+ * description will be appended. If the message has already been sent for
+ * this caller, it won't be sent again.
+ *
+ * Although there are component and version parameters, they are not
+ * automatically appended to the message. The message text should include
+ * information about when the thing was deprecated. The component and version
+ * are just used to implement $wgDeprecationReleaseLimit.
+ *
+ * @since 1.35
+ *
+ * @param string $msg The message
+ * @param string|false $version Version of MediaWiki that the function
+ *    was deprecated in.
+ * @param string|bool $component Component to which the function belongs.
+ *    If false, it is assumed the function is in MediaWiki core.
+ * @param int|false $callerOffset How far up the call stack is the original
+ *    caller. 2 = function that called the function that called us. If false,
+ *    the caller description will not be appended.
+ */
+function wfDeprecatedMsg( $msg, $version = false, $component = false, $callerOffset = 2 ) {
+	MWDebug::deprecatedMsg( $msg, $version, $component,
+		$callerOffset === false ? false : $callerOffset + 1 );
 }
 
 /**
@@ -1084,10 +1093,7 @@ function wfLogWarning( $msg, $callerOffset = 1, $level = E_USER_WARNING ) {
  * @todo Move logic to MediaWiki.php
  */
 function wfLogProfilingData() {
-	global $wgDebugLogGroups, $wgDebugRawPage;
-
 	$context = RequestContext::getMain();
-	$request = $context->getRequest();
 
 	$profiler = Profiler::instance();
 	$profiler->setContext( $context );
@@ -1098,56 +1104,6 @@ function wfLogProfilingData() {
 		MediaWikiServices::getInstance()->getStatsdDataFactory(),
 		$context->getConfig()
 	);
-
-	// Profiling must actually be enabled...
-	if ( $profiler instanceof ProfilerStub ) {
-		return;
-	}
-
-	if ( isset( $wgDebugLogGroups['profileoutput'] )
-		&& $wgDebugLogGroups['profileoutput'] === false
-	) {
-		// Explicitly disabled
-		return;
-	}
-	if ( !$wgDebugRawPage && wfIsDebugRawPage() ) {
-		return;
-	}
-
-	$ctx = [ 'elapsed' => $request->getElapsedTime() ];
-	if ( !empty( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ) {
-		$ctx['forwarded_for'] = $_SERVER['HTTP_X_FORWARDED_FOR'];
-	}
-	if ( !empty( $_SERVER['HTTP_CLIENT_IP'] ) ) {
-		$ctx['client_ip'] = $_SERVER['HTTP_CLIENT_IP'];
-	}
-	if ( !empty( $_SERVER['HTTP_FROM'] ) ) {
-		$ctx['from'] = $_SERVER['HTTP_FROM'];
-	}
-	if ( isset( $ctx['forwarded_for'] ) ||
-		isset( $ctx['client_ip'] ) ||
-		isset( $ctx['from'] ) ) {
-		$ctx['proxy'] = $_SERVER['REMOTE_ADDR'];
-	}
-
-	// Don't load $wgUser at this late stage just for statistics purposes
-	// @todo FIXME: We can detect some anons even if it is not loaded.
-	// See User::getId()
-	$user = $context->getUser();
-	$ctx['anon'] = $user->isItemLoaded( 'id' ) && $user->isAnon();
-
-	// Command line script uses a FauxRequest object which does not have
-	// any knowledge about an URL and throw an exception instead.
-	try {
-		$ctx['url'] = urldecode( $request->getRequestURL() );
-	} catch ( Exception $ignored ) {
-		// no-op
-	}
-
-	$ctx['output'] = $profiler->getOutput();
-
-	$log = LoggerFactory::getInstance( 'profileoutput' );
-	$log->info( "Elapsed: {elapsed}; URL: <{url}>\n{output}", $ctx );
 }
 
 /**
@@ -1220,10 +1176,11 @@ function wfGetLangObj( $langcode = false ) {
 	}
 
 	global $wgLanguageCode;
+	$services = MediaWikiServices::getInstance();
 	if ( $langcode === true || $langcode === $wgLanguageCode ) {
 		# $langcode is the language code of the wikis content language object.
 		# or it is a boolean and value is true
-		return MediaWikiServices::getInstance()->getContentLanguage();
+		return $services->getContentLanguage();
 	}
 
 	global $wgLang;
@@ -1233,15 +1190,15 @@ function wfGetLangObj( $langcode = false ) {
 		return $wgLang;
 	}
 
-	$validCodes = array_keys( Language::fetchLanguageNames() );
+	$validCodes = array_keys( $services->getLanguageNameUtils()->getLanguageNames() );
 	if ( in_array( $langcode, $validCodes ) ) {
 		# $langcode corresponds to a valid language.
-		return MediaWikiServices::getInstance()->getLanguageFactory()->getLanguage( $langcode );
+		return $services->getLanguageFactory()->getLanguage( $langcode );
 	}
 
 	# $langcode is a string, but not a valid language code; use content language.
-	wfDebug( "Invalid language code passed to wfGetLangObj, falling back to content language.\n" );
-	return MediaWikiServices::getInstance()->getContentLanguage();
+	wfDebug( "Invalid language code passed to wfGetLangObj, falling back to content language." );
+	return $services->getContentLanguage();
 }
 
 /**
@@ -1293,7 +1250,7 @@ function wfMessageFallback( ...$keys ) {
  * @param string $message
  * @param array $args
  * @return string
- * @private
+ * @internal
  */
 function wfMsgReplaceArgs( $message, $args ) {
 	# Fix windows line-endings
@@ -1316,40 +1273,21 @@ function wfMsgReplaceArgs( $message, $args ) {
 }
 
 /**
- * Fetch server name for use in error reporting etc.
- * Use real server name if available, so we know which machine
- * in a server farm generated the current page.
+ * Get host name of the current machine, for use in error reporting.
+ *
+ * This helps to know which machine in a data center generated the
+ * current page.
  *
  * @return string
  */
 function wfHostname() {
-	static $host;
-	if ( $host === null ) {
-		# Hostname overriding
-		global $wgOverrideHostname;
-		if ( $wgOverrideHostname !== false ) {
-			# Set static and skip any detection
-			$host = $wgOverrideHostname;
-			return $host;
-		}
-
-		if ( function_exists( 'posix_uname' ) ) {
-			// This function not present on Windows
-			$uname = posix_uname();
-		} else {
-			$uname = false;
-		}
-		if ( is_array( $uname ) && isset( $uname['nodename'] ) ) {
-			$host = $uname['nodename'];
-		} elseif ( getenv( 'COMPUTERNAME' ) ) {
-			# Windows computer name
-			$host = getenv( 'COMPUTERNAME' );
-		} else {
-			# This may be a virtual server.
-			$host = $_SERVER['SERVER_NAME'];
-		}
+	// Hostname overriding
+	global $wgOverrideHostname;
+	if ( $wgOverrideHostname !== false ) {
+		return $wgOverrideHostname;
 	}
-	return $host;
+
+	return php_uname( 'n' ) ?: 'unknown';
 }
 
 /**
@@ -1391,7 +1329,7 @@ function wfDebugBacktrace( $limit = 0 ) {
 	if ( $disabled === null ) {
 		$disabled = !function_exists( 'debug_backtrace' );
 		if ( $disabled ) {
-			wfDebug( "debug_backtrace() is disabled\n" );
+			wfDebug( "debug_backtrace() is disabled" );
 		}
 	}
 	if ( $disabled ) {
@@ -1529,7 +1467,7 @@ function wfClientAcceptsGzip( $force = false ) {
 					$result = false;
 					return $result;
 				}
-				wfDebug( "wfClientAcceptsGzip: client accepts gzip.\n" );
+				wfDebug( "wfClientAcceptsGzip: client accepts gzip." );
 				$result = true;
 			}
 		}
@@ -1793,7 +1731,7 @@ function wfAcceptToPrefs( $accept, $def = '*/*' ) {
  * @param string $type
  * @param array $avail
  * @return string
- * @private
+ * @internal
  */
 function mimeTypeMatch( $type, $avail ) {
 	if ( array_key_exists( $type, $avail ) ) {
@@ -1871,7 +1809,7 @@ function wfNegotiateType( $cprefs, $sprefs ) {
 function wfTimestamp( $outputtype = TS_UNIX, $ts = 0 ) {
 	$ret = MWTimestamp::convert( $outputtype, $ts );
 	if ( $ret === false ) {
-		wfDebug( "wfTimestamp() fed bogus time value: TYPE=$outputtype; VALUE=$ts\n" );
+		wfDebug( "wfTimestamp() fed bogus time value: TYPE=$outputtype; VALUE=$ts" );
 	}
 	return $ret;
 }
@@ -1907,22 +1845,7 @@ function wfTimestampNow() {
  * @return bool True if it's Windows, false otherwise.
  */
 function wfIsWindows() {
-	static $isWindows = null;
-	if ( $isWindows === null ) {
-		$isWindows = strtoupper( substr( PHP_OS, 0, 3 ) ) === 'WIN';
-	}
-	return $isWindows;
-}
-
-/**
- * Check if we are running under HHVM
- *
- * @deprecated since 1.34, HHVM is no longer supported
- * @return bool
- */
-function wfIsHHVM() {
-	wfDeprecated( __FUNCTION__, '1.34' );
-	return false;
+	return PHP_OS_FAMILY === 'Windows';
 }
 
 /**
@@ -1973,7 +1896,7 @@ function wfMkdirParents( $dir, $mode = null, $caller = null ) {
 	}
 
 	if ( $caller !== null ) {
-		wfDebug( "$caller: called wfMkdirParents($dir)\n" );
+		wfDebug( "$caller: called wfMkdirParents($dir)" );
 	}
 
 	if ( strval( $dir ) === '' || is_dir( $dir ) ) {
@@ -2009,7 +1932,7 @@ function wfMkdirParents( $dir, $mode = null, $caller = null ) {
  * @param string $dir
  */
 function wfRecursiveRemoveDir( $dir ) {
-	wfDebug( __FUNCTION__ . "( $dir )\n" );
+	wfDebug( __FUNCTION__ . "( $dir )" );
 	// taken from https://www.php.net/manual/en/function.rmdir.php#98622
 	if ( is_dir( $dir ) ) {
 		$objects = scandir( $dir );
@@ -2028,13 +1951,14 @@ function wfRecursiveRemoveDir( $dir ) {
 }
 
 /**
- * @param int $nr The number to format
+ * @param float|int $nr The number to format
  * @param int $acc The number of digits after the decimal point, default 2
  * @param bool $round Whether or not to round the value, default true
  * @return string
  */
-function wfPercent( $nr, $acc = 2, $round = true ) {
-	$ret = sprintf( "%.${acc}f", $nr );
+function wfPercent( $nr, int $acc = 2, bool $round = true ) {
+	$accForFormat = $acc >= 0 ? $acc : 0;
+	$ret = sprintf( "%.${accForFormat}f", $nr );
 	return $round ? round( (float)$ret, $acc ) . '%' : "$ret%";
 }
 
@@ -2203,7 +2127,7 @@ function wfShellWikiCmd( $script, array $parameters = [], array $options = [] ) 
 	global $wgPhpCli;
 	// Give site config file a chance to run the script in a wrapper.
 	// The caller may likely want to call wfBasename() on $script.
-	Hooks::run( 'wfShellWikiCmd', [ &$script, &$parameters, &$options ] );
+	Hooks::runner()->onWfShellWikiCmd( $script, $parameters, $options );
 	$cmd = [ $options['php'] ?? $wgPhpCli ];
 	if ( isset( $options['wrapper'] ) ) {
 		$cmd[] = $options['wrapper'];
@@ -2234,7 +2158,7 @@ function wfMerge( $old, $mine, $yours, &$result, &$mergeAttemptResult = null ) {
 	AtEase::restoreWarnings();
 
 	if ( !$haveDiff3 ) {
-		wfDebug( "diff3 not found\n" );
+		wfDebug( "diff3 not found" );
 		return false;
 	}
 
@@ -2290,7 +2214,7 @@ function wfMerge( $old, $mine, $yours, &$result, &$mergeAttemptResult = null ) {
 	unlink( $yourtextName );
 
 	if ( $result === '' && $old !== '' && !$conflict ) {
-		wfDebug( "Unexpected null result from diff3. Command: $cmd\n" );
+		wfDebug( "Unexpected null result from diff3. Command: $cmd" );
 		$conflict = true;
 	}
 	return !$conflict;
@@ -2308,6 +2232,7 @@ function wfMerge( $old, $mine, $yours, &$result, &$mergeAttemptResult = null ) {
  * @return string Unified diff of $before and $after
  */
 function wfDiff( $before, $after, $params = '-u' ) {
+	wfDeprecated( __FUNCTION__, '1.25' );
 	if ( $before == $after ) {
 		return '';
 	}
@@ -2320,7 +2245,7 @@ function wfDiff( $before, $after, $params = '-u' ) {
 	# This check may also protect against code injection in
 	# case of broken installations.
 	if ( !$haveDiff ) {
-		wfDebug( "diff executable not found\n" );
+		wfDebug( "diff executable not found" );
 		$diffs = new Diff( explode( "\n", $before ), explode( "\n", $after ) );
 		$format = new UnifiedDiffFormatter();
 		return $format->format( $diffs );
@@ -2448,31 +2373,6 @@ function wfRelativePath( $path, $from ) {
 }
 
 /**
- * Initialise php session
- *
- * @deprecated since 1.27, use MediaWiki\Session\SessionManager instead.
- *  Generally, "using" SessionManager will be calling ->getSessionById() or
- *  ::getGlobalSession() (depending on whether you were passing $sessionId
- *  here), then calling $session->persist().
- * @param bool|string $sessionId
- */
-function wfSetupSession( $sessionId = false ) {
-	wfDeprecated( __FUNCTION__, '1.27' );
-
-	if ( $sessionId ) {
-		session_id( $sessionId );
-	}
-
-	$session = SessionManager::getGlobalSession();
-	$session->persist();
-
-	if ( session_id() !== $session->getId() ) {
-		session_id( $session->getId() );
-	}
-	AtEase::quietCall( 'session_start' );
-}
-
-/**
  * Get an object from the precompiled serialized directory
  *
  * @param string $name
@@ -2511,6 +2411,7 @@ function wfMemcKey( ...$args ) {
  * @param string $prefix
  * @param string|int ...$args
  * @return string
+ * @deprecated Since 1.35 Call makeGlobalKey on a BagOStuff instance
  */
 function wfForeignMemcKey( $db, $prefix, ...$args ) {
 	$keyspace = $prefix ? "$db-$prefix" : $db;
@@ -2521,7 +2422,7 @@ function wfForeignMemcKey( $db, $prefix, ...$args ) {
  * Get an ASCII string identifying this wiki
  * This is used as a prefix in memcached keys
  *
- * @deprecated since 1.35 Use WikiMap::getCurrentWikiDbDomain()/WikiMap::getWikiIdFromDbDomain()
+ * @deprecated since 1.35 Use WikiMap::getCurrentWikiId()
  * @return string
  */
 function wfWikiID() {
@@ -2553,6 +2454,12 @@ function wfWikiID() {
  *
  * Note 2: use $this->getDB() in maintenance scripts that may be invoked by
  * updater to ensure that a proper database is being updated.
+ *
+ * Note 3: When replacing calls to this with calls to methods on an injected
+ * LoadBalancer, LoadBalancer::getConnectionRef is more commonly needed than
+ * LoadBalancer::getMaintenanceConnectionRef, which is needed for more advanced
+ * administrative tasks. See the IMaintainableDatabase and IDatabase interfaces
+ * for details.
  *
  * @todo Replace calls to wfGetDB with calls to LoadBalancer::getConnection()
  *       on an injected instance of LoadBalancer.
@@ -2640,9 +2547,11 @@ function wfScript( $script = 'index' ) {
 /**
  * Get the script URL.
  *
+ * @deprecated since 1.35. Use wfScript() to obtain an entry point URL.
  * @return string Script URL
  */
 function wfGetScriptUrl() {
+	wfDeprecated( __FUNCTION__, '1.35' );
 	if ( isset( $_SERVER['SCRIPT_NAME'] ) ) {
 		/* as it was called, minus the query string.
 		 *
@@ -2681,55 +2590,6 @@ function wfGetNull() {
 }
 
 /**
- * Waits for the replica DBs to catch up to the master position
- *
- * Use this when updating very large numbers of rows, as in maintenance scripts,
- * to avoid causing too much lag. Of course, this is a no-op if there are no replica DBs.
- *
- * By default this waits on the main DB cluster of the current wiki.
- * If $cluster is set to "*" it will wait on all DB clusters, including
- * external ones. If the lag being waiting on is caused by the code that
- * does this check, it makes since to use $ifWritesSince, particularly if
- * cluster is "*", to avoid excess overhead.
- *
- * Never call this function after a big DB write that is still in a transaction.
- * This only makes sense after the possible lag inducing changes were committed.
- *
- * @param float|null $ifWritesSince Only wait if writes were done since this UNIX timestamp
- * @param string|bool $wiki Wiki identifier accepted by wfGetLB
- * @param string|bool $cluster Cluster name accepted by LBFactory. Default: false.
- * @param int|null $timeout Max wait time. Default: 60 seconds (cli), 1 second (web)
- * @return bool Success (able to connect and no timeouts reached)
- * @deprecated since 1.27 Use LBFactory::waitForReplication
- */
-function wfWaitForSlaves(
-	$ifWritesSince = null, $wiki = false, $cluster = false, $timeout = null
-) {
-	$lbFactory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
-
-	if ( $cluster === '*' ) {
-		$cluster = false;
-		$domain = false;
-	} elseif ( $wiki === false ) {
-		$domain = $lbFactory->getLocalDomainID();
-	} else {
-		$domain = $wiki;
-	}
-
-	$opts = [
-		'domain' => $domain,
-		'cluster' => $cluster,
-		// B/C: first argument used to be "max seconds of lag"; ignore such values
-		'ifWritesSince' => ( $ifWritesSince > 1e9 ) ? $ifWritesSince : null
-	];
-	if ( $timeout !== null ) {
-		$opts['timeout'] = $timeout;
-	}
-
-	return $lbFactory->waitForReplication( $opts );
-}
-
-/**
  * Replace all invalid characters with '-'.
  * Additional characters can be defined in $wgIllegalFileChars (see T22489).
  * By default, $wgIllegalFileChars includes ':', '/', '\'.
@@ -2762,12 +2622,12 @@ function wfMemoryLimit( $newLimit ) {
 	if ( $oldLimit != -1 ) {
 		$newLimit = wfShorthandToInteger( $newLimit );
 		if ( $newLimit == -1 ) {
-			wfDebug( "Removing PHP's memory limit\n" );
+			wfDebug( "Removing PHP's memory limit" );
 			Wikimedia\suppressWarnings();
 			ini_set( 'memory_limit', $newLimit );
 			Wikimedia\restoreWarnings();
 		} elseif ( $newLimit > $oldLimit ) {
-			wfDebug( "Raising PHP's memory limit to $newLimit bytes\n" );
+			wfDebug( "Raising PHP's memory limit to $newLimit bytes" );
 			Wikimedia\suppressWarnings();
 			ini_set( 'memory_limit', $newLimit );
 			Wikimedia\restoreWarnings();
@@ -2848,16 +2708,6 @@ function wfGetMainCache() {
 }
 
 /**
- * Get the cache object used by the message cache
- *
- * @return BagOStuff
- */
-function wfGetMessageCacheStorage() {
-	global $wgMessageCacheType;
-	return ObjectCache::getInstance( $wgMessageCacheType );
-}
-
-/**
  * Wrapper around php's unpack.
  *
  * @param string $format The format string (See php's docs)
@@ -2906,22 +2756,11 @@ function wfUnpack( $format, $data, $length = false ) {
  *
  * @param string $name The image name to check
  * @param Title|bool $contextTitle The page on which the image occurs, if known
- * @param string|null $blacklist Wikitext of a file blacklist
  * @return bool
  */
-function wfIsBadImage( $name, $contextTitle = false, $blacklist = null ) {
+function wfIsBadImage( $name, $contextTitle = false ) {
+	wfDeprecated( __FUNCTION__, '1.34' );
 	$services = MediaWikiServices::getInstance();
-	if ( $blacklist !== null ) {
-		wfDeprecated( __FUNCTION__ . ' with $blacklist parameter', '1.34' );
-		return ( new BadFileLookup(
-			function () use ( $blacklist ) {
-				return $blacklist;
-			},
-			$services->getLocalServerObjectCache(),
-			$services->getRepoGroup(),
-			$services->getTitleParser()
-		) )->isBadFile( $name, $contextTitle ?: null );
-	}
 	return $services->getBadFileLookup()->isBadFile( $name, $contextTitle ?: null );
 }
 
@@ -2934,7 +2773,7 @@ function wfIsBadImage( $name, $contextTitle = false, $blacklist = null ) {
  */
 function wfCanIPUseHTTPS( $ip ) {
 	$canDo = true;
-	Hooks::run( 'CanIPUseHTTPS', [ $ip, &$canDo ] );
+	Hooks::runner()->onCanIPUseHTTPS( $ip, $canDo );
 	return (bool)$canDo;
 }
 
@@ -2946,9 +2785,8 @@ function wfCanIPUseHTTPS( $ip ) {
  * @since 1.25
  */
 function wfIsInfinity( $str ) {
-	// These are hardcoded elsewhere in MediaWiki (e.g. mediawiki.special.block.js).
-	$infinityValues = [ 'infinite', 'indefinite', 'infinity', 'never' ];
-	return in_array( $str, $infinityValues );
+	// The INFINITY_VALS are hardcoded elsewhere in MediaWiki (e.g. mediawiki.special.block.js).
+	return in_array( $str, ExpiryDef::INFINITY_VALS );
 }
 
 /**

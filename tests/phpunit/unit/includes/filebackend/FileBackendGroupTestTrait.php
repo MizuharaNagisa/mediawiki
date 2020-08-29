@@ -94,7 +94,7 @@ trait FileBackendGroupTestTrait {
 	public function testConstructor_backendObject() {
 		// 'backend' being an object makes that repo from configuration ignored
 		// XXX This is not documented in DefaultSettings.php, does it do anything useful?
-		$obj = $this->newObj( [ 'ForeignFileRepos' => [ [ 'backend' => new stdclass ] ] ] );
+		$obj = $this->newObj( [ 'ForeignFileRepos' => [ [ 'backend' => (object)[] ] ] ] );
 		$this->assertSame( FSFileBackend::class, $obj->config( 'local-backend' )['class'] );
 	}
 
@@ -352,11 +352,11 @@ trait FileBackendGroupTestTrait {
 	 * @param string|null $expected Name of backend that will be returned from 'get', or null
 	 * @param string $storagePath
 	 */
-	public function testBackendFromPath( $expected = null, $storagePath ) {
+	public function testBackendFromPath( $expected, $storagePath ) {
 		$obj = $this->newObj( [ 'FileBackends' => [
-			[ 'name' => '', 'class' => stdclass::class, 'lockManager' => 'fsLockManager' ],
-			[ 'name' => 'a', 'class' => stdclass::class, 'lockManager' => 'fsLockManager' ],
-			[ 'name' => 'b', 'class' => stdclass::class, 'lockManager' => 'fsLockManager' ],
+			[ 'name' => '', 'class' => stdClass::class, 'lockManager' => 'fsLockManager' ],
+			[ 'name' => 'a', 'class' => stdClass::class, 'lockManager' => 'fsLockManager' ],
+			[ 'name' => 'b', 'class' => stdClass::class, 'lockManager' => 'fsLockManager' ],
 		] ] );
 		$this->assertSame(
 			$expected === null ? null : $obj->get( $expected ),
@@ -389,7 +389,7 @@ trait FileBackendGroupTestTrait {
 	 * @param string|null $content
 	 * @param string|null $fsPath
 	 * @param string|null $expectedExtensionType Expected return of
-	 *   MimeAnalyzer::guessTypesForExtension
+	 *   MimeAnalyzer::getMimeTypeFromExtensionOrNull
 	 * @param string|null $expectedGuessedMimeType Expected return value of
 	 *   MimeAnalyzer::guessMimeType (null if expected not to be called)
 	 */
@@ -401,7 +401,7 @@ trait FileBackendGroupTestTrait {
 		$expectedGuessedMimeType
 	) {
 		$mimeAnalyzer = $this->createMock( MimeAnalyzer::class );
-		$mimeAnalyzer->expects( $this->once() )->method( 'guessTypesForExtension' )
+		$mimeAnalyzer->expects( $this->once() )->method( 'getMimeTypeFromExtensionOrNull' )
 			->willReturn( $expectedExtensionType );
 		$tmpFileFactory = $this->createMock( TempFSFileFactory::class );
 
@@ -425,7 +425,7 @@ trait FileBackendGroupTestTrait {
 		}
 
 		$mimeAnalyzer->expects( $this->never() )
-			->method( $this->anythingBut( 'guessTypesForExtension', 'guessMimeType' ) );
+			->method( $this->anythingBut( 'getMimeTypeFromExtensionOrNull', 'guessMimeType' ) );
 		$tmpFileFactory->expects( $this->never() )
 			->method( $this->anythingBut( 'newTempFSFile' ) );
 

@@ -21,6 +21,7 @@
  */
 
 use HtmlFormatter\HtmlFormatter;
+use MediaWiki\ExtensionInfo;
 use MediaWiki\MediaWikiServices;
 use Wikimedia\ParamValidator\ParamValidator;
 
@@ -192,6 +193,7 @@ class ApiHelp extends ApiBase {
 		$doc = $formatter->getDoc();
 		$xpath = new DOMXPath( $doc );
 		$nodes = $xpath->query( '//a[@href][not(contains(@class,\'apihelp-linktrail\'))]' );
+		/** @var DOMElement $node */
 		foreach ( $nodes as $node ) {
 			$href = $node->getAttribute( 'href' );
 			do {
@@ -384,7 +386,7 @@ class ApiHelp extends ApiBase {
 					$msg = $context->msg( 'api-help-license', $link,
 						Html::element( 'span', [ 'dir' => 'ltr', 'lang' => 'en' ], $sourceInfo['license-name'] )
 					);
-				} elseif ( SpecialVersion::getExtLicenseFileName( dirname( $sourceInfo['path'] ) ) ) {
+				} elseif ( ExtensionInfo::getLicenseFileNames( dirname( $sourceInfo['path'] ) ) ) {
 					$msg = $context->msg( 'api-help-license-noname', $link );
 				} else {
 					$msg = $context->msg( 'api-help-license-unknown' );
@@ -618,7 +620,8 @@ class ApiHelp extends ApiBase {
 
 			$module->modifyHelp( $help, $suboptions, $haveModules );
 
-			Hooks::run( 'APIHelpModifyOutput', [ $module, &$help, $suboptions, &$haveModules ] );
+			$module->getHookRunner()->onAPIHelpModifyOutput( $module, $help,
+				$suboptions, $haveModules );
 
 			$out .= implode( "\n", $help );
 		}

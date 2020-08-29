@@ -21,7 +21,7 @@
 /**
  * @covers ExtensionJsonValidator
  */
-class ExtensionJsonValidatorTest extends MediaWikiTestCase {
+class ExtensionJsonValidatorTest extends MediaWikiIntegrationTestCase {
 
 	/**
 	 * @dataProvider provideValidate
@@ -78,6 +78,10 @@ class ExtensionJsonValidatorTest extends MediaWikiTestCase {
 			],
 			[
 				'good.json',
+				true
+			],
+			[
+				'good_with_license_expressions.json',
 				true
 			],
 			[

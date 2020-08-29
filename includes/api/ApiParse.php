@@ -23,6 +23,7 @@
 use MediaWiki\Content\IContentHandlerFactory;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Revision\RevisionRecord;
+use MediaWiki\Revision\SlotRecord;
 
 /**
  * @ingroup API
@@ -40,6 +41,54 @@ class ApiParse extends ApiBase {
 
 	/** @var bool */
 	private $contentIsDeleted = false, $contentIsSuppressed = false;
+
+	private function getPoolKey(): string {
+		$poolKey = WikiMap::getCurrentWikiDbDomain() . ':ApiParse:';
+		if ( $this->getUser()->isAnon() ) {
+			$poolKey .= 'a:' . $this->getUser()->getName();
+		} else {
+			$poolKey .= 'u:' . $this->getUser()->getId();
+		}
+		return $poolKey;
+	}
+
+	private function getContentParserOutput(
+		Content $content,
+		Title $title,
+		$revId,
+		ParserOptions $popts
+	) {
+		$worker = new PoolCounterWorkViaCallback( 'ApiParser', $this->getPoolKey(),
+			[
+				'doWork' => function () use ( $content, $title, $revId, $popts ) {
+					return $content->getParserOutput( $title, $revId, $popts );
+				},
+				'error' => function () {
+					$this->dieWithError( 'apierror-concurrency-limit' );
+				},
+			]
+		);
+		return $worker->execute();
+	}
+
+	private function getPageParserOutput(
+		WikiPage $page,
+		$revId,
+		ParserOptions $popts,
+		bool $suppressCache
+	) {
+		$worker = new PoolCounterWorkViaCallback( 'ApiParser', $this->getPoolKey(),
+			[
+				'doWork' => function () use ( $page, $revId, $popts, $suppressCache ) {
+					return $page->getParserOutput( $popts, $revId, $suppressCache );
+				},
+				'error' => function () {
+					$this->dieWithError( 'apierror-concurrency-limit' );
+				},
+			]
+		);
+		return $worker->execute();
+	}
 
 	public function execute() {
 		// The data is hot but user-dependent, like page views, so we set vary cookies
@@ -95,25 +144,32 @@ class ApiParse extends ApiBase {
 		// Return result
 		$result = $this->getResult();
 
+		$revisionLookup = MediaWikiServices::getInstance()->getRevisionLookup();
 		if ( $oldid !== null || $pageid !== null || $page !== null ) {
 			if ( $this->section === 'new' ) {
 				$this->dieWithError( 'apierror-invalidparammix-parse-new-section', 'invalidparammix' );
 			}
 			if ( $oldid !== null ) {
 				// Don't use the parser cache
-				$rev = Revision::newFromId( $oldid );
+				$rev = $revisionLookup->getRevisionById( $oldid );
 				if ( !$rev ) {
 					$this->dieWithError( [ 'apierror-nosuchrevid', $oldid ] );
 				}
 
-				$this->checkTitleUserPermissions( $rev->getTitle(), 'read' );
-				if ( !$rev->userCan( RevisionRecord::DELETED_TEXT, $this->getUser() ) ) {
+				$revLinkTarget = $rev->getPageAsLinkTarget();
+				$this->checkTitleUserPermissions( $revLinkTarget, 'read' );
+
+				if ( !$rev->audienceCan(
+					RevisionRecord::DELETED_TEXT,
+					RevisionRecord::FOR_THIS_USER,
+					$this->getUser()
+				) ) {
 					$this->dieWithError(
 						[ 'apierror-permissiondenied', $this->msg( 'action-deletedtext' ) ]
 					);
 				}
 
-				$titleObj = $rev->getTitle();
+				$titleObj = Title::newFromLinkTarget( $revLinkTarget );
 				$wgTitle = $titleObj;
 				$pageObj = WikiPage::factory( $titleObj );
 				list( $popts, $reset, $suppressCache ) = $this->makeParserOptions( $pageObj, $params );
@@ -173,12 +229,12 @@ class ApiParse extends ApiBase {
 			}
 			$revid = $params['revid'];
 			if ( $revid !== null ) {
-				$rev = Revision::newFromId( $revid );
+				$rev = $revisionLookup->getRevisionById( $revid );
 				if ( !$rev ) {
 					$this->dieWithError( [ 'apierror-nosuchrevid', $revid ] );
 				}
 				$pTitleObj = $titleObj;
-				$titleObj = $rev->getTitle();
+				$titleObj = Title::newFromLinkTarget( $rev->getPageAsLinkTarget() );
 				if ( $titleProvided ) {
 					if ( !$titleObj->equals( $pTitleObj ) ) {
 						$this->addWarning( [ 'apierror-revwrongpage', $rev->getId(),
@@ -266,9 +322,9 @@ class ApiParse extends ApiBase {
 
 			// Not cached (save or load)
 			if ( $params['pst'] ) {
-				$p_result = $this->pstContent->getParserOutput( $titleObj, $revid, $popts );
+				$p_result = $this->getContentParserOutput( $this->pstContent, $titleObj, $revid, $popts );
 			} else {
-				$p_result = $this->content->getParserOutput( $titleObj, $revid, $popts );
+				$p_result = $this->getContentParserOutput( $this->content, $titleObj, $revid, $popts );
 			}
 		}
 
@@ -324,13 +380,11 @@ class ApiParse extends ApiBase {
 			$context->setOutput( $outputPage );
 
 			if ( $skin ) {
-				// Based on OutputPage::headElement()
-				$skin->setupSkinUserCss( $outputPage );
 				// Based on OutputPage::output()
 				$outputPage->loadSkinModules( $skin );
 			}
 
-			Hooks::run( 'ApiParseMakeOutputPage', [ $this, $outputPage ] );
+			$this->getHookRunner()->onApiParseMakeOutputPage( $this, $outputPage );
 		}
 
 		if ( $oldid !== null ) {
@@ -369,7 +423,7 @@ class ApiParse extends ApiBase {
 				// one hook of OutputPage::addParserOutputMetadata here.
 				if ( $params['effectivelanglinks'] ) {
 					$linkFlags = [];
-					Hooks::run( 'LanguageLinks', [ $titleObj, &$langlinks, &$linkFlags ] );
+					$this->getHookRunner()->onLanguageLinks( $titleObj, $langlinks, $linkFlags );
 				}
 			}
 
@@ -537,17 +591,15 @@ class ApiParse extends ApiBase {
 		$popts->enableLimitReport( !$params['disablepp'] && !$params['disablelimitreport'] );
 		$popts->setIsPreview( $params['preview'] || $params['sectionpreview'] );
 		$popts->setIsSectionPreview( $params['sectionpreview'] );
-		if ( $params['disabletidy'] ) {
-			$popts->setTidy( false );
-		}
+
 		if ( $params['wrapoutputclass'] !== '' ) {
 			$popts->setWrapOutputClass( $params['wrapoutputclass'] );
 		}
 
 		$reset = null;
 		$suppressCache = false;
-		Hooks::run( 'ApiMakeParserOptions',
-			[ $popts, $pageObj->getTitle(), $params, $this, &$reset, &$suppressCache ] );
+		$this->getHookRunner()->onApiMakeParserOptions( $popts, $pageObj->getTitle(),
+			$params, $this, $reset, $suppressCache );
 
 		// Force cache suppression when $popts aren't cacheable.
 		$suppressCache = $suppressCache || !$popts->isSafeToCache();
@@ -560,7 +612,7 @@ class ApiParse extends ApiBase {
 	 * @param ParserOptions $popts
 	 * @param bool $suppressCache
 	 * @param int $pageId
-	 * @param Revision|null $rev
+	 * @param RevisionRecord|null $rev
 	 * @param bool $getContent
 	 * @return ParserOutput
 	 */
@@ -572,7 +624,9 @@ class ApiParse extends ApiBase {
 
 		if ( $getContent || $this->section !== false || $isDeleted ) {
 			if ( $rev ) {
-				$this->content = $rev->getContent( RevisionRecord::FOR_THIS_USER, $this->getUser() );
+				$this->content = $rev->getContent(
+					SlotRecord::MAIN, RevisionRecord::FOR_THIS_USER, $this->getUser()
+				);
 				if ( !$this->content ) {
 					$this->dieWithError( [ 'apierror-missingcontent-revid', $revId ] );
 				}
@@ -592,15 +646,16 @@ class ApiParse extends ApiBase {
 				$this->content,
 				$pageId === null ? $page->getTitle()->getPrefixedText() : $this->msg( 'pageid', $pageId )
 			);
-			return $this->content->getParserOutput( $page->getTitle(), $revId, $popts );
+			return $this->getContentParserOutput( $this->content, $page->getTitle(), $revId, $popts );
 		}
 
 		if ( $isDeleted ) {
 			// getParserOutput can't do revdeled revisions
-			$pout = $this->content->getParserOutput( $page->getTitle(), $revId, $popts );
+
+			$pout = $this->getContentParserOutput( $this->content, $page->getTitle(), $revId, $popts );
 		} else {
 			// getParserOutput will save to Parser cache if able
-			$pout = $page->getParserOutput( $popts, $revId, $suppressCache );
+			$pout = $this->getPageParserOutput( $page, $revId, $popts, $suppressCache );
 		}
 		if ( !$pout ) {
 			// @codeCoverageIgnoreStart
@@ -658,6 +713,7 @@ class ApiParse extends ApiBase {
 	}
 
 	private function formatLangLinks( $links ) {
+		$languageNameUtils = MediaWikiServices::getInstance()->getLanguageNameUtils();
 		$result = [];
 		foreach ( $links as $link ) {
 			$entry = [];
@@ -668,13 +724,13 @@ class ApiParse extends ApiBase {
 			if ( $title ) {
 				$entry['url'] = wfExpandUrl( $title->getFullURL(), PROTO_CURRENT );
 				// localised language name in 'uselang' language
-				$entry['langname'] = Language::fetchLanguageName(
+				$entry['langname'] = $languageNameUtils->getLanguageName(
 					$title->getInterwiki(),
 					$this->getLanguage()->getCode()
 				);
 
 				// native language name
-				$entry['autonym'] = Language::fetchLanguageName( $title->getInterwiki() );
+				$entry['autonym'] = $languageNameUtils->getLanguageName( $title->getInterwiki() );
 			}
 			ApiResult::setContentValue( $entry, 'title', $bits[1] );
 			$result[] = $entry;
@@ -807,6 +863,8 @@ class ApiParse extends ApiBase {
 	}
 
 	public function getAllowedParams() {
+		$skinFactory = MediaWikiServices::getInstance()->getSkinFactory();
+
 		return [
 			'title' => null,
 			'text' => [
@@ -879,10 +937,6 @@ class ApiParse extends ApiBase {
 			],
 			'disablelimitreport' => false,
 			'disableeditsection' => false,
-			'disabletidy' => [
-				ApiBase::PARAM_DFLT => false,
-				ApiBase::PARAM_DEPRECATED => true, // Since 1.32
-			],
 			'disablestylededuplication' => false,
 			'generatexml' => [
 				ApiBase::PARAM_DFLT => false,
@@ -895,7 +949,7 @@ class ApiParse extends ApiBase {
 			'sectionpreview' => false,
 			'disabletoc' => false,
 			'useskin' => [
-				ApiBase::PARAM_TYPE => array_keys( Skin::getAllowedSkins() ),
+				ApiBase::PARAM_TYPE => array_keys( $skinFactory->getAllowedSkins() ),
 			],
 			'contentformat' => [
 				ApiBase::PARAM_TYPE => $this->getContentHandlerFactory()->getAllContentFormats(),

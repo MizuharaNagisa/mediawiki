@@ -1,13 +1,14 @@
 <?php
 
 use PHPUnit\Framework\MockObject\MockObject;
+use Wikimedia\Timestamp\ConvertibleTimestamp;
 
 /**
  * @covers WatchAction
  *
  * @group Action
  */
-class WatchActionTest extends MediaWikiTestCase {
+class WatchActionTest extends MediaWikiIntegrationTestCase {
 
 	/**
 	 * @var WatchAction
@@ -19,6 +20,11 @@ class WatchActionTest extends MediaWikiTestCase {
 	 */
 	private $testWikiPage;
 
+	/**
+	 * @var IContextSource
+	 */
+	private $context;
+
 	protected function setUp() : void {
 		parent::setUp();
 
@@ -26,7 +32,11 @@ class WatchActionTest extends MediaWikiTestCase {
 		$this->testWikiPage = new WikiPage( $testTitle );
 		$testContext = new DerivativeContext( RequestContext::getMain() );
 		$testContext->setTitle( $testTitle );
-		$this->watchAction = new WatchAction( $this->testWikiPage, $testContext );
+		$this->context = $testContext;
+		$this->watchAction = new WatchAction(
+			Article::newFromWikiPage( $this->testWikiPage, $testContext ),
+			$testContext
+		);
 	}
 
 	/**
@@ -35,6 +45,7 @@ class WatchActionTest extends MediaWikiTestCase {
 	protected function tearDown() : void {
 		parent::tearDown();
 
+		$this->hideDeprecated( 'Hooks::clear' );
 		Hooks::clear( 'WatchArticle' );
 		Hooks::clear( 'UnwatchArticle' );
 	}
@@ -94,7 +105,10 @@ class WatchActionTest extends MediaWikiTestCase {
 		$notLoggedInUser = new User();
 		$testContext = new DerivativeContext( $this->watchAction->getContext() );
 		$testContext->setUser( $notLoggedInUser );
-		$watchAction = new WatchAction( $this->testWikiPage, $testContext );
+		$watchAction = new WatchAction(
+			Article::newFromWikiPage( $this->testWikiPage, $testContext ),
+			$testContext
+		);
 		$this->expectException( UserNotLoggedIn::class );
 
 		$watchAction->show();
@@ -108,7 +122,10 @@ class WatchActionTest extends MediaWikiTestCase {
 		$loggedInUser->method( 'isLoggedIn' )->willReturn( true );
 		$testContext = new DerivativeContext( $this->watchAction->getContext() );
 		$testContext->setUser( $loggedInUser );
-		$watchAction = new WatchAction( $this->testWikiPage, $testContext );
+		$watchAction = new WatchAction(
+			Article::newFromWikiPage( $this->testWikiPage, $testContext ),
+			$testContext
+		);
 
 		$exception = null;
 		try {
@@ -124,6 +141,7 @@ class WatchActionTest extends MediaWikiTestCase {
 	 * @covers WatchAction::onSuccess()
 	 */
 	public function testOnSuccessMainNamespaceTitle() {
+		/** @var MockObject|IContextSource $testContext */
 		$testContext = $this->getMockBuilder( DerivativeContext::class )
 			->setMethods( [ 'msg' ] )
 			->setConstructorArgs( [ $this->watchAction->getContext() ] )
@@ -133,7 +151,10 @@ class WatchActionTest extends MediaWikiTestCase {
 		$testContext->method( 'msg' )->willReturnCallback( function ( $msgKey ) {
 			return new RawMessage( $msgKey );
 		} );
-		$watchAction = new WatchAction( $this->testWikiPage, $testContext );
+		$watchAction = new WatchAction(
+			Article::newFromWikiPage( $this->testWikiPage, $testContext ),
+			$testContext
+		);
 
 		$watchAction->onSuccess();
 
@@ -145,6 +166,7 @@ class WatchActionTest extends MediaWikiTestCase {
 	 * @covers WatchAction::onSuccess()
 	 */
 	public function testOnSuccessTalkPage() {
+		/** @var MockObject|IContextSource $testContext */
 		$testContext = $this->getMockBuilder( DerivativeContext::class )
 			->setMethods( [ 'getOutput', 'msg' ] )
 			->setConstructorArgs( [ $this->watchAction->getContext() ] )
@@ -156,7 +178,10 @@ class WatchActionTest extends MediaWikiTestCase {
 		} );
 		$talkPageTitle = Title::newFromText( 'Talk:UTTest' );
 		$testContext->setTitle( $talkPageTitle );
-		$watchAction = new WatchAction( new WikiPage( $talkPageTitle ), $testContext );
+		$watchAction = new WatchAction(
+			Article::newFromTitle( $talkPageTitle, $testContext ),
+			$testContext
+		);
 
 		$watchAction->onSuccess();
 
@@ -205,7 +230,7 @@ class WatchActionTest extends MediaWikiTestCase {
 	 */
 	public function testDoUnWatchWithoutRights() {
 		$notPermittedUser = $this->getUser( null, null, [] );
-		$actual = WatchAction::doUnWatch( $this->testWikiPage->getTitle(), $notPermittedUser );
+		$actual = WatchAction::doUnwatch( $this->testWikiPage->getTitle(), $notPermittedUser );
 
 		$this->assertFalse( $actual->isGood() );
 	}
@@ -219,11 +244,11 @@ class WatchActionTest extends MediaWikiTestCase {
 			return false;
 		} );
 
-		$status = WatchAction::doUnWatch( $this->testWikiPage->getTitle(), $permittedUser );
+		$status = WatchAction::doUnwatch( $this->testWikiPage->getTitle(), $permittedUser );
 
 		$this->assertFalse( $status->isGood() );
 		$errors = $status->getErrors();
-		$this->assertEquals( 1, count( $errors ) );
+		$this->assertCount( 1, $errors );
 		$this->assertEquals( 'hookaborted', $errors[0]['message'] );
 	}
 
@@ -237,7 +262,7 @@ class WatchActionTest extends MediaWikiTestCase {
 			->method( 'removeWatch' )
 			->with( $this->equalTo( $this->testWikiPage->getTitle() ) );
 
-		$actual = WatchAction::doUnWatch( $this->testWikiPage->getTitle(), $permittedUser );
+		$actual = WatchAction::doUnwatch( $this->testWikiPage->getTitle(), $permittedUser );
 
 		$this->assertTrue( $actual->isGood() );
 	}
@@ -285,12 +310,38 @@ class WatchActionTest extends MediaWikiTestCase {
 	 * @throws Exception
 	 */
 	public function testDoWatchOrUnwatchSkipsIfAlreadyWatched() {
-		$user = $this->getUser();
+		$user = $this->getUser( true, '99990123000000' );
+
+		$user->addWatch( $this->watchAction->getTitle() );
 		$user->expects( $this->never() )->method( 'removeWatch' );
 		$user->expects( $this->never() )->method( 'addWatch' );
 
-		$status = WatchAction::doWatchOrUnwatch( true, $this->watchAction->getTitle(), $user );
+		$status = WatchAction::doWatchOrUnwatch(
+			true,
+			$this->watchAction->getTitle(),
+			$user,
+			'99990123000000' // Same expiry
+		);
+		$this->assertTrue( $status->isGood() );
+	}
 
+	/**
+	 * @covers WatchAction::doWatchOrUnwatch()
+	 * @throws Exception
+	 */
+	public function testDoWatchOrUnwatchSkipsIfExpiryChanged() {
+		$user = $this->getUser( true, '99990123000000' );
+
+		$user->addWatch( $this->watchAction->getTitle() );
+		$user->expects( $this->never() )->method( 'removeWatch' );
+		$user->expects( $this->once() )->method( 'addWatch' );
+
+		$status = WatchAction::doWatchOrUnwatch(
+			true,
+			$this->watchAction->getTitle(),
+			$user,
+			'88880123000000' // Different expiry
+		);
 		$this->assertTrue( $status->isGood() );
 	}
 
@@ -330,6 +381,7 @@ class WatchActionTest extends MediaWikiTestCase {
 	 */
 	public function testDoWatchOrUnwatchUnwatchesIfUnwatch() {
 		$user = $this->getUser( true, true, [ 'editmywatchlist' ] );
+
 		$user->expects( $this->never() )->method( 'addWatch' );
 		$user->expects( $this->once() )
 			->method( 'removeWatch' )
@@ -341,10 +393,95 @@ class WatchActionTest extends MediaWikiTestCase {
 	}
 
 	/**
+	 * @covers WatchAction::getExpiryOptions()
+	 */
+	public function testGetExpiryOptions() {
+		// Fake current time to be 2020-06-10T00:00:00Z
+		ConvertibleTimestamp::setFakeTime( '20200610000000' );
+		$user = $this->getUser();
+		$target = new TitleValue( 0, 'SomeDbKey' );
+
+		$optionsNoExpiry = WatchAction::getExpiryOptions( $this->context, false );
+		$expectedNoExpiry = [
+			'options' => [
+				'Permanent' => 'infinite',
+				'1 week' => '1 week',
+				'1 month' => '1 month',
+				'3 months' => '3 months',
+				'6 months' => '6 months'
+			],
+			'default' => 'infinite'
+		];
+
+		$this->assertSame( $expectedNoExpiry, $optionsNoExpiry );
+
+		// Adding a watched item with an expiry a month from the frozen time
+		$watchedItemMonth = new WatchedItem( $user, $target, null, '20200710000000' );
+		$optionsExpiryOneMonth = WatchAction::getExpiryOptions( $this->context, $watchedItemMonth );
+		$expectedExpiryOneMonth = [
+			'options' => [
+				'30 days left' => '20200710000000',
+				'Permanent' => 'infinite',
+				'1 week' => '1 week',
+				'1 month' => '1 month',
+				'3 months' => '3 months',
+				'6 months' => '6 months'
+			],
+			'default' => '20200710000000'
+		];
+
+		$this->assertSame( $expectedExpiryOneMonth, $optionsExpiryOneMonth );
+
+		// Adding a watched item with an expiry 7 days from the frozen time
+		$watchedItemWeek = new WatchedItem( $user, $target, null, '20200617000000' );
+		$optionsExpiryOneWeek = WatchAction::getExpiryOptions( $this->context, $watchedItemWeek );
+		$expectedOneWeek = [
+			'options' => [
+				'7 days left' => '20200617000000',
+				'Permanent' => 'infinite',
+				'1 week' => '1 week',
+				'1 month' => '1 month',
+				'3 months' => '3 months',
+				'6 months' => '6 months'
+			],
+			'default' => '20200617000000'
+		];
+
+		$this->assertSame( $expectedOneWeek, $optionsExpiryOneWeek );
+
+		// Case for when WatchedItem is true
+		$optionsNoExpiryWIFalse = WatchAction::getExpiryOptions( $this->context, true );
+		$expectedNoExpiryWIFalse = [
+			'options' => [
+				'Permanent' => 'infinite',
+				'1 week' => '1 week',
+				'1 month' => '1 month',
+				'3 months' => '3 months',
+				'6 months' => '6 months'
+			],
+			'default' => 'infinite'
+		];
+
+		$this->assertSame( $expectedNoExpiryWIFalse, $optionsNoExpiryWIFalse );
+	}
+
+	/**
+	 * @covers WatchAction::doWatchOrUnwatch()
+	 */
+	public function testDoWatchOrUnwatchWithExpiry() {
+		// Already watched, but we're adding an expiry so 'addWatch' should be called.
+		$user = $this->getUser( true, true, [ 'editmywatchlist' ] );
+		$user->expects( $this->once() )->method( 'addWatch' );
+		$status = WatchAction::doWatchOrUnwatch( true, $this->watchAction->getTitle(), $user, '1 week' );
+		$this->assertTrue( $status->isGood() );
+	}
+
+	/**
 	 * @param bool $isLoggedIn Whether the user should be "marked" as logged in
-	 * @param bool $isWatched The value any call to isWatched should return
+	 * @param bool|string $isWatched The value any call to isWatched should return.
+	 *   A string value is the expiry that should be used.
 	 * @param array $permissions The permissions of the user
-	 * @return MockObject
+	 * @return MockObject|User
 	 * @throws Exception
 	 */
 	private function getUser(
@@ -356,7 +493,23 @@ class WatchActionTest extends MediaWikiTestCase {
 		$user->method( 'getId' )->willReturn( 42 );
 		$user->method( 'isLoggedIn' )->willReturn( $isLoggedIn );
 		$user->method( 'isWatched' )->willReturn( $isWatched );
+
+		// Override WatchedItemStore to think the page is watched, if applicable.
+		if ( $isWatched ) {
+			$this->overrideMwServices();
+			$mock = $this->createMock( 'WatchedItemStore' );
+			$mock->method( 'getWatchedItem' )->willReturn( new WatchedItem(
+				$user,
+				$this->watchAction->getTitle(),
+				null,
+				is_string( $isWatched ) ? $isWatched : null
+			) );
+			$this->setService( 'WatchedItemStore', $mock );
+		}
+
+		// Note this must happen after calling $this->overrideMwServices().
 		$this->overrideUserPermissions( $user, $permissions );
+
 		return $user;
 	}
 

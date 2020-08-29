@@ -10,12 +10,10 @@ class MimeAnalyzerTest extends PHPUnit\Framework\TestCase {
 	/** @var MimeAnalyzer */
 	private $mimeAnalyzer;
 
-	public function setUp() : void {
-		global $IP;
-
+	protected function setUp() : void {
 		$this->mimeAnalyzer = new MimeAnalyzer( [
-			'infoFile' => $IP . "/includes/libs/mime/mime.info",
-			'typeFile' => $IP . "/includes/libs/mime/mime.types",
+			'infoFile' => MimeAnalyzer::USE_INTERNAL,
+			'typeFile' => MimeAnalyzer::USE_INTERNAL,
 			'xmlTypes' => [
 				'http://www.w3.org/2000/svg:svg' => 'image/svg+xml',
 				'svg' => 'image/svg+xml',
@@ -38,7 +36,7 @@ class MimeAnalyzerTest extends PHPUnit\Framework\TestCase {
 	 * @dataProvider providerImproveTypeFromExtension
 	 * @param string $ext File extension (no leading dot)
 	 * @param string $oldMime Initially detected MIME
-	 * @param string $expectedMime MIME type after taking extension into account
+	 * @param string|null $expectedMime MIME type after taking extension into account
 	 */
 	public function testImproveTypeFromExtension( $ext, $oldMime, $expectedMime ) {
 		$actualMime = $this->mimeAnalyzer->improveTypeFromExtension( $oldMime, $ext );
@@ -61,6 +59,12 @@ class MimeAnalyzerTest extends PHPUnit\Framework\TestCase {
 				'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ],
 			[ 'djvu', 'image/x-djvu', 'image/vnd.djvu' ],
 			[ 'wav', 'audio/wav', 'audio/wav' ],
+
+			// XXX: It's probably wrong (as in: confusing and error-prone) for
+			//   ::improveTypeFromExtension to return null (T253483).
+			//   This test case exists to ensure that any changes to the existing
+			//   behavior are intentional.
+			[ 'no_such_extension', 'unknown/unknown', null ],
 		];
 	}
 
@@ -198,5 +202,54 @@ class MimeAnalyzerTest extends PHPUnit\Framework\TestCase {
 		$file = __DIR__ . '/../../../data/media/' . $fileName;
 		$actualType = $this->doGuessMimeType( [ $file, 'png' ] );
 		$this->assertEquals( $expectedType, $actualType, $description );
+	}
+
+	/**
+	 * The empty string is not a MIME type and should not be mapped to a file extension.
+	 */
+	public function testNoEmptyStringMimeType() {
+		$this->assertSame( [], $this->mimeAnalyzer->getExtensionsFromMimeType( '' ) );
+	}
+
+	/**
+	 * @covers MimeAnalyzer::addExtraTypes
+	 * @covers MimeAnalyzer::addExtraInfo
+	 */
+	public function testAddExtraTypes() {
+		$mimeAnalyzer = new MimeAnalyzer( [
+			'infoFile' => MimeAnalyzer::USE_INTERNAL,
+			'typeFile' => MimeAnalyzer::USE_INTERNAL,
+			'xmlTypes' => [],
+			'initCallback' => function ( $instance ) {
+				$instance->addExtraTypes( 'fake/mime fake_extension' );
+				$instance->addExtraInfo( 'fake/mime [OFFICE]' );
+				$instance->mExtToMime[ 'no_such_extension' ] = 'fake/mime';
+			},
+		] );
+		$this->assertSame( MEDIATYPE_OFFICE, $mimeAnalyzer->findMediaType( '.fake_extension' ) );
+		$this->assertSame(
+			'fake/mime', $mimeAnalyzer->getMimeTypeFromExtensionOrNull( 'no_such_extension' ) );
+	}
+
+	public function testGetMimeTypesFromExtension() {
+		$this->assertSame(
+			[ 'video/webm', 'audio/webm' ], $this->mimeAnalyzer->getMimeTypesFromExtension( 'webm' ) );
+		$this->assertSame( [], $this->mimeAnalyzer->getMimeTypesFromExtension( 'no_such_extension' ) );
+	}
+
+	public function testGetMimeTypeFromExtensionOrNull() {
+		$this->assertSame( 'video/webm', $this->mimeAnalyzer->getMimeTypeFromExtensionOrNull( 'webm' ) );
+		$this->assertNull( $this->mimeAnalyzer->getMimeTypeFromExtensionOrNull( 'no_such_extension' ) );
+	}
+
+	public function testGetExtensionsFromMimeType() {
+		$this->assertSame(
+			[ 'sgml', 'sgm' ], $this->mimeAnalyzer->getExtensionsFromMimeType( 'text/sgml' ) );
+		$this->assertSame( [], $this->mimeAnalyzer->getExtensionsFromMimeType( 'fake/mime' ) );
+	}
+
+	public function testGetExtensionFromMimeTypeOrNull() {
+		$this->assertSame( 'sgml', $this->mimeAnalyzer->getExtensionFromMimeTypeOrNull( 'text/sgml' ) );
+		$this->assertNull( $this->mimeAnalyzer->getExtensionFromMimeTypeOrNull( 'fake/mime' ) );
 	}
 }

@@ -3,12 +3,7 @@
 /**
  * @covers ConverterRule
  */
-class ConverterRuleTest extends MediaWikiTestCase {
-
-	public function setUp() : void {
-		parent::setUp();
-		$this->setMwGlobals( 'wgUser', new User );
-	}
+class ConverterRuleTest extends MediaWikiIntegrationTestCase {
 
 	public function testParseEmpty() {
 		$converter = new EnConverter( new Language() );

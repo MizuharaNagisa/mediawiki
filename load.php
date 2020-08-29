@@ -1,7 +1,7 @@
 <?php
 /**
- * The web entry point for ResourceLoader. It serves static CSS and JavaScript
- * assets for web browsers.
+ * The web entry point for ResourceLoader, which serves static CSS/JavaScript
+ * via ResourceLoaderModule subclasses.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -35,17 +35,23 @@ define( 'MW_ENTRY_POINT', 'load' );
 
 require __DIR__ . '/includes/WebStart.php';
 
-// Disable ChronologyProtector so that we don't wait for unrelated MediaWiki
-// writes when getting database connections for ResourceLoader. (T192611)
-MediaWikiServices::getInstance()->getDBLoadBalancerFactory()->disableChronologyProtection();
+wfLoadMain();
 
-$resourceLoader = MediaWikiServices::getInstance()->getResourceLoader();
-$context = new ResourceLoaderContext( $resourceLoader, $wgRequest );
+function wfLoadMain() {
+	global $wgRequest;
 
-// Respond to ResourceLoader request
-$resourceLoader->respond( $context );
+	// Disable ChronologyProtector so that we don't wait for unrelated MediaWiki
+	// writes when getting database connections for ResourceLoader. (T192611)
+	MediaWikiServices::getInstance()->getDBLoadBalancerFactory()->disableChronologyProtection();
 
-Profiler::instance()->setAllowOutput();
+	$resourceLoader = MediaWikiServices::getInstance()->getResourceLoader();
+	$context = new ResourceLoaderContext( $resourceLoader, $wgRequest );
 
-$mediawiki = new MediaWiki();
-$mediawiki->doPostOutputShutdown();
+	// Respond to ResourceLoader request
+	$resourceLoader->respond( $context );
+
+	Profiler::instance()->setAllowOutput();
+
+	$mediawiki = new MediaWiki();
+	$mediawiki->doPostOutputShutdown();
+}

@@ -20,7 +20,10 @@
  * @file
  * @ingroup Parser
  */
+
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Revision\RevisionAccessException;
+use MediaWiki\Revision\RevisionRecord;
 
 /**
  * Various core parser functions, registered in Parser::firstCallInit()
@@ -902,7 +905,9 @@ class CoreParserFunctions {
 	public static function language( $parser, $code = '', $inLanguage = '' ) {
 		$code = strtolower( $code );
 		$inLanguage = strtolower( $inLanguage );
-		$lang = Language::fetchLanguageName( $code, $inLanguage );
+		$lang = MediaWikiServices::getInstance()
+			->getLanguageNameUtils()
+			->getLanguageName( $code, $inLanguage );
 		return $lang !== '' ? $lang : LanguageCode::bcp47( $code );
 	}
 
@@ -1132,7 +1137,7 @@ class CoreParserFunctions {
 	 * @param Parser $parser
 	 * @param Title $title
 	 * @param string $vary ParserOuput vary-* flag
-	 * @return Revision|null
+	 * @return RevisionRecord|null
 	 * @since 1.23
 	 */
 	private static function getCachedRevisionObject( $parser, $title, $vary ) {
@@ -1140,22 +1145,21 @@ class CoreParserFunctions {
 			return null;
 		}
 
-		$revision = null;
+		$revisionRecord = null;
 
 		$isSelfReferential = $title->equals( $parser->getTitle() );
 		if ( $isSelfReferential ) {
 			// Revision is for the same title that is currently being parsed. Only use the last
 			// saved revision, regardless of Parser::getRevisionId() or fake revision injection
 			// callbacks against the current title.
-			$parserRevision = $parser->getRevisionObject();
-			if ( $parserRevision && $parserRevision->isCurrent() ) {
-				$revision = $parserRevision;
-				wfDebug( __METHOD__ . ": used current revision, setting $vary" );
+			$parserRevisionRecord = $parser->getRevisionRecordObject();
+			if ( $parserRevisionRecord && $parserRevisionRecord->isCurrent() ) {
+				$revisionRecord = $parserRevisionRecord;
 			}
 		}
 
 		$parserOutput = $parser->getOutput();
-		if ( !$revision ) {
+		if ( !$revisionRecord ) {
 			if (
 				!$parser->isCurrentRevisionOfTitleCached( $title ) &&
 				!$parser->incrementExpensiveFunctionCount()
@@ -1163,24 +1167,34 @@ class CoreParserFunctions {
 				return null; // not allowed
 			}
 			// Get the current revision, ignoring Parser::getRevisionId() being null/old
-			$revision = $parser->fetchCurrentRevisionOfTitle( $title );
+			$revisionRecord = $parser->fetchCurrentRevisionRecordOfTitle( $title );
+			if ( !$revisionRecord ) {
+				// Convert `false` error return to `null`
+				$revisionRecord = null;
+			}
 			// Register dependency in templatelinks
 			$parserOutput->addTemplate(
 				$title,
-				$revision ? $revision->getPage() : 0,
-				$revision ? $revision->getId() : 0
+				$revisionRecord ? $revisionRecord->getPageId() : 0,
+				$revisionRecord ? $revisionRecord->getId() : 0
 			);
 		}
 
 		if ( $isSelfReferential ) {
+			wfDebug( __METHOD__ . ": used current revision, setting $vary" );
 			// Upon page save, the result of the parser function using this might change
 			$parserOutput->setFlag( $vary );
-			if ( $vary === 'vary-revision-sha1' && $revision ) {
-				$parserOutput->setRevisionUsedSha1Base36( $revision->getSha1() );
+			if ( $vary === 'vary-revision-sha1' && $revisionRecord ) {
+				try {
+					$sha1 = $revisionRecord->getSha1();
+				} catch ( RevisionAccessException $e ) {
+					$sha1 = null;
+				}
+				$parserOutput->setRevisionUsedSha1Base36( $sha1 );
 			}
 		}
 
-		return $revision;
+		return $revisionRecord;
 	}
 
 	/**
@@ -1244,6 +1258,24 @@ class CoreParserFunctions {
 		$t = Title::newFromText( $title );
 		if ( $t === null ) {
 			return '';
+		}
+
+		$services = MediaWikiServices::getInstance();
+		if (
+			$t->equals( $parser->getTitle() ) &&
+			$services->getMainConfig()->get( 'MiserMode' ) &&
+			!$parser->getOptions()->getInterfaceMessage() &&
+			// @TODO: disallow this word on all namespaces (T235957)
+			$services->getNamespaceInfo()->isSubject( $t->getNamespace() )
+		) {
+			// Use a stub result instead of the actual revision ID in order to avoid
+			// double parses on page save but still allow preview detection (T137900)
+			if ( $parser->getRevisionId() || $parser->getOptions()->getSpeculativeRevId() ) {
+				return '-';
+			} else {
+				$parser->getOutput()->setFlag( 'vary-revision-exists' );
+				return '';
+			}
 		}
 		// fetch revision from cache/database and return the value
 		$rev = self::getCachedRevisionObject( $parser, $t, 'vary-revision-id' );
@@ -1366,7 +1398,11 @@ class CoreParserFunctions {
 		}
 		// fetch revision from cache/database and return the value
 		$rev = self::getCachedRevisionObject( $parser, $t, 'vary-user' );
-		return $rev ? $rev->getUserText() : '';
+		if ( $rev === null ) {
+			return '';
+		}
+		$user = $rev->getUser();
+		return $user ? $user->getName() : '';
 	}
 
 	/**

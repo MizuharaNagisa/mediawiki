@@ -10,7 +10,7 @@ use Wikimedia\TestingAccessWrapper;
  * @group Database
  * @coversDefaultClass BlockListPager
  */
-class BlockListPagerTest extends MediaWikiTestCase {
+class BlockListPagerTest extends MediaWikiIntegrationTestCase {
 
 	/**
 	 * @var LinkRenderer
@@ -31,16 +31,13 @@ class BlockListPagerTest extends MediaWikiTestCase {
 	 * @param string $expected
 	 */
 	public function testFormatValue( $name, $expected = null, $row = null ) {
-		$this->setMwGlobals( [
-			'wgEnablePartialBlocks' => false,
-		] );
 		// Set the time to now so it does not get off during the test.
 		MWTimestamp::setFakeTime( MWTimestamp::time() );
 
 		$value = $name === 'ipb_timestamp' ? MWTimestamp::time() : '';
 		$expected = $expected ?? MWTimestamp::getInstance()->format( 'H:i, j F Y' );
 
-		$row = $row ?: new stdClass;
+		$row = $row ?: (object)[];
 		$pager = new BlockListPager( new SpecialPage(),  [], $this->linkRenderer );
 		$wrappedPager = TestingAccessWrapper::newFromObject( $pager );
 		$wrappedPager->mCurrentRow = $row;
@@ -113,7 +110,8 @@ class BlockListPagerTest extends MediaWikiTestCase {
 			],
 			[
 				'ipb_params',
-				'<ul><li>account creation disabled</li><li>cannot edit own talk page</li></ul>',
+				'<ul><li>editing (sitewide)</li>' .
+					'<li>account creation disabled</li><li>cannot edit own talk page</li></ul>',
 				$row,
 			]
 		];

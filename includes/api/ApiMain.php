@@ -39,18 +39,21 @@ use Wikimedia\Timestamp\TimestampException;
  * case any internal exceptions will not be handled but passed up to the caller.
  * After successful execution, use getResult() for the resulting data.
  *
+ * @newable
+ * @note marked as newable in 1.35 for lack of a better alternative,
+ *       but should use a factory in the future.
  * @ingroup API
  */
 class ApiMain extends ApiBase {
 	/**
 	 * When no format parameter is given, this format will be used
 	 */
-	const API_DEFAULT_FORMAT = 'jsonfm';
+	private const API_DEFAULT_FORMAT = 'jsonfm';
 
 	/**
 	 * When no uselang parameter is given, this language will be used
 	 */
-	const API_DEFAULT_USELANG = 'user';
+	private const API_DEFAULT_USELANG = 'user';
 
 	/**
 	 * List of available modules: action name => module class
@@ -90,7 +93,14 @@ class ApiMain extends ApiBase {
 		'undelete' => ApiUndelete::class,
 		'protect' => ApiProtect::class,
 		'block' => ApiBlock::class,
-		'unblock' => ApiUnblock::class,
+		'unblock' => [
+			'class' => ApiUnblock::class,
+			'services' => [
+				'BlockPermissionCheckerFactory',
+				'UnblockUserFactory',
+				'PermissionManager'
+			]
+		],
 		'move' => ApiMove::class,
 		'edit' => ApiEditPage::class,
 		'upload' => ApiUpload::class,
@@ -108,6 +118,7 @@ class ApiMain extends ApiBase {
 		'tag' => ApiTag::class,
 		'mergehistory' => ApiMergeHistory::class,
 		'setpagelanguage' => ApiSetPageLanguage::class,
+		'changecontentmodel' => ApiChangeContentModel::class,
 	];
 
 	/**
@@ -167,10 +178,10 @@ class ApiMain extends ApiBase {
 	/**
 	 * Constructs an instance of ApiMain that utilizes the module and format specified by $request.
 	 *
+	 * @stable to call
 	 * @param IContextSource|WebRequest|null $context If this is an instance of
 	 *    FauxRequest, errors are thrown and no printing occurs
 	 * @param bool $enableWrite Should be set to true if the api may modify data
-	 * @suppress PhanUndeclaredMethod
 	 */
 	public function __construct( $context = null, $enableWrite = false ) {
 		if ( $context === null ) {
@@ -181,10 +192,11 @@ class ApiMain extends ApiBase {
 			$context = RequestContext::getMain();
 		}
 		// We set a derivative context so we can change stuff later
-		$this->setContext( new DerivativeContext( $context ) );
+		$derivativeContext = new DerivativeContext( $context );
+		$this->setContext( $derivativeContext );
 
 		if ( isset( $request ) ) {
-			$this->getContext()->setRequest( $request );
+			$derivativeContext->setRequest( $request );
 		} else {
 			$request = $this->getRequest();
 		}
@@ -201,9 +213,10 @@ class ApiMain extends ApiBase {
 			// user credentials for security.
 			if ( $this->lacksSameOriginSecurity() ) {
 				global $wgUser;
-				wfDebug( "API: stripping user credentials when the same-origin policy is not applied\n" );
-				$wgUser = new User();
-				$this->getContext()->setUser( $wgUser );
+				wfDebug( "API: stripping user credentials when the same-origin policy is not applied" );
+				$user = new User();
+				$wgUser = $user;
+				$derivativeContext->setUser( $user );
 				$request->response()->header( 'MediaWiki-Login-Suppressed: true' );
 			}
 		}
@@ -226,10 +239,10 @@ class ApiMain extends ApiBase {
 				$uselang = MediaWikiServices::getInstance()->getContentLanguage()->getCode();
 			}
 			$code = RequestContext::sanitizeLangCode( $uselang );
-			$this->getContext()->setLanguage( $code );
+			$derivativeContext->setLanguage( $code );
 			if ( !$this->mInternalMode ) {
 				global $wgLang;
-				$wgLang = $this->getContext()->getLanguage();
+				$wgLang = $derivativeContext->getLanguage();
 				RequestContext::getMain()->setLanguage( $wgLang );
 			}
 		}
@@ -267,7 +280,7 @@ class ApiMain extends ApiBase {
 		$this->mModuleMgr->addModules( self::$Formats, 'format' );
 		$this->mModuleMgr->addModules( $config->get( 'APIFormatModules' ), 'format' );
 
-		Hooks::run( 'ApiMain::moduleManager', [ $this->mModuleMgr ] );
+		$this->getHookRunner()->onApiMain__moduleManager( $this->mModuleMgr );
 
 		$this->mContinuationManager = null;
 		$this->mEnableWrite = $enableWrite;
@@ -323,7 +336,8 @@ class ApiMain extends ApiBase {
 		}
 
 		// Allow extensions to override.
-		$this->lacksSameOriginSecurity = !Hooks::run( 'RequestHasSameOriginSecurity', [ $request ] );
+		$this->lacksSameOriginSecurity = !$this->getHookRunner()
+			->onRequestHasSameOriginSecurity( $request );
 		return $this->lacksSameOriginSecurity;
 	}
 
@@ -422,7 +436,7 @@ class ApiMain extends ApiBase {
 	 */
 	public function setCacheMode( $mode ) {
 		if ( !in_array( $mode, [ 'private', 'public', 'anon-public-user-private' ] ) ) {
-			wfDebug( __METHOD__ . ": unrecognised cache mode \"$mode\"\n" );
+			wfDebug( __METHOD__ . ": unrecognised cache mode \"$mode\"" );
 
 			// Ignore for forwards-compatibility
 			return;
@@ -431,7 +445,7 @@ class ApiMain extends ApiBase {
 		if ( !$this->getPermissionManager()->isEveryoneAllowed( 'read' ) ) {
 			// Private wiki, only private headers
 			if ( $mode !== 'private' ) {
-				wfDebug( __METHOD__ . ": ignoring request for $mode cache mode, private wiki\n" );
+				wfDebug( __METHOD__ . ": ignoring request for $mode cache mode, private wiki" );
 
 				return;
 			}
@@ -443,11 +457,11 @@ class ApiMain extends ApiBase {
 			// then there's an appropriate Vary header set by whatever set
 			// their non-default language.
 			wfDebug( __METHOD__ . ": downgrading cache mode 'public' to " .
-				"'anon-public-user-private' due to uselang=user\n" );
+				"'anon-public-user-private' due to uselang=user" );
 			$mode = 'anon-public-user-private';
 		}
 
-		wfDebug( __METHOD__ . ": setting cache mode $mode\n" );
+		wfDebug( __METHOD__ . ": setting cache mode $mode" );
 		$this->mCacheMode = $mode;
 	}
 
@@ -559,20 +573,23 @@ class ApiMain extends ApiBase {
 	}
 
 	/**
-	 * Handle an exception as an API response
+	 * Handle a throwable as an API response
 	 *
 	 * @since 1.23
-	 * @param Exception|Throwable $e
+	 * @param Throwable $e
 	 */
-	protected function handleException( $e ) {
+	protected function handleException( Throwable $e ) {
 		// T65145: Rollback any open database transactions
 		if ( !$e instanceof ApiUsageException ) {
 			// ApiUsageExceptions are intentional, so don't rollback if that's the case
-			MWExceptionHandler::rollbackMasterChangesAndLog( $e );
+			MWExceptionHandler::rollbackMasterChangesAndLog(
+				$e,
+				MWExceptionHandler::CAUGHT_BY_ENTRYPOINT
+			);
 		}
 
 		// Allow extra cleanup and logging
-		Hooks::run( 'ApiMain::onException', [ $this, $e ] );
+		$this->getHookRunner()->onApiMain__onException( $this, $e );
 
 		// Handle any kind of exception by outputting properly formatted error message.
 		// If this fails, an unhandled exception should be thrown so that global error
@@ -626,16 +643,16 @@ class ApiMain extends ApiBase {
 	}
 
 	/**
-	 * Handle an exception from the ApiBeforeMain hook.
+	 * Handle a throwable from the ApiBeforeMain hook.
 	 *
-	 * This tries to print the exception as an API response, to be more
-	 * friendly to clients. If it fails, it will rethrow the exception.
+	 * This tries to print the throwable as an API response, to be more
+	 * friendly to clients. If it fails, it will rethrow the throwable.
 	 *
 	 * @since 1.23
-	 * @param Exception|Throwable $e
-	 * @throws Exception|Throwable
+	 * @param Throwable $e
+	 * @throws Throwable
 	 */
-	public static function handleApiBeforeMainException( $e ) {
+	public static function handleApiBeforeMainException( Throwable $e ) {
 		ob_start();
 
 		try {
@@ -677,7 +694,6 @@ class ApiMain extends ApiBase {
 		$request = $this->getRequest();
 		$response = $request->response();
 
-		$matchedOrigin = false;
 		$allowTiming = false;
 		$varyOrigin = true;
 
@@ -737,8 +753,9 @@ class ApiMain extends ApiBase {
 				}
 				// We allow the actual request to send the following headers
 				$requestedHeaders = $request->getHeader( 'Access-Control-Request-Headers' );
+				$allowedHeaders = $this->getConfig()->get( 'AllowedCorsHeaders' );
 				if ( $requestedHeaders !== false ) {
-					if ( !self::matchRequestedHeaders( $requestedHeaders ) ) {
+					if ( !self::matchRequestedHeaders( $requestedHeaders, $allowedHeaders ) ) {
 						$response->header( 'MediaWiki-CORS-Rejection: Unsupported header requested in preflight' );
 						return true;
 					}
@@ -809,30 +826,18 @@ class ApiMain extends ApiBase {
 	 * of headers that we allow the follow up request to send.
 	 *
 	 * @param string $requestedHeaders Comma separated list of HTTP headers
+	 * @param string[] $allowedHeaders List of allowed HTTP headers
 	 * @return bool True if all requested headers are in the list of allowed headers
 	 */
-	protected static function matchRequestedHeaders( $requestedHeaders ) {
+	protected static function matchRequestedHeaders( $requestedHeaders, $allowedHeaders ) {
 		if ( trim( $requestedHeaders ) === '' ) {
 			return true;
 		}
 		$requestedHeaders = explode( ',', $requestedHeaders );
-		$allowedAuthorHeaders = array_flip( [
-			/* simple headers (see spec) */
-			'accept',
-			'accept-language',
-			'content-language',
-			'content-type',
-			/* non-authorable headers in XHR, which are however requested by some UAs */
-			'accept-encoding',
-			'dnt',
-			'origin',
-			/* MediaWiki whitelist */
-			'user-agent',
-			'api-user-agent',
-		] );
+		$allowedHeaders = array_change_key_case( array_flip( $allowedHeaders ), CASE_LOWER );
 		foreach ( $requestedHeaders as $rHeader ) {
 			$rHeader = strtolower( trim( $rHeader ) );
-			if ( !isset( $allowedAuthorHeaders[$rHeader] ) ) {
+			if ( !isset( $allowedHeaders[$rHeader] ) ) {
 				LoggerFactory::getInstance( 'api-warning' )->warning(
 					'CORS preflight failed on requested header: {header}', [
 						'header' => $rHeader
@@ -991,21 +996,21 @@ class ApiMain extends ApiBase {
 	}
 
 	/**
-	 * Create an error message for the given exception.
+	 * Create an error message for the given throwable.
 	 *
 	 * If an ApiUsageException, errors/warnings will be extracted from the
 	 * embedded StatusValue.
 	 *
-	 * Any other exception will be returned with a generic code and wrapper
-	 * text around the exception's (presumably English) message as a single
+	 * Any other throwable will be returned with a generic code and wrapper
+	 * text around the throwable's (presumably English) message as a single
 	 * error (no warnings).
 	 *
-	 * @param Exception|Throwable $e
+	 * @param Throwable $e
 	 * @param string $type 'error' or 'warning'
 	 * @return ApiMessage[]
 	 * @since 1.27
 	 */
-	protected function errorMessagesFromException( $e, $type = 'error' ) {
+	protected function errorMessagesFromException( Throwable $e, $type = 'error' ) {
 		$messages = [];
 		if ( $e instanceof ApiUsageException ) {
 			foreach ( $e->getStatusValue()->getErrorsByType( $type ) as $error ) {
@@ -1039,11 +1044,11 @@ class ApiMain extends ApiBase {
 	}
 
 	/**
-	 * Replace the result data with the information about an exception.
-	 * @param Exception|Throwable $e
+	 * Replace the result data with the information about a throwable.
+	 * @param Throwable $e
 	 * @return string[] Error codes
 	 */
-	protected function substituteResultWithError( $e ) {
+	protected function substituteResultWithError( Throwable $e ) {
 		$result = $this->getResult();
 		$formatter = $this->getErrorFormatter();
 		$config = $this->getConfig();
@@ -1242,7 +1247,7 @@ class ApiMain extends ApiBase {
 			}
 		}
 
-		Hooks::runWithoutAbort( 'ApiMaxLagInfo', [ &$lagInfo ] );
+		$this->getHookRunner()->onApiMaxLagInfo( $lagInfo );
 
 		return $lagInfo;
 	}
@@ -1317,6 +1322,7 @@ class ApiMain extends ApiBase {
 			[ '' ]
 		);
 		if ( $ifNoneMatch ) {
+			// @phan-suppress-next-line PhanImpossibleTypeComparison
 			if ( $ifNoneMatch === [ '*' ] ) {
 				// API responses always "exist"
 				$etag = '*';
@@ -1369,7 +1375,7 @@ class ApiMain extends ApiBase {
 									TS_MW, time() - $config->get( 'CdnMaxAge' )
 								);
 							}
-							Hooks::run( 'OutputPageCheckLastModified', [ &$modifiedTimes, $this->getOutput() ] );
+							$this->getHookRunner()->onOutputPageCheckLastModified( $modifiedTimes, $this->getOutput() );
 							$lastMod = max( $modifiedTimes );
 							$return304 = wfTimestamp( TS_MW, $lastMod ) <= $ts->getTimestamp( TS_MW );
 						}
@@ -1421,7 +1427,7 @@ class ApiMain extends ApiBase {
 
 		// Allow extensions to stop execution for arbitrary reasons.
 		$message = 'hookaborted';
-		if ( !Hooks::run( 'ApiCheckCanExecute', [ $module, $user, &$message ] ) ) {
+		if ( !$this->getHookRunner()->onApiCheckCanExecute( $module, $user, $message ) ) {
 			$this->dieWithError( $message );
 		}
 	}
@@ -1489,6 +1495,11 @@ class ApiMain extends ApiBase {
 		if ( isset( $params['assert'] ) ) {
 			$user = $this->getUser();
 			switch ( $params['assert'] ) {
+				case 'anon':
+					if ( !$user->isAnon() ) {
+						$this->dieWithError( 'apierror-assertanonfailed' );
+					}
+					break;
 				case 'user':
 					if ( $user->isAnon() ) {
 						$this->dieWithError( 'apierror-assertuserfailed' );
@@ -1543,11 +1554,14 @@ class ApiMain extends ApiBase {
 			$this->mPrinter = $this->createPrinterByName( $params['format'] );
 		}
 
-		if ( $request->getProtocol() === 'http' && (
-			$request->getSession()->shouldForceHTTPS() ||
-			( $this->getUser()->isLoggedIn() &&
-				$this->getUser()->requiresHTTPS() )
-		) ) {
+		if ( $request->getProtocol() === 'http' &&
+			(
+				$this->getConfig()->get( 'ForceHTTPS' ) ||
+				$request->getSession()->shouldForceHTTPS() ||
+				( $this->getUser()->isLoggedIn() &&
+					$this->getUser()->requiresHTTPS() )
+			)
+		) {
 			$this->addDeprecation( 'apiwarn-deprecation-httpsexpected', 'https-expected' );
 		}
 	}
@@ -1584,7 +1598,7 @@ class ApiMain extends ApiBase {
 		}
 
 		$module->execute();
-		Hooks::run( 'APIAfterExecute', [ &$module ] );
+		$this->getHookRunner()->onAPIAfterExecute( $module );
 
 		$this->reportUnusedParams();
 
@@ -1616,9 +1630,9 @@ class ApiMain extends ApiBase {
 	/**
 	 * Log the preceding request
 	 * @param float $time Time in seconds
-	 * @param Exception|Throwable|null $e Exception caught while processing the request
+	 * @param Throwable|null $e Throwable caught while processing the request
 	 */
-	protected function logRequest( $time, $e = null ) {
+	protected function logRequest( $time, Throwable $e = null ) {
 		$request = $this->getRequest();
 
 		$logCtx = [
@@ -1626,7 +1640,8 @@ class ApiMain extends ApiBase {
 			'$schema' => '/mediawiki/api/request/0.0.1',
 			'meta' => [
 				'request_id' => WebRequest::getRequestId(),
-				'id' => UIDGenerator::newUUIDv4(),
+				'id' => MediaWikiServices::getInstance()
+					->getGlobalIdGenerator()->newUUIDv4(),
 				'dt' => wfTimestamp( TS_ISO_8601 ),
 				'domain' => $this->getConfig()->get( 'ServerName' ),
 				// If using the EventBus extension (as intended) with this log channel,
@@ -1868,7 +1883,7 @@ class ApiMain extends ApiBase {
 				ApiBase::PARAM_DFLT => 0
 			],
 			'assert' => [
-				ApiBase::PARAM_TYPE => [ 'user', 'bot' ]
+				ApiBase::PARAM_TYPE => [ 'anon', 'user', 'bot' ]
 			],
 			'assertuser' => [
 				ApiBase::PARAM_TYPE => 'user',

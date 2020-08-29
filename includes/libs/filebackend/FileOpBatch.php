@@ -32,7 +32,7 @@
  */
 class FileOpBatch {
 	/* Timeout related parameters */
-	const MAX_BATCH_SIZE = 1000; // integer
+	private const MAX_BATCH_SIZE = 1000; // integer
 
 	/**
 	 * Attempt to perform a series of file operations.
@@ -182,7 +182,7 @@ class FileOpBatch {
 				}
 			}
 			// Try to do all the operations concurrently...
-			$statuses = $statuses + $backend->executeOpHandlesInternal( $opHandles );
+			$statuses += $backend->executeOpHandlesInternal( $opHandles );
 			// Marshall and merge all the responses (blocking)...
 			foreach ( $performOpsBatch as $i => $fileOp ) {
 				if ( !isset( $status->success[$i] ) ) { // didn't already fail in precheck()

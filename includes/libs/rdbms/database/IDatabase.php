@@ -37,111 +37,122 @@ use Wikimedia\ScopedCallback;
  */
 interface IDatabase {
 	/** @var int Callback triggered immediately due to no active transaction */
-	const TRIGGER_IDLE = 1;
+	public const TRIGGER_IDLE = 1;
 	/** @var int Callback triggered by COMMIT */
-	const TRIGGER_COMMIT = 2;
+	public const TRIGGER_COMMIT = 2;
 	/** @var int Callback triggered by ROLLBACK */
-	const TRIGGER_ROLLBACK = 3;
+	public const TRIGGER_ROLLBACK = 3;
 	/** @var int Callback triggered by atomic section cancel (ROLLBACK TO SAVEPOINT) */
-	const TRIGGER_CANCEL = 4;
+	public const TRIGGER_CANCEL = 4;
 
 	/** @var string Transaction is requested by regular caller outside of the DB layer */
-	const TRANSACTION_EXPLICIT = '';
+	public const TRANSACTION_EXPLICIT = '';
 	/** @var string Transaction is requested internally via DBO_TRX/startAtomic() */
-	const TRANSACTION_INTERNAL = 'implicit';
+	public const TRANSACTION_INTERNAL = 'implicit';
 
 	/** @var string Atomic section is not cancelable */
-	const ATOMIC_NOT_CANCELABLE = '';
+	public const ATOMIC_NOT_CANCELABLE = '';
 	/** @var string Atomic section is cancelable */
-	const ATOMIC_CANCELABLE = 'cancelable';
+	public const ATOMIC_CANCELABLE = 'cancelable';
 
 	/** @var string Commit/rollback is from outside the IDatabase handle and connection manager */
-	const FLUSHING_ONE = '';
+	public const FLUSHING_ONE = '';
 	/** @var string Commit/rollback is from the connection manager for the IDatabase handle */
-	const FLUSHING_ALL_PEERS = 'flush';
+	public const FLUSHING_ALL_PEERS = 'flush';
 	/** @var string Commit/rollback is from the IDatabase handle internally */
-	const FLUSHING_INTERNAL = 'flush-internal';
+	public const FLUSHING_INTERNAL = 'flush-internal';
 
 	/** @var string Do not remember the prior flags */
-	const REMEMBER_NOTHING = '';
+	public const REMEMBER_NOTHING = '';
 	/** @var string Remember the prior flags */
-	const REMEMBER_PRIOR = 'remember';
+	public const REMEMBER_PRIOR = 'remember';
 	/** @var string Restore to the prior flag state */
-	const RESTORE_PRIOR = 'prior';
+	public const RESTORE_PRIOR = 'prior';
 	/** @var string Restore to the initial flag state */
-	const RESTORE_INITIAL = 'initial';
+	public const RESTORE_INITIAL = 'initial';
 
 	/** @var string Estimate total time (RTT, scanning, waiting on locks, applying) */
-	const ESTIMATE_TOTAL = 'total';
+	public const ESTIMATE_TOTAL = 'total';
 	/** @var string Estimate time to apply (scanning, applying) */
-	const ESTIMATE_DB_APPLY = 'apply';
+	public const ESTIMATE_DB_APPLY = 'apply';
 
 	/** @var int Combine list with comma delimeters */
-	const LIST_COMMA = 0;
+	public const LIST_COMMA = 0;
 	/** @var int Combine list with AND clauses */
-	const LIST_AND = 1;
+	public const LIST_AND = 1;
 	/** @var int Convert map into a SET clause */
-	const LIST_SET = 2;
+	public const LIST_SET = 2;
 	/** @var int Treat as field name and do not apply value escaping */
-	const LIST_NAMES = 3;
+	public const LIST_NAMES = 3;
 	/** @var int Combine list with OR clauses */
-	const LIST_OR = 4;
+	public const LIST_OR = 4;
 
 	/** @var int Enable debug logging of all SQL queries */
-	const DBO_DEBUG = 1;
+	public const DBO_DEBUG = 1;
 	/** @var int Unused since 1.34 */
-	const DBO_NOBUFFER = 2;
+	public const DBO_NOBUFFER = 2;
 	/** @var int Unused since 1.31 */
-	const DBO_IGNORE = 4;
+	public const DBO_IGNORE = 4;
 	/** @var int Automatically start a transaction before running a query if none is active */
-	const DBO_TRX = 8;
+	public const DBO_TRX = 8;
 	/** @var int Join load balancer transaction rounds (which control DBO_TRX) in non-CLI mode */
-	const DBO_DEFAULT = 16;
+	public const DBO_DEFAULT = 16;
 	/** @var int Use DB persistent connections if possible */
-	const DBO_PERSISTENT = 32;
+	public const DBO_PERSISTENT = 32;
 	/** @var int DBA session mode; was used by Oracle */
-	const DBO_SYSDBA = 64;
+	public const DBO_SYSDBA = 64;
 	/** @var int Schema file mode; was used by Oracle */
-	const DBO_DDLMODE = 128;
+	public const DBO_DDLMODE = 128;
 	/** @var int Enable SSL/TLS in connection protocol */
-	const DBO_SSL = 256;
+	public const DBO_SSL = 256;
 	/** @var int Enable compression in connection protocol */
-	const DBO_COMPRESS = 512;
+	public const DBO_COMPRESS = 512;
 
 	/** @var int Idiom for "no special flags" */
-	const QUERY_NORMAL = 0;
+	public const QUERY_NORMAL = 0;
 	/** @var int Ignore query errors and return false when they happen */
-	const QUERY_SILENCE_ERRORS = 1; // b/c for 1.32 query() argument; note that (int)true = 1
+	public const QUERY_SILENCE_ERRORS = 1; // b/c for 1.32 query() argument; (int)true = 1
 	/**
 	 * @var int Treat the TEMPORARY table from the given CREATE query as if it is
 	 *   permanent as far as write tracking is concerned. This is useful for testing.
 	 */
-	const QUERY_PSEUDO_PERMANENT = 2;
+	public const QUERY_PSEUDO_PERMANENT = 2;
 	/** @var int Enforce that a query does not make effective writes */
-	const QUERY_REPLICA_ROLE = 4;
+	public const QUERY_REPLICA_ROLE = 4;
 	/** @var int Ignore the current presence of any DBO_TRX flag */
-	const QUERY_IGNORE_DBO_TRX = 8;
+	public const QUERY_IGNORE_DBO_TRX = 8;
 	/** @var int Do not try to retry the query if the connection was lost */
-	const QUERY_NO_RETRY = 16;
+	public const QUERY_NO_RETRY = 16;
+	/** @var int Query is known to be a read-only Data Query Language query */
+	public const QUERY_CHANGE_NONE = 32;
+	/** @var int Query is known to be a Transaction Control Language command */
+	public const QUERY_CHANGE_TRX = 64 | self::QUERY_IGNORE_DBO_TRX;
+	/** @var int Query is known to be a Data Manipulation Language command */
+	public const QUERY_CHANGE_ROWS = 128;
+	/** @var int Query is known to be a Data Definition Language command */
+	public const QUERY_CHANGE_SCHEMA = 256 | self::QUERY_IGNORE_DBO_TRX;
 
 	/** @var bool Parameter to unionQueries() for UNION ALL */
-	const UNION_ALL = true;
+	public const UNION_ALL = true;
 	/** @var bool Parameter to unionQueries() for UNION DISTINCT */
-	const UNION_DISTINCT = false;
+	public const UNION_DISTINCT = false;
 
 	/** @var string Field for getLBInfo()/setLBInfo() */
-	const LB_TRX_ROUND_ID = 'trxRoundId';
+	public const LB_TRX_ROUND_ID = 'trxRoundId';
 	/** @var string Field for getLBInfo()/setLBInfo() */
-	const LB_READ_ONLY_REASON = 'readOnlyReason';
+	public const LB_READ_ONLY_REASON = 'readOnlyReason';
 
 	/** @var string Master server than can stream OLTP updates to replica servers */
-	const ROLE_STREAMING_MASTER = 'streaming-master';
+	public const ROLE_STREAMING_MASTER = 'streaming-master';
 	/** @var string Replica server that streams OLTP updates from the master server */
-	const ROLE_STREAMING_REPLICA = 'streaming-replica';
+	public const ROLE_STREAMING_REPLICA = 'streaming-replica';
 	/** @var string Replica server of a static dataset that does not get OLTP updates */
-	const ROLE_STATIC_CLONE = 'static-clone';
+	public const ROLE_STATIC_CLONE = 'static-clone';
 	/** @var string Unknown replication topology role */
-	const ROLE_UNKNOWN = 'unknown';
+	public const ROLE_UNKNOWN = 'unknown';
+
+	/** @var string Unconditional update/delete of whole table */
+	public const ALL_ROWS = '*';
 
 	/**
 	 * Get a human-readable string describing the current software version
@@ -531,6 +542,14 @@ interface IDatabase {
 	public function freeResult( $res );
 
 	/**
+	 * Create an empty SelectQueryBuilder which can be used to run queries
+	 * against this connection.
+	 *
+	 * @return SelectQueryBuilder
+	 */
+	public function newSelectQueryBuilder();
+
+	/**
 	 * A SELECT wrapper which returns a single field from a single result row
 	 *
 	 * If no result rows are returned from the query, false is returned.
@@ -653,7 +672,18 @@ interface IDatabase {
 	 * Escaping of untrusted input used in values of numeric keys should be done via
 	 * IDatabase::addQuotes()
 	 *
-	 * Use an empty array, string, or '*' to update all rows.
+	 * Use an empty array, string, or IDatabase::ALL_ROWS to select all rows.
+	 *
+	 * You *can* put simple join conditions here, but this is strongly discouraged.
+	 * Instead of
+	 *
+	 *     // $conds...
+	 *     'rev_actor = actor_id',
+	 *
+	 * use (see below for $join_conds):
+	 *
+	 *     // $join_conds...
+	 *     'actor' => [ 'JOIN', 'rev_actor = actor_id' ],
 	 *
 	 * @param string $fname Caller function name
 	 *
@@ -701,6 +731,12 @@ interface IDatabase {
 	 *     use for that table. All strings are SQL fragments and so should be
 	 *     validated by the caller.
 	 *
+	 *   - IGNORE INDEX: This may be either be a string giving an index name to
+	 *     ignore for the query, or an array. If it is an associative array,
+	 *     each key gives the table name (or alias), each value gives the index
+	 *     name to ignore for that table. All strings are SQL fragments and so
+	 *     should be validated by the caller.
+	 *
 	 *   - EXPLAIN: In MySQL, this causes an EXPLAIN SELECT query to be run,
 	 *     instead of SELECT.
 	 *
@@ -715,9 +751,9 @@ interface IDatabase {
 	 *
 	 * @param string|array $join_conds Join conditions
 	 *
-	 * Optional associative array of table-specific join conditions. In the
-	 * most common case, this is unnecessary, since the join condition can be
-	 * in $conds. However, it is useful for doing a LEFT JOIN.
+	 * Optional associative array of table-specific join conditions.
+	 * Simple conditions can also be specified in the regular $conds,
+	 * but this is strongly discouraged in favor of the more explicit syntax here.
 	 *
 	 * The key of the array contains the table name or alias. The value is an
 	 * array with two elements, numbered 0 and 1. The first gives the type of
@@ -803,7 +839,7 @@ interface IDatabase {
 	 *
 	 * Takes the same arguments as IDatabase::select().
 	 *
-	 * @param array|string $tables Table names
+	 * @param string|string[] $tables Table name(s)
 	 * @param string $var Column for which NULL values are not counted [default "*"]
 	 * @param array|string $conds Filters on the table
 	 * @param string $fname Function name for profiling
@@ -825,7 +861,7 @@ interface IDatabase {
 	 *
 	 * @since 1.27 Added $join_conds parameter
 	 *
-	 * @param array|string $tables Table names
+	 * @param string|string[] $tables Table name(s)
 	 * @param string $var Column for which NULL values are not counted [default "*"]
 	 * @param array|string $conds Filters on the table
 	 * @param string $fname Function name for profiling
@@ -841,7 +877,7 @@ interface IDatabase {
 	/**
 	 * Lock all rows meeting the given conditions/options FOR UPDATE
 	 *
-	 * @param array|string $table Table names
+	 * @param string|string[] $table Table name(s)
 	 * @param array|string $conds Filters on the table
 	 * @param string $fname Function name for profiling
 	 * @param array $options Options for select ("FOR UPDATE" is added automatically)
@@ -887,58 +923,51 @@ interface IDatabase {
 	public function tableExists( $table, $fname = __METHOD__ );
 
 	/**
-	 * INSERT wrapper, inserts an array into a table
+	 * Insert the given row(s) into a table
 	 *
-	 * $a may be either:
-	 *
-	 *   - A single associative array. The array keys are the field names, and
-	 *     the values are the values to insert. The values are treated as data
-	 *     and will be quoted appropriately. If NULL is inserted, this will be
-	 *     converted to a database NULL.
-	 *   - An array with numeric keys, holding a list of associative arrays.
-	 *     This causes a multi-row INSERT on DBMSs that support it. The keys in
-	 *     each subarray must be identical to each other, and in the same order.
-	 *
-	 * $options is an array of options, with boolean options encoded as values
-	 * with numeric keys, in the same style as $options in
-	 * IDatabase::select(). Supported options are:
-	 *
-	 *   - IGNORE: Boolean: if present, duplicate key errors are ignored, and
-	 *     any rows which cause duplicate key errors are not inserted. It's
-	 *     possible to determine how many rows were successfully inserted using
-	 *     IDatabase::affectedRows().
-	 *
-	 * @param string $table Table name. This will be passed through
-	 *   Database::tableName().
-	 * @param array $rows Array of rows to insert
+	 * @param string $table Table name
+	 * @param array|array[] $rows Row(s) to insert, as either:
+	 *   - A string-keyed map of (column name => value) defining a new row. Values are
+	 *     treated as literals and quoted appropriately; null is interpreted as NULL.
+	 *   - An integer-keyed list of such string-keyed maps, defining a list of new rows.
+	 *     The keys in each map must be identical to each other and in the same order.
+	 *     The rows must not collide with each other.
 	 * @param string $fname Calling function name (use __METHOD__) for logs/profiling
-	 * @param array $options Array of options
+	 * @param string|array $options Combination map/list where each string-keyed entry maps a
+	 *   non-boolean option to the option parameters and each integer-keyed value is the
+	 *   name of a boolean option. Supported options are:
+	 *     - IGNORE: Boolean: skip insertion of rows that would cause unique key conflicts.
+	 *       IDatabase::affectedRows() can be used to determine how many rows were inserted.
 	 * @return bool Return true if no exception was thrown (deprecated since 1.33)
 	 * @throws DBError If an error occurs, see IDatabase::query()
 	 */
 	public function insert( $table, $rows, $fname = __METHOD__, $options = [] );
 
 	/**
-	 * UPDATE wrapper. Takes a condition array and a SET array.
+	 * Update all rows in a table that match a given condition
 	 *
-	 * @param string $table Name of the table to UPDATE. This will be passed through
-	 *   Database::tableName().
-	 * @param array $values An array of values to SET. For each array element,
-	 *   the key gives the field name, and the value gives the data to set
-	 *   that field to. The data will be quoted by IDatabase::addQuotes().
-	 *   Values with integer keys form unquoted SET statements, which can be used for
-	 *   things like "field = field + 1" or similar computed values.
-	 * @param array|string $conds An array of conditions (WHERE). See
-	 *   IDatabase::select() for the details of the format of condition
-	 *   arrays. Use '*' to update all rows.
-	 * @param string $fname The function name of the caller (from __METHOD__),
-	 *   for logging and profiling.
-	 * @param array $options An array of UPDATE options, can be:
-	 *   - IGNORE: Ignore unique key conflicts
+	 * @param string $table Table name
+	 * @param array $set Combination map/list where each string-keyed entry maps a column
+	 *   to a literal assigned value and each integer-keyed value is a SQL expression in the
+	 *   format of a column assignment within UPDATE...SET. The (column => value) entries are
+	 *   convenient due to automatic value quoting and conversion of null to NULL. The SQL
+	 *   assignment format is useful for updates like "column = column + X". All assignments
+	 *   have no defined execution order, so they should not depend on each other. Do not
+	 *   modify AUTOINCREMENT or UUID columns in assignments.
+	 * @param array|string $conds Condition in the format of IDatabase::select() conditions.
+	 *   In order to prevent possible performance or replication issues or damaging a data
+	 *   accidentally, an empty condition for 'update' queries isn't allowed.
+	 *   IDatabase::ALL_ROWS should be passed explicitely in order to update all rows.
+	 * @param string $fname Calling function name (use __METHOD__) for logs/profiling
+	 * @param string|array $options Combination map/list where each string-keyed entry maps a
+	 *   non-boolean option to the option parameters and each integer-keyed value is the
+	 *   name of a boolean option. Supported options are:
+	 *     - IGNORE: Boolean: skip insertion of rows that would cause unique key conflicts.
+	 *       IDatabase::affectedRows() can be used to determine how many rows were inserted.
 	 * @return bool Return true if no exception was thrown (deprecated since 1.33)
 	 * @throws DBError If an error occurs, see IDatabase::query()
 	 */
-	public function update( $table, $values, $conds, $fname = __METHOD__, $options = [] );
+	public function update( $table, $set, $conds, $fname = __METHOD__, $options = [] );
 
 	/**
 	 * Makes an encoded list of strings from an array
@@ -1048,6 +1077,10 @@ interface IDatabase {
 	 *
 	 * Integer and float values in $values will not be quoted
 	 *
+	 * If $fields is an array, then each value with a string key is treated as an expression
+	 * (which must be manually quoted); such string keys do not appear in the SQL and are only
+	 * descriptive aliases.
+	 *
 	 * @param string|string[] $fields Name(s) of column(s) with values to compare
 	 * @param string|int|float|string[]|int[]|float[] $values Values to compare
 	 * @return mixed
@@ -1059,6 +1092,10 @@ interface IDatabase {
 	 * Build a LEAST function statement comparing columns/values
 	 *
 	 * Integer and float values in $values will not be quoted
+	 *
+	 * If $fields is an array, then each value with a string key is treated as an expression
+	 * (which must be manually quoted); such string keys do not appear in the SQL and are only
+	 * descriptive aliases.
 	 *
 	 * @param string|string[] $fields Name(s) of column(s) with values to compare
 	 * @param string|int|float|string[]|int[]|float[] $values Values to compare
@@ -1096,7 +1133,7 @@ interface IDatabase {
 	public function buildIntegerCast( $field );
 
 	/**
-	 * Equivalent to IDatabase::selectSQLText() except wraps the result in Subqyery
+	 * Equivalent to IDatabase::selectSQLText() except wraps the result in Subquery
 	 *
 	 * @see IDatabase::selectSQLText()
 	 *
@@ -1263,69 +1300,68 @@ interface IDatabase {
 	public function nextSequenceValue( $seqName );
 
 	/**
-	 * REPLACE query wrapper
+	 * Insert row(s) into a table, deleting all conflicting rows beforehand
 	 *
-	 * REPLACE is a very handy MySQL extension, which functions like an INSERT
-	 * except that when there is a duplicate key error, the old row is deleted
-	 * and the new row is inserted in its place.
+	 * Note some important implications of the deletion semantics:
+	 *   - If the table has an AUTOINCREMENT column and $rows omit that column, then any
+	 *     conflicting existing rows will be replaced with newer having higher values for
+	 *     that column, even if nothing else changed.
+	 *   - There might be worse contention than upsert() due to the use of gap-locking.
+	 *     This does not apply to RDBMS types that use predicate locking nor those that
+	 *     just lock the whole table or databases anyway.
 	 *
-	 * We simulate this with standard SQL with a DELETE followed by INSERT. To
-	 * perform the delete, we need to know what the unique indexes are so that
-	 * we know how to find the conflicting rows.
-	 *
-	 * It may be more efficient to leave off unique indexes which are unlikely
-	 * to collide. However if you do this, you run the risk of encountering
-	 * errors which wouldn't have occurred in MySQL.
-	 *
-	 * @param string $table The table to replace the row(s) in.
-	 * @param array[]|string[]|string $uniqueIndexes All unique indexes. One of the following:
-	 *   a) the one unique field in the table (when no composite unique key exist)
-	 *   b) a list of all unique fields in the table (when no composite unique key exist)
-	 *   c) a list of all unique indexes in the table (each as a list of the indexed fields)
-	 * @param array $rows Can be either a single row to insert, or multiple rows,
-	 *   in the same format as for IDatabase::insert()
+	 * @param string $table The table name
+	 * @param string|string[]|string[][] $uniqueKeys Column name or non-empty list of column
+	 *   name lists that define all applicable unique keys on the table. Each unique key on the
+	 *   table is "applicable" unless either:
+	 *     - It involves an AUTOINCREMENT column for which no values are assigned in $rows
+	 *     - It involves a UUID column for which newly generated UUIDs are assigned in $rows
+	 * @param array|array[] $rows Row(s) to insert, in the form of either:
+	 *   - A string-keyed map of (column name => value) defining a new row. Values are
+	 *     treated as literals and quoted appropriately; null is interpreted as NULL.
+	 *     Columns belonging to a key in $uniqueIndexes must be defined here and non-null.
+	 *   - An integer-keyed list of such string-keyed maps, defining a list of new rows.
+	 *     The keys in each map must be identical to each other and in the same order.
+	 *     The rows must not collide with each other.
 	 * @param string $fname Calling function name (use __METHOD__) for logs/profiling
 	 * @throws DBError If an error occurs, see IDatabase::query()
 	 */
-	public function replace( $table, $uniqueIndexes, $rows, $fname = __METHOD__ );
+	public function replace( $table, $uniqueKeys, $rows, $fname = __METHOD__ );
 
 	/**
-	 * INSERT ON DUPLICATE KEY UPDATE wrapper, upserts an array into a table.
+	 * Upsert the given row(s) into a table
 	 *
-	 * This updates any conflicting rows (according to the unique indexes) using
-	 * the provided SET clause and inserts any remaining (non-conflicted) rows.
+	 * This updates any existing rows that conflict with the provided rows and inserts
+	 * any of the provided rows that do not conflict with existing rows. Conflicts are
+	 * determined by the provided unique indexes.
 	 *
-	 * $rows may be either:
-	 *   - A single associative array. The array keys are the field names, and
-	 *     the values are the values to insert. The values are treated as data
-	 *     and will be quoted appropriately. If NULL is inserted, this will be
-	 *     converted to a database NULL.
-	 *   - An array with numeric keys, holding a list of associative arrays.
-	 *     This causes a multi-row INSERT on DBMSs that support it. The keys in
-	 *     each subarray must be identical to each other, and in the same order.
-	 *
-	 * It may be more efficient to leave off unique indexes which are unlikely
-	 * to collide. However if you do this, you run the risk of encountering
-	 * errors which wouldn't have occurred in MySQL.
-	 *
-	 * @param string $table Table name. This will be passed through Database::tableName().
-	 * @param array|array[] $rows A single row or list of rows to insert
-	 * @param array[]|string[]|string $uniqueIndexes All unique indexes. One of the following:
-	 *   a) the one unique field in the table (when no composite unique key exist)
-	 *   b) a list of all unique fields in the table (when no composite unique key exist)
-	 *   c) a list of all unique indexes in the table (each as a list of the indexed fields)
-	 * @param array $set An array of values to SET. For each array element, the
-	 *   key gives the field name, and the value gives the data to set that
-	 *   field to. The data will be quoted by IDatabase::addQuotes().
-	 *   Values with integer keys form unquoted SET statements, which can be used for
-	 *   things like "field = field + 1" or similar computed values.
+	 * @param string $table Table name
+	 * @param array|array[] $rows Row(s) to insert, in the form of either:
+	 *   - A string-keyed map of (column name => value) defining a new row. Values are
+	 *     treated as literals and quoted appropriately; null is interpreted as NULL.
+	 *     Columns belonging to a key in $uniqueIndexes must be defined here and non-null.
+	 *   - An integer-keyed list of such string-keyed maps, defining a list of new rows.
+	 *     The keys in each map must be identical to each other and in the same order.
+	 *     The rows must not collide with each other.
+	 * @param string|string[]|string[][] $uniqueKeys Column name or non-empty list of column
+	 *   name lists that define all applicable unique keys on the table. Each unique key on the
+	 *   table is "applicable" unless either:
+	 *     - It involves an AUTOINCREMENT column for which no values are assigned in $rows
+	 *     - It involves a UUID column for which newly generated UUIDs are assigned in $rows
+	 * @param array $set Combination map/list where each string-keyed entry maps a column
+	 *   to a literal assigned value and each integer-keyed value is a SQL expression in the
+	 *   format of a column assignment within UPDATE...SET. The (column => value) entries are
+	 *   convenient due to automatic value quoting and conversion of null to NULL. The SQL
+	 *   assignment format is useful for updates like "column = column + X". All assignments
+	 *   have no defined execution order, so they should not depend on each other. Do not
+	 *   modified AUTOINCREMENT or UUID columns in assignments.
 	 * @param string $fname Calling function name (use __METHOD__) for logs/profiling
 	 * @return bool Return true if no exception was thrown (deprecated since 1.33)
 	 * @throws DBError If an error occurs, see IDatabase::query()
 	 * @since 1.22
 	 */
 	public function upsert(
-		$table, array $rows, $uniqueIndexes, array $set, $fname = __METHOD__
+		$table, array $rows, $uniqueKeys, array $set, $fname = __METHOD__
 	);
 
 	/**
@@ -1335,7 +1371,7 @@ interface IDatabase {
 	 * we use sub-selects
 	 *
 	 * For safety, an empty $conds will not delete everything. If you want to
-	 * delete all rows where the join condition matches, set $conds='*'.
+	 * delete all rows where the join condition matches, set $conds=IDatabase::ALL_ROWS.
 	 *
 	 * DO NOT put the join condition in $conds.
 	 *
@@ -1358,11 +1394,13 @@ interface IDatabase {
 	);
 
 	/**
-	 * DELETE query wrapper
+	 * Delete all rows in a table that match a condition
 	 *
 	 * @param string $table Table name
 	 * @param string|array $conds Array of conditions. See $conds in IDatabase::select()
-	 *   for the format. Use $conds == "*" to delete all rows
+	 *   In order to prevent possible performance or replication issues or damaging a data
+	 *   accidentally, an empty condition for 'delete' queries isn't allowed.
+	 *   IDatabase::ALL_ROWS should be passed explicitely in order to delete all rows.
 	 * @param string $fname Name of the calling function
 	 * @return bool Return true if no exception was thrown (deprecated since 1.33)
 	 * @throws DBError If an error occurs, see IDatabase::query()

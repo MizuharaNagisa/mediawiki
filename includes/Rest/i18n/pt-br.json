@@ -1,7 +1,8 @@
 {
 	"@metadata": {
 		"authors": [
-			"Eduardo Addad de Oliveira"
+			"Eduardo Addad de Oliveira",
+			"Jhonnatanricardo"
 		]
 	},
 	"rest-prefix-mismatch": "O caminho pedido ($1) não estava no interior do caminho raiz da API REST ($2)",
@@ -10,6 +11,9 @@
 	"rest-nonexistent-title": "O título especificado ($1) não existe",
 	"rest-nonexistent-title-revision": "A revisão especificada ($1) não existe para a página especificada ($2)",
 	"rest-nonexistent-revision": "A revisão especificada ($1) não existe",
+	"rest-nonexistent-user": "O usuário especificado ($1) não existe",
+	"rest-invalid-user": "O nome de usuário especificado ($1) é inválido",
+	"rest-permission-denied-anon": "Não acessível por usuário anônimo",
 	"rest-permission-denied-title": "O usuário não tem o direitos de ler o título ($1)",
 	"rest-permission-denied-revision": "O usuário não tem acesso à revisão solicitada ($1).",
 	"rest-pagehistory-incompatible-params": "Os parâmetros \"older_than\" ''(anterior a)'' e \"newer_than\" ''(posterior a)'' não podem ser especificados em simultâneo",
@@ -28,5 +32,12 @@
 	"rest-page-source-type-error": "O tipo de conteúdo da fonte da página solicitada não é suportado",
 	"rest-no-revision": "Não foi possível recuperar a revisão para o título $1",
 	"rest-media-too-many-links": "Muitos links de mídia encontrados no título $1 ($2 permitidos)",
-	"rest-html-backend-error": "Não foi possível buscar o HTML Parsoid"
+	"rest-html-backend-error": "Não foi possível buscar o HTML Parsoid",
+	"rest-bad-json-body": "Corpo de solicitação inválido, deve ser um objeto JSON.",
+	"rest-json-body-parse-error": "A análise do corpo da solicitação como JSON falhou: $1",
+	"rest-missing-body-field": "Campo obrigatório \"$1\" ausente do corpo da solicitação.",
+	"rest-bad-content-model": "Modelo de conteúdo incorreto: $1",
+	"rest-update-cannot-create-page": "A página \"$1\" não pode ser criada, pois ela já existe. Para atualizar a página existente, forneça o ID da revisão base na estrutura sob a chave \"latest\" no corpo da solicitação.",
+	"rest-extraneous-csrf-token": "Token CSRF estranho encontrado. Os tokens de CSRF não devem ser usados ao usar mecanismos de autenticação como o OAuth que são seguros contra ataques de CSRF.",
+	"rest-cannot-load-file": "O arquivo para o título \"$1\" não pode ser carregado."
 }

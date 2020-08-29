@@ -88,7 +88,7 @@ By default, outputs relative paths against the parent directory of $wgUploadDire
 			FROM $imagelinks
 			LEFT JOIN $image
 			ON il_to=img_name";
-		$result = $dbr->query( $sql );
+		$result = $dbr->query( $sql, __METHOD__ );
 
 		foreach ( $result as $row ) {
 			$this->outputItem( $row->il_to, $shared );
@@ -119,7 +119,7 @@ By default, outputs relative paths against the parent directory of $wgUploadDire
 			$rel = wfRelativePath( $filename, $this->mBasePath );
 			$this->output( "$rel\n" );
 		} else {
-			wfDebug( __METHOD__ . ": base file? $name\n" );
+			wfDebug( __METHOD__ . ": base file? $name" );
 		}
 	}
 

@@ -30,6 +30,10 @@ use Wikimedia\ScopedCallback;
 
 /**
  * Group all the pieces relevant to the context of a request into one instance
+ * @newable
+ * @note marked as newable in 1.35 for lack of a better alternative,
+ *       but should use a factory in the future and should be narrowed
+ *       down to not expose heavy weight objects.
  */
 class RequestContext implements IContextSource, MutableContext {
 	/**
@@ -294,7 +298,11 @@ class RequestContext implements IContextSource, MutableContext {
 		$code = strtolower( $code );
 
 		# Validate $code
-		if ( !$code || !Language::isValidCode( $code ) || $code === 'qqq' ) {
+		if ( !$code
+			|| !MediaWikiServices::getInstance()->getLanguageNameUtils()
+				->isValidCode( $code )
+			|| $code === 'qqq'
+		) {
 			$code = $wgLanguageCode;
 		}
 
@@ -328,8 +336,6 @@ class RequestContext implements IContextSource, MutableContext {
 	public function getLanguage() {
 		if ( $this->languageRecursion === true ) {
 			trigger_error( "Recursion detected in " . __METHOD__, E_USER_WARNING );
-			$e = new Exception;
-			wfDebugLog( 'recursion-guard', "Recursion detected:\n" . $e->getTraceAsString() );
 
 			$code = $this->getConfig()->get( 'LanguageCode' ) ?: 'en';
 			$this->lang = MediaWikiServices::getInstance()->getLanguageFactory()
@@ -360,7 +366,7 @@ class RequestContext implements IContextSource, MutableContext {
 				// NFC form given this will not convert to normalised form.
 				$code = self::sanitizeLangCode( $code );
 
-				Hooks::run( 'UserGetLanguageObject', [ $user, &$code, $this ] );
+				Hooks::runner()->onUserGetLanguageObject( $user, $code, $this );
 
 				if ( $code === $this->getConfig()->get( 'LanguageCode' ) ) {
 					$this->lang = MediaWikiServices::getInstance()->getContentLanguage();
@@ -391,7 +397,7 @@ class RequestContext implements IContextSource, MutableContext {
 	public function getSkin() {
 		if ( $this->skin === null ) {
 			$skin = null;
-			Hooks::run( 'RequestContextCreateSkin', [ $this, &$skin ] );
+			Hooks::runner()->onRequestContextCreateSkin( $this, $skin );
 			$factory = MediaWikiServices::getInstance()->getSkinFactory();
 
 			if ( $skin instanceof Skin ) {
@@ -462,7 +468,7 @@ class RequestContext implements IContextSource, MutableContext {
 	 */
 	public static function getMainAndWarn( $func = __METHOD__ ) {
 		wfDebug( $func . ' called without context. ' .
-			"Using RequestContext::getMain() for sanity\n" );
+			"Using RequestContext::getMain() for sanity" );
 
 		return self::getMain();
 	}

@@ -2,27 +2,28 @@
 	"@metadata": {
 		"authors": [
 			"Amgine",
+			"C.R.",
 			"Clamengh",
 			"Dakrismeno",
+			"DannyS712",
 			"DracoRoboter",
+			"Fitoschido",
 			"Flavio05",
 			"GatoSelvadego",
 			"Geitost",
 			"Insübrich",
 			"Kemmótar",
+			"Macofe",
 			"Malafaya",
+			"Matma Rex",
+			"Ninonino",
 			"Reedy",
 			"Remulazz",
 			"SabineCretella",
 			"Snowdog",
 			"Sprüngli",
-			"아라",
-			"Ninonino",
-			"Macofe",
 			"V6rg",
-			"C.R.",
-			"Fitoschido",
-			"DannyS712"
+			"아라"
 		]
 	},
 	"tog-underline": "Sutulinia i ligam",
@@ -293,7 +294,7 @@
 	"databaseerror-query": "Ricérca: $1",
 	"databaseerror-function": "Funsiù: $1",
 	"databaseerror-error": "Erur: $1",
-	"laggedslavemode": "<strong>Ocio:</strong> Pöl das che la pàgina la g'hape gnemò dét i agiurnamèncc piö nöf.",
+	"laggedreplicamode": "<strong>Ocio:</strong> Pöl das che la pàgina la g'hape gnemò dét i agiurnamèncc piö nöf.",
 	"readonly": "Database blucaa",
 	"enterlockreason": "Indicà el mutìf del bloch e specificà el momènt che se pènsa de tiràl vià",
 	"readonlytext": "Adès come adès el database l'è blocàt e se pöl mìa fà mudìfiche a le pàgine gne creàn de nöe. El bloch de sòlet el depènt de operasiù de maütensiù del database. Se pödarà turnà a doprà 'l database quan che le operasiù de manütensiù le sarà finìde.\n\nL'aministradur del sistéma che g'ha blocàt el database el g'ha dat chèsta spiegasiù: $1",
@@ -445,7 +446,6 @@
 	"passwordreset-email": "Indirìs e-mail:",
 	"passwordreset-emailtitle": "Detài de l'ütènsa sö {{SITENAME}}",
 	"passwordreset-emailelement": "Nòm ütènt: \n$1\n\nPassword temporànea: \n$2",
-	"passwordreset-emailsentemail": "Gh'è stat mandàt vià 'na e-mail de redefinisiù de la password.",
 	"changeemail": "Càmbia l'indirìs e-mail",
 	"changeemail-header": "Càmbia l'indirìs e-mail de l'ütènsa",
 	"changeemail-none": "(nisü)",
@@ -561,7 +561,7 @@
 	"rev-deleted-user": "(nòm de ütènt scancelàt)",
 	"rev-deleted-event": "(asiù del log scancelàda)",
 	"rev-deleted-user-contribs": "[nòm ütènt o indirìs IP scancelàt - mudìfica scundìda de la crunulugìa]",
-	"rev-deleted-text-permission": "Questa version de la pagina l'è stada '''scancelada'''.\nPer infurmazion, varda ind el [{{fullurl:{{#Special:Log}}/delete|page={{FULLPAGENAMEE}}}} register di scancelament].",
+	"rev-deleted-text-permission": "Questa version de la pagina l'è stada '''scancelada'''.\nPer infurmazion, varda ind el [{{fullurl:{{#Special:Log}}/delete|page=$1}} register di scancelament].",
 	"rev-delundel": "fa vidè/scund",
 	"rev-showdeleted": "Fà ved",
 	"revisiondelete": "Scancèla o riprìstina versiù",
@@ -1366,5 +1366,6 @@
 	"tags-edit": "mudìfica",
 	"rightsnone": "(nisü)",
 	"expand_templates_ok": "OK",
-	"mw-widgets-abandonedit": "Sét sigür che te ölet turnà 'ndré a la modalità de vizualizasiù sènsa salvà le mudìfiche prima?"
+	"mw-widgets-abandonedit": "Sét sigür che te ölet turnà 'ndré a la modalità de vizualizasiù sènsa salvà le mudìfiche prima?",
+	"mw-widgets-mediasearch-input-placeholder": "Sérca archivi multimediài"
 }

@@ -5,7 +5,7 @@ use Wikimedia\TestingAccessWrapper;
 /**
  * @covers DeprecationHelper
  */
-class DeprecationHelperTest extends MediaWikiTestCase {
+class DeprecationHelperTest extends MediaWikiIntegrationTestCase {
 
 	/** @var TestDeprecatedClass */
 	private $testClass;
@@ -13,7 +13,7 @@ class DeprecationHelperTest extends MediaWikiTestCase {
 	/** @var TestDeprecatedSubclass */
 	private $testSubclass;
 
-	public function setUp() : void {
+	protected function setUp() : void {
 		parent::setUp();
 		$this->testClass = new TestDeprecatedClass();
 		$this->testSubclass = new TestDeprecatedSubclass();
@@ -98,10 +98,10 @@ class DeprecationHelperTest extends MediaWikiTestCase {
 	public function testSubclassGetSet() {
 		$fullName = 'TestDeprecatedClass::$privateNonDeprecated';
 		$this->assertErrorTriggered( function () {
-			$this->assertSame( null, $this->testSubclass->getNonDeprecatedPrivateParentProperty() );
+			$this->assertSame( null, $this->testSubclass->getNondeprecatedPrivateParentProperty() );
 		}, E_USER_ERROR, "Cannot access non-public property $fullName" );
 		$this->assertErrorTriggered( function () {
-			$this->testSubclass->setNonDeprecatedPrivateParentProperty( 0 );
+			$this->testSubclass->setNondeprecatedPrivateParentProperty( 0 );
 			$wrapper = TestingAccessWrapper::newFromObject( $this->testSubclass );
 			$this->assertSame( 1, $wrapper->privateNonDeprecated );
 		}, E_USER_ERROR, "Cannot access non-public property $fullName" );
@@ -171,42 +171,4 @@ class DeprecationHelperTest extends MediaWikiTestCase {
 			[ null, Exception::class ]
 		];
 	}
-
-	/**
-	 * @covers DeprecationHelper::newArgumentWithDeprecation
-	 */
-	public function testNewArgumentWithDeprecationRaisesExceptionIfNoValue() {
-		MWDebug::clearLog();
-
-		$newArgument = DeprecationHelper::newArgumentWithDeprecation(
-			__METHOD__,
-			'NewArgument',
-			'1.35',
-			null,
-			function () {
-				return 0;
-			}
-		);
-
-		$wrapper = TestingAccessWrapper::newFromClass( MWDebug::class );
-		$this->assertNotEmpty( $wrapper->deprecationWarnings );
-		$this->assertSame( 0, $newArgument );
-	}
-
-	/**
-	 * @covers DeprecationHelper::newArgumentWithDeprecation
-	 */
-	public function testNewArgumentWithDeprecationReturnsValue() {
-		$newArgument = DeprecationHelper::newArgumentWithDeprecation(
-			__METHOD__,
-			'NewArgument',
-			'1.35',
-			0,
-			function () {
-				return 0;
-			}
-		);
-		$this->assertSame( 0, $newArgument );
-	}
-
 }

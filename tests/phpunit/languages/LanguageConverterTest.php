@@ -1,17 +1,20 @@
 <?php
 
+use MediaWiki\Linker\LinkTarget;
+
 /**
  * @group Language
  */
 class LanguageConverterTest extends MediaWikiLangTestCase {
+
 	/** @var Language */
 	protected $lang;
-	/** @var TestConverter */
+
+	/** @var DummyConverter */
 	protected $lc;
 
 	protected function setUp() : void {
 		parent::setUp();
-
 		$this->setContentLang( 'tg' );
 
 		$this->setMwGlobals( [
@@ -27,7 +30,7 @@ class LanguageConverterTest extends MediaWikiLangTestCase {
 		} ) );
 		$this->lang->expects( $this->never() )
 			->method( $this->anythingBut( 'factory', 'getNsText', 'ucfirst' ) );
-		$this->lc = new TestConverter(
+		$this->lc = new DummyConverter(
 			$this->lang, 'tg',
 			# Adding 'sgs' as a variant to ensure we handle deprecated codes
 			# adding 'simple' as a variant to ensure we handle non BCP 47 codes
@@ -143,12 +146,13 @@ class LanguageConverterTest extends MediaWikiLangTestCase {
 	public function testGetPreferredVariantUserOption() {
 		global $wgUser;
 
-		$wgUser = new User;
-		$wgUser->load(); // from 'defaults'
-		$wgUser->mId = 1;
-		$wgUser->mDataLoaded = true;
-		$wgUser->mOptionsLoaded = true;
-		$wgUser->setOption( 'variant', 'tg-latn' );
+		$user = new User;
+		$user->load(); // from 'defaults'
+		$user->mId = 1;
+		$user->mDataLoaded = true;
+		$user->setOption( 'variant', 'tg-latn' );
+
+		$wgUser = $user;
 
 		$this->assertEquals( 'tg-latn', $this->lc->getPreferredVariant() );
 	}
@@ -159,12 +163,13 @@ class LanguageConverterTest extends MediaWikiLangTestCase {
 	public function testGetPreferredVariantUserOptionDeprecated() {
 		global $wgUser;
 
-		$wgUser = new User;
-		$wgUser->load(); // from 'defaults'
-		$wgUser->mId = 1;
-		$wgUser->mDataLoaded = true;
-		$wgUser->mOptionsLoaded = true;
-		$wgUser->setOption( 'variant', 'bat-smg' );
+		$user = new User;
+		$user->load(); // from 'defaults'
+		$user->mId = 1;
+		$user->mDataLoaded = true;
+		$user->setOption( 'variant', 'bat-smg' );
+
+		$wgUser = $user;
 
 		$this->assertEquals( 'sgs', $this->lc->getPreferredVariant() );
 	}
@@ -175,12 +180,13 @@ class LanguageConverterTest extends MediaWikiLangTestCase {
 	public function testGetPreferredVariantUserOptionBCP47() {
 		global $wgUser;
 
-		$wgUser = new User;
-		$wgUser->load(); // from 'defaults'
-		$wgUser->mId = 1;
-		$wgUser->mDataLoaded = true;
-		$wgUser->mOptionsLoaded = true;
-		$wgUser->setOption( 'variant', 'en-simple' );
+		$user = new User;
+		$user->load(); // from 'defaults'
+		$user->mId = 1;
+		$user->mDataLoaded = true;
+		$user->setOption( 'variant', 'en-simple' );
+
+		$wgUser = $user;
 
 		$this->assertEquals( 'simple', $this->lc->getPreferredVariant() );
 	}
@@ -193,12 +199,13 @@ class LanguageConverterTest extends MediaWikiLangTestCase {
 		global $wgUser;
 
 		$this->setContentLang( 'en' );
-		$wgUser = new User;
-		$wgUser->load(); // from 'defaults'
-		$wgUser->mId = 1;
-		$wgUser->mDataLoaded = true;
-		$wgUser->mOptionsLoaded = true;
-		$wgUser->setOption( 'variant-tg', 'tg-latn' );
+		$user = new User;
+		$user->load(); // from 'defaults'
+		$user->mId = 1;
+		$user->mDataLoaded = true;
+		$user->setOption( 'variant-tg', 'tg-latn' );
+
+		$wgUser = $user;
 
 		$this->assertEquals( 'tg-latn', $this->lc->getPreferredVariant() );
 	}
@@ -211,12 +218,13 @@ class LanguageConverterTest extends MediaWikiLangTestCase {
 		global $wgUser;
 
 		$this->setContentLang( 'en' );
-		$wgUser = new User;
-		$wgUser->load(); // from 'defaults'
-		$wgUser->mId = 1;
-		$wgUser->mDataLoaded = true;
-		$wgUser->mOptionsLoaded = true;
-		$wgUser->setOption( 'variant-tg', 'bat-smg' );
+		$user = new User;
+		$user->load(); // from 'defaults'
+		$user->mId = 1;
+		$user->mDataLoaded = true;
+		$user->setOption( 'variant-tg', 'bat-smg' );
+
+		$wgUser = $user;
 
 		$this->assertEquals( 'sgs', $this->lc->getPreferredVariant() );
 	}
@@ -229,12 +237,13 @@ class LanguageConverterTest extends MediaWikiLangTestCase {
 		global $wgUser;
 
 		$this->setContentLang( 'en' );
-		$wgUser = new User;
-		$wgUser->load(); // from 'defaults'
-		$wgUser->mId = 1;
-		$wgUser->mDataLoaded = true;
-		$wgUser->mOptionsLoaded = true;
-		$wgUser->setOption( 'variant-tg', 'en-simple' );
+		$user = new User;
+		$user->load(); // from 'defaults'
+		$user->mId = 1;
+		$user->mDataLoaded = true;
+		$user->setOption( 'variant-tg', 'en-simple' );
+
+		$wgUser = $user;
 
 		$this->assertEquals( 'simple', $this->lc->getPreferredVariant() );
 	}
@@ -249,12 +258,14 @@ class LanguageConverterTest extends MediaWikiLangTestCase {
 
 		$this->setContentLang( 'tg-latn' );
 		$wgRequest->setVal( 'variant', 'tg' );
-		$wgUser = User::newFromId( "admin" );
-		$wgUser->setId( 1 );
-		$wgUser->mFrom = 'defaults';
-		$wgUser->mOptionsLoaded = true;
+		$user = User::newFromId( "admin" );
+		$user->setId( 1 );
+		$user->mFrom = 'defaults';
 		// The user's data is ignored because the variant is set in the URL.
-		$wgUser->setOption( 'variant', 'tg-latn' );
+		$user->setOption( 'variant', 'tg-latn' );
+
+		$wgUser = $user;
+
 		$this->assertEquals( 'tg', $this->lc->getPreferredVariant() );
 	}
 
@@ -320,24 +331,41 @@ class LanguageConverterTest extends MediaWikiLangTestCase {
 			"в converted to v despite being in attribue"
 		);
 	}
-}
 
-/**
- * Test converter (from Tajiki to latin orthography)
- */
-class TestConverter extends LanguageConverter {
-	private $table = [
-		'б' => 'b',
-		'в' => 'v',
-		'г' => 'g',
-	];
+	/**
+	 * @dataProvider provideTitlesToConvert
+	 * @covers       LanguageConverter::convertTitle
+	 *
+	 * @param LinkTarget $linkTarget LinkTarget to convert
+	 * @param string $expected
+	 */
+	public function testConvertTitle( LinkTarget $linkTarget, string $expected ) : void {
+		$actual = $this->lc->convertTitle( $linkTarget );
+		$this->assertSame( $expected, $actual );
+	}
 
-	public function loadDefaultTables() {
-		$this->mTables = [
-			'sgs' => new ReplacementArray(),
-			'simple' => new ReplacementArray(),
-			'tg-latn' => new ReplacementArray( $this->table ),
-			'tg' => new ReplacementArray()
+	public function provideTitlesToConvert() : array {
+		return [
+			'Title FromText default' => [
+				Title::newFromText( 'Dummy_title' ),
+				'Dummy title',
+			],
+			'Title FromText with NS' => [
+				Title::newFromText( 'Dummy_title', NS_FILE ),
+				'Акс:Dummy title',
+			],
+			'Title MainPage default' => [
+				Title::newMainPage(),
+				'Main Page',
+			],
+			'Title MainPage with MessageLocalizer' => [
+				Title::newMainPage( new MockMessageLocalizer() ),
+				'Main Page',
+			],
+			'TitleValue' => [
+				new TitleValue( NS_FILE, 'Dummy page' ),
+				'Акс:Dummy page',
+			],
 		];
 	}
 }

@@ -110,6 +110,10 @@ class SwiftFileBackend extends FileBackendStore {
 	 *   - writeUsers          : Swift users with write access to public containers (account:username)
 	 *   - secureReadUsers     : Swift users with read access to private containers (account:username)
 	 *   - secureWriteUsers    : Swift users with write access to private containers (account:username)
+	 *   - connTimeout         : The HTTP connect timeout to use when connecting to Swift, in
+	 *                           seconds.
+	 *   - reqTimeout          : The HTTP request timeout to use when communicating with Swift, in
+	 *                           seconds.
 	 */
 	public function __construct( array $config ) {
 		parent::__construct( $config );
@@ -124,8 +128,16 @@ class SwiftFileBackend extends FileBackendStore {
 		$this->shardViaHashLevels = $config['shardViaHashLevels'] ?? '';
 		$this->rgwS3AccessKey = $config['rgwS3AccessKey'] ?? '';
 		$this->rgwS3SecretKey = $config['rgwS3SecretKey'] ?? '';
+
 		// HTTP helper client
-		$this->http = new MultiHttpClient( [] );
+		$httpOptions = [];
+		foreach ( [ 'connTimeout', 'reqTimeout' ] as $optionName ) {
+			if ( isset( $config[$optionName] ) ) {
+				$httpOptions[$optionName] = $config[$optionName];
+			}
+		}
+		$this->http = new MultiHttpClient( $httpOptions );
+
 		// Cache container information to mask latency
 		if ( isset( $config['wanCache'] ) && $config['wanCache'] instanceof WANObjectCache ) {
 			$this->memCache = $config['wanCache'];
@@ -196,18 +208,15 @@ class SwiftFileBackend extends FileBackendStore {
 		}
 		// By default, Swift has annoyingly low maximum header value limits
 		if ( isset( $contentHeaders['content-disposition'] ) ) {
-			$disposition = '';
+			$maxLength = 255;
 			// @note: assume FileBackend::makeContentDisposition() already used
-			foreach ( explode( ';', $contentHeaders['content-disposition'] ) as $part ) {
-				$part = trim( $part );
-				$new = ( $disposition === '' ) ? $part : "{$disposition};{$part}";
-				if ( strlen( $new ) <= 255 ) {
-					$disposition = $new;
-				} else {
-					break; // too long; sigh
-				}
+			$offset = $maxLength - strlen( $contentHeaders['content-disposition'] );
+			if ( $offset < 0 ) {
+				$pos = strrpos( $contentHeaders['content-disposition'], ';', $offset );
+				$contentHeaders['content-disposition'] = $pos === false
+					? ''
+					: trim( substr( $contentHeaders['content-disposition'], 0, $pos ) );
 			}
-			$contentHeaders['content-disposition'] = $disposition;
 		}
 
 		return $contentHeaders;

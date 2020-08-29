@@ -37,8 +37,8 @@ class Linker {
 	/**
 	 * Flags for userToolLinks()
 	 */
-	const TOOL_LINKS_NOBLOCK = 1;
-	const TOOL_LINKS_EMAIL = 2;
+	public const TOOL_LINKS_NOBLOCK = 1;
+	public const TOOL_LINKS_EMAIL = 2;
 
 	/**
 	 * This function returns an HTML link to the given target.  It serves a few
@@ -164,7 +164,7 @@ class Linker {
 	public static function makeSelfLinkObj( $nt, $html = '', $query = '', $trail = '', $prefix = '' ) {
 		$nt = Title::newFromLinkTarget( $nt );
 		$ret = "<a class=\"mw-selflink selflink\">{$prefix}{$html}</a>{$trail}";
-		if ( !Hooks::run( 'SelfLinkBegin', [ $nt, &$html, &$trail, &$prefix, &$ret ] ) ) {
+		if ( !Hooks::runner()->onSelfLinkBegin( $nt, $html, $trail, $prefix, $ret ) ) {
 			return $ret;
 		}
 
@@ -202,19 +202,14 @@ class Linker {
 
 	/**
 	 * @since 1.16.3
+	 * @deprecated since 1.35, use LinkRenderer::normalizeTarget()
 	 * @param LinkTarget $target
 	 * @return LinkTarget
 	 */
 	public static function normaliseSpecialPage( LinkTarget $target ) {
-		if ( $target->getNamespace() == NS_SPECIAL && !$target->isExternal() ) {
-			list( $name, $subpage ) = MediaWikiServices::getInstance()->getSpecialPageFactory()->
-				resolveAlias( $target->getDBkey() );
-			if ( $name ) {
-				return SpecialPage::getTitleValueFor( $name, $subpage, $target->getFragment() );
-			}
-		}
-
-		return $target;
+		wfDeprecated( __METHOD__, '1.35' );
+		$linkRenderer = MediaWikiServices::getInstance()->getLinkRenderer();
+		return $linkRenderer->normalizeTarget( $target );
 	}
 
 	/**
@@ -250,10 +245,10 @@ class Linker {
 			$alt = self::fnamePart( $url );
 		}
 		$img = '';
-		$success = Hooks::run( 'LinkerMakeExternalImage', [ &$url, &$alt, &$img ] );
+		$success = Hooks::runner()->onLinkerMakeExternalImage( $url, $alt, $img );
 		if ( !$success ) {
 			wfDebug( "Hook LinkerMakeExternalImage changed the output of external image "
-				. "with url {$url} and alt text {$alt} to {$img}\n", true );
+				. "with url {$url} and alt text {$alt} to {$img}" );
 			return $img;
 		}
 		return Html::element( 'img',
@@ -308,15 +303,15 @@ class Linker {
 		$title = Title::newFromLinkTarget( $title );
 		$res = null;
 		$dummy = new DummyLinker;
-		if ( !Hooks::run( 'ImageBeforeProduceHTML', [ &$dummy, &$title,
-			&$file, &$frameParams, &$handlerParams, &$time, &$res,
-			$parser, &$query, &$widthOption
-		] ) ) {
+		if ( !Hooks::runner()->onImageBeforeProduceHTML( $dummy, $title,
+			$file, $frameParams, $handlerParams, $time, $res,
+			$parser, $query, $widthOption )
+		) {
 			return $res;
 		}
 
 		if ( $file && !$file->allowInlineDisplay() ) {
-			wfDebug( __METHOD__ . ': ' . $title->getPrefixedDBkey() . " does not allow inline display\n" );
+			wfDebug( __METHOD__ . ': ' . $title->getPrefixedDBkey() . " does not allow inline display" );
 			return self::link( $title );
 		}
 
@@ -467,8 +462,9 @@ class Linker {
 				}
 			}
 		} elseif ( isset( $frameParams['link-title'] ) && $frameParams['link-title'] !== '' ) {
+			$linkRenderer = MediaWikiServices::getInstance()->getLinkRenderer();
 			$mtoParams['custom-title-link'] = Title::newFromLinkTarget(
-				self::normaliseSpecialPage( $frameParams['link-title'] )
+				$linkRenderer->normalizeTarget( $frameParams['link-title'] )
 			);
 		} elseif ( !empty( $frameParams['no-link'] ) ) {
 			// No link
@@ -800,10 +796,11 @@ class Linker {
 			'title' => $alt
 		];
 
-		if ( !Hooks::run( 'LinkerMakeMediaLinkFile',
-			[ Title::castFromLinkTarget( $title ), $file, &$html, &$attribs, &$ret ] ) ) {
+		if ( !Hooks::runner()->onLinkerMakeMediaLinkFile(
+			Title::castFromLinkTarget( $title ), $file, $html, $attribs, $ret )
+		) {
 			wfDebug( "Hook LinkerMakeMediaLinkFile changed the output of link "
-				. "with url {$url} and text {$html} to {$ret}\n", true );
+				. "with url {$url} and text {$html} to {$ret}" );
 			return $ret;
 		}
 
@@ -877,11 +874,11 @@ class Linker {
 			$attribs['rel'] = implode( ' ', $combined );
 		}
 		$link = '';
-		$success = Hooks::run( 'LinkerMakeExternalLink',
-			[ &$url, &$text, &$link, &$attribs, $linktype ] );
+		$success = Hooks::runner()->onLinkerMakeExternalLink(
+			$url, $text, $link, $attribs, $linktype );
 		if ( !$success ) {
 			wfDebug( "Hook LinkerMakeExternalLink changed the output of link "
-				. "with url {$url} and text {$text} to {$link}\n", true );
+				. "with url {$url} and text {$text} to {$link}" );
 			return $link;
 		}
 		$attribs['href'] = $url;
@@ -951,7 +948,7 @@ class Linker {
 			return ' ' . wfMessage( 'empty-username' )->parse();
 		}
 
-		global $wgUser, $wgDisableAnonTalk, $wgLang;
+		global $wgDisableAnonTalk, $wgLang;
 		$talkable = !( $wgDisableAnonTalk && $userId == 0 );
 		$blockable = !( $flags & self::TOOL_LINKS_NOBLOCK );
 		$addEmailLink = $flags & self::TOOL_LINKS_EMAIL && $userId;
@@ -982,17 +979,18 @@ class Linker {
 
 			$items[] = self::link( $contribsPage, wfMessage( 'contribslink' )->escaped(), $attribs );
 		}
+		$user = RequestContext::getMain()->getUser();
 		$userCanBlock = MediaWikiServices::getInstance()->getPermissionManager()
-			->userHasRight( $wgUser, 'block' );
+			->userHasRight( $user, 'block' );
 		if ( $blockable && $userCanBlock ) {
 			$items[] = self::blockLink( $userId, $userText );
 		}
 
-		if ( $addEmailLink && $wgUser->canSendEmail() ) {
+		if ( $addEmailLink && $user->canSendEmail() ) {
 			$items[] = self::emailLink( $userId, $userText );
 		}
 
-		Hooks::run( 'UserToolLinksEdit', [ $userId, $userText, &$items ] );
+		Hooks::runner()->onUserToolLinksEdit( $userId, $userText, $items );
 
 		if ( !$items ) {
 			return '';
@@ -1095,20 +1093,38 @@ class Linker {
 	/**
 	 * Generate a user link if the current user is allowed to view it
 	 * @since 1.16.3
-	 * @param Revision $rev
+	 * @param RevisionRecord|Revision $rev (RevisionRecord allowed since 1.35, Revision
+	 *    deprecated since 1.35)
 	 * @param bool $isPublic Show only if all users can see it
 	 * @return string HTML fragment
 	 */
 	public static function revUserLink( $rev, $isPublic = false ) {
-		if ( $rev->isDeleted( RevisionRecord::DELETED_USER ) && $isPublic ) {
+		// TODO inject a user
+		$user = RequestContext::getMain()->getUser();
+
+		if ( $rev instanceof Revision ) {
+			wfDeprecated( __METHOD__ . ' with a Revision object', '1.35' );
+			$revRecord = $rev->getRevisionRecord();
+		} else {
+			$revRecord = $rev;
+		}
+
+		if ( $revRecord->isDeleted( RevisionRecord::DELETED_USER ) && $isPublic ) {
 			$link = wfMessage( 'rev-deleted-user' )->escaped();
-		} elseif ( $rev->userCan( RevisionRecord::DELETED_USER ) ) {
-			$link = self::userLink( $rev->getUser( RevisionRecord::FOR_THIS_USER ),
-				$rev->getUserText( RevisionRecord::FOR_THIS_USER ) );
+		} elseif ( RevisionRecord::userCanBitfield(
+			$revRecord->getVisibility(),
+			RevisionRecord::DELETED_USER,
+			$user
+		) ) {
+			$revUser = $revRecord->getUser( RevisionRecord::FOR_THIS_USER, $user );
+			$link = self::userLink(
+				$revUser ? $revUser->getId() : 0,
+				$revUser ? $revUser->getName() : ''
+			);
 		} else {
 			$link = wfMessage( 'rev-deleted-user' )->escaped();
 		}
-		if ( $rev->isDeleted( RevisionRecord::DELETED_USER ) ) {
+		if ( $revRecord->isDeleted( RevisionRecord::DELETED_USER ) ) {
 			return '<span class="history-deleted">' . $link . '</span>';
 		}
 		return $link;
@@ -1117,18 +1133,35 @@ class Linker {
 	/**
 	 * Generate a user tool link cluster if the current user is allowed to view it
 	 * @since 1.16.3
-	 * @param Revision $rev
+	 * @param RevisionRecord|Revision $rev (RevisionRecord allowed since 1.35, Revision
+	 *    deprecated since 1.35)
 	 * @param bool $isPublic Show only if all users can see it
 	 * @param bool $useParentheses (optional) Wrap comments in parentheses where needed
 	 * @return string HTML
 	 */
 	public static function revUserTools( $rev, $isPublic = false, $useParentheses = true ) {
-		if ( $rev->userCan( RevisionRecord::DELETED_USER ) &&
-			( !$rev->isDeleted( RevisionRecord::DELETED_USER ) || !$isPublic )
+		// TODO inject a user
+		$user = RequestContext::getMain()->getUser();
+
+		if ( $rev instanceof Revision ) {
+			wfDeprecated( __METHOD__ . ' with a Revision object', '1.35' );
+			$revRecord = $rev->getRevisionRecord();
+		} else {
+			$revRecord = $rev;
+		}
+
+		if ( RevisionRecord::userCanBitfield(
+			$revRecord->getVisibility(),
+			RevisionRecord::DELETED_USER,
+			$user
+		) &&
+			( !$revRecord->isDeleted( RevisionRecord::DELETED_USER ) || !$isPublic )
 		) {
-			$userId = $rev->getUser( RevisionRecord::FOR_THIS_USER );
-			$userText = $rev->getUserText( RevisionRecord::FOR_THIS_USER );
-			if ( $userId || (string)$userText !== '' ) {
+			$revUser = $revRecord->getUser( RevisionRecord::FOR_THIS_USER, $user );
+			$userId = $revUser ? $revUser->getId() : 0;
+			$userText = $revUser ? $revUser->getName() : '';
+
+			if ( $userId || $userText !== '' ) {
 				$link = self::userLink( $userId, $userText )
 					. self::userToolLinks( $userId, $userText, false, 0, null,
 						$useParentheses );
@@ -1139,7 +1172,7 @@ class Linker {
 			$link = wfMessage( 'rev-deleted-user' )->escaped();
 		}
 
-		if ( $rev->isDeleted( RevisionRecord::DELETED_USER ) ) {
+		if ( $revRecord->isDeleted( RevisionRecord::DELETED_USER ) ) {
 			return ' <span class="history-deleted mw-userlink">' . $link . '</span>';
 		}
 		return $link;
@@ -1220,11 +1253,9 @@ class Linker {
 				$post = $match[3] !== '';
 				$comment = null;
 
-				Hooks::run(
-					'FormatAutocomments',
-					[ &$comment, $pre, $auto, $post, Title::castFromLinkTarget( $title ), $local,
-					$wikiId ]
-				);
+				Hooks::runner()->onFormatAutocomments(
+					$comment, $pre, $auto, $post, Title::castFromLinkTarget( $title ), $local,
+					$wikiId );
 
 				if ( $comment === null ) {
 					if ( $title ) {
@@ -1304,7 +1335,7 @@ class Linker {
 				\[\[
 				\s*+ # ignore leading whitespace, the *+ quantifier disallows backtracking
 				:? # ignore optional leading colon
-				([^\]|]+) # 1. link target; page names cannot include ] or |
+				([^[\]|]+) # 1. link target; page names cannot include [, ] or |
 				(?:\|
 					# 2. link text
 					# Stop matching at ]] without relying on backtracking.
@@ -1372,7 +1403,6 @@ class Linker {
 						$linkText = $text;
 						$linkTarget = Linker::normalizeSubpageLink( $title, $match[1], $linkText );
 
-						Title::newFromText( $linkTarget );
 						try {
 							$target = $services->getTitleParser()->
 								parseTitle( $linkTarget );
@@ -1565,27 +1595,48 @@ class Linker {
 	 * user is allowed to view it.
 	 *
 	 * @since 1.16.3
-	 * @param Revision $rev
+	 * @param RevisionRecord|Revision $rev (RevisionRecord allowed since 1.35, Revision
+	 *    deprecated since 1.35)
 	 * @param bool $local Whether section links should refer to local page
 	 * @param bool $isPublic Show only if all users can see it
 	 * @param bool $useParentheses (optional) Wrap comments in parentheses where needed
 	 * @return string HTML fragment
 	 */
-	public static function revComment( Revision $rev, $local = false, $isPublic = false,
+	public static function revComment( $rev, $local = false, $isPublic = false,
 		$useParentheses = true
 	) {
-		if ( $rev->getComment( RevisionRecord::RAW ) == "" ) {
+		// TODO inject a user
+		$user = RequestContext::getMain()->getUser();
+
+		if ( $rev instanceof Revision ) {
+			wfDeprecated( __METHOD__ . ' with a Revision object', '1.35' );
+			$revRecord = $rev->getRevisionRecord();
+		} else {
+			$revRecord = $rev;
+		}
+
+		if ( $revRecord->getComment( RevisionRecord::RAW ) === null ) {
 			return "";
 		}
-		if ( $rev->isDeleted( RevisionRecord::DELETED_COMMENT ) && $isPublic ) {
+		if ( $revRecord->isDeleted( RevisionRecord::DELETED_COMMENT ) && $isPublic ) {
 			$block = " <span class=\"comment\">" . wfMessage( 'rev-deleted-comment' )->escaped() . "</span>";
-		} elseif ( $rev->userCan( RevisionRecord::DELETED_COMMENT ) ) {
-			$block = self::commentBlock( $rev->getComment( RevisionRecord::FOR_THIS_USER ),
-				$rev->getTitle(), $local, null, $useParentheses );
+		} elseif ( RevisionRecord::userCanBitfield(
+			$revRecord->getVisibility(),
+			RevisionRecord::DELETED_COMMENT,
+			$user
+		) ) {
+			$comment = $revRecord->getComment( RevisionRecord::FOR_THIS_USER, $user );
+			$block = self::commentBlock(
+				$comment ? $comment->text : null,
+				$revRecord->getPageAsLinkTarget(),
+				$local,
+				null,
+				$useParentheses
+			);
 		} else {
 			$block = " <span class=\"comment\">" . wfMessage( 'rev-deleted-comment' )->escaped() . "</span>";
 		}
-		if ( $rev->isDeleted( RevisionRecord::DELETED_COMMENT ) ) {
+		if ( $revRecord->isDeleted( RevisionRecord::DELETED_COMMENT ) ) {
 			return " <span class=\"history-deleted comment\">$block</span>";
 		}
 		return $block;
@@ -1767,7 +1818,7 @@ class Linker {
 	 * Split a link trail, return the "inside" portion and the remainder of the trail
 	 * as a two-element array
 	 * @param string $trail
-	 * @return array
+	 * @return string[]
 	 */
 	public static function splitTrail( $trail ) {
 		$regex = MediaWikiServices::getInstance()->getContentLanguage()->linkTrail();
@@ -1799,8 +1850,10 @@ class Linker {
 	 * If the option noBrackets is set the rollback link wont be enclosed in "[]".
 	 *
 	 * @since 1.16.3. $context added in 1.20. $options added in 1.21
+	 *   $rev could be a RevisionRecord since 1.35
 	 *
-	 * @param Revision $rev
+	 * @param RevisionRecord|Revision $rev (RevisionRecord allowed since 1.35, Revision
+	 *    deprecated since 1.35)
 	 * @param IContextSource|null $context Context to use or null for the main context.
 	 * @param array $options
 	 * @return string
@@ -1808,19 +1861,26 @@ class Linker {
 	public static function generateRollback( $rev, IContextSource $context = null,
 		$options = [ 'verify' ]
 	) {
+		if ( $rev instanceof Revision ) {
+			wfDeprecated( __METHOD__ . ' with a Revision object', '1.35' );
+			$revRecord = $rev->getRevisionRecord();
+		} else {
+			$revRecord = $rev;
+		}
+
 		if ( $context === null ) {
 			$context = RequestContext::getMain();
 		}
 
 		$editCount = false;
 		if ( in_array( 'verify', $options, true ) ) {
-			$editCount = self::getRollbackEditCount( $rev, true );
+			$editCount = self::getRollbackEditCount( $revRecord, true );
 			if ( $editCount === false ) {
 				return '';
 			}
 		}
 
-		$inner = self::buildRollbackLink( $rev, $context, $editCount );
+		$inner = self::buildRollbackLink( $revRecord, $context, $editCount );
 
 		if ( !in_array( 'noBrackets', $options, true ) ) {
 			$inner = $context->msg( 'brackets' )->rawParams( $inner )->escaped();
@@ -1829,7 +1889,7 @@ class Linker {
 		if ( $context->getUser()->getBoolOption( 'showrollbackconfirmation' ) ) {
 			$stats = MediaWikiServices::getInstance()->getStatsdDataFactory();
 			$stats->increment( 'rollbackconfirmation.event.load' );
-			$context->getOutput()->addModules( 'mediawiki.page.rollback.confirmation' );
+			$context->getOutput()->addModules( 'mediawiki.misc-authed-curate' );
 		}
 
 		return '<span class="mw-rollback-link">' . $inner . '</span>';
@@ -1846,12 +1906,23 @@ class Linker {
 	 * Returns null if $wgShowRollbackEditCount is disabled or false if $verify
 	 * is set and the user is the only contributor of the page.
 	 *
-	 * @param Revision $rev
+	 * @todo Unused outside of this file - should it be made private?
+	 *
+	 * @param RevisionRecord|Revision $rev (RevisionRecord allowed since 1.35, Revision
+	 *    deprecated since 1.35)
 	 * @param bool $verify Try to verify that this revision can really be rolled back
 	 * @return int|bool|null
 	 */
 	public static function getRollbackEditCount( $rev, $verify ) {
 		global $wgShowRollbackEditCount;
+
+		if ( $rev instanceof Revision ) {
+			wfDeprecated( __METHOD__ . ' with a Revision object', '1.35' );
+			$revRecord = $rev->getRevisionRecord();
+		} else {
+			$revRecord = $rev;
+		}
+
 		if ( !is_int( $wgShowRollbackEditCount ) || !$wgShowRollbackEditCount > 0 ) {
 			// Nothing has happened, indicate this by returning 'null'
 			return null;
@@ -1860,12 +1931,11 @@ class Linker {
 		$dbr = wfGetDB( DB_REPLICA );
 
 		// Up to the value of $wgShowRollbackEditCount revisions are counted
-		$revQuery = Revision::getQueryInfo();
+		$revQuery = MediaWikiServices::getInstance()->getRevisionStore()->getQueryInfo();
 		$res = $dbr->select(
 			$revQuery['tables'],
 			[ 'rev_user_text' => $revQuery['fields']['rev_user_text'], 'rev_deleted' ],
-			// $rev->getPage() returns null sometimes
-			[ 'rev_page' => $rev->getTitle()->getArticleID() ],
+			[ 'rev_page' => $revRecord->getPageId() ],
 			__METHOD__,
 			[
 				'USE INDEX' => [ 'revision' => 'page_timestamp' ],
@@ -1875,10 +1945,13 @@ class Linker {
 			$revQuery['joins']
 		);
 
+		$revUser = $revRecord->getUser( RevisionRecord::RAW );
+		$revUserText = $revUser ? $revUser->getName() : '';
+
 		$editCount = 0;
 		$moreRevs = false;
 		foreach ( $res as $row ) {
-			if ( $rev->getUserText( RevisionRecord::RAW ) != $row->rev_user_text ) {
+			if ( $row->rev_user_text != $revUserText ) {
 				if ( $verify &&
 					( $row->rev_deleted & RevisionRecord::DELETED_TEXT
 						|| $row->rev_deleted & RevisionRecord::DELETED_USER
@@ -1907,7 +1980,12 @@ class Linker {
 	 * Build a raw rollback link, useful for collections of "tool" links
 	 *
 	 * @since 1.16.3. $context added in 1.20. $editCount added in 1.21
-	 * @param Revision $rev
+	 *   $rev could be a RevisionRecord since 1.35
+	 *
+	 * @todo Unused outside of this file - should it be made private?
+	 *
+	 * @param RevisionRecord|Revision $rev (RevisionRecord allowed since 1.35, Revision
+	 *    deprecated since 1.35)
 	 * @param IContextSource|null $context Context to use or null for the main context.
 	 * @param int|false $editCount Number of edits that would be reverted
 	 * @return string HTML fragment
@@ -1917,6 +1995,13 @@ class Linker {
 	) {
 		global $wgShowRollbackEditCount, $wgMiserMode;
 
+		if ( $rev instanceof Revision ) {
+			wfDeprecated( __METHOD__ . ' with a Revision object', '1.35' );
+			$revRecord = $rev->getRevisionRecord();
+		} else {
+			$revRecord = $rev;
+		}
+
 		// To config which pages are affected by miser mode
 		$disableRollbackEditCountSpecialPage = [ 'Recentchanges', 'Watchlist' ];
 
@@ -1924,11 +2009,13 @@ class Linker {
 			$context = RequestContext::getMain();
 		}
 
-		$title = $rev->getTitle();
+		$title = $revRecord->getPageAsLinkTarget();
+		$revUser = $revRecord->getUser();
+		$revUserText = $revUser ? $revUser->getName() : '';
 
 		$query = [
 			'action' => 'rollback',
-			'from' => $rev->getUserText(),
+			'from' => $revUserText,
 			'token' => $context->getUser()->getEditToken( 'rollback' ),
 		];
 
@@ -1940,7 +2027,7 @@ class Linker {
 		$options = [ 'known', 'noclasses' ];
 
 		if ( $context->getRequest()->getBool( 'bot' ) ) {
-			//T17999
+			// T17999
 			$query['hidediff'] = '1';
 			$query['bot'] = '1';
 		}
@@ -1960,7 +2047,7 @@ class Linker {
 			&& $wgShowRollbackEditCount > 0
 		) {
 			if ( !is_numeric( $editCount ) ) {
-				$editCount = self::getRollbackEditCount( $rev, false );
+				$editCount = self::getRollbackEditCount( $revRecord, false );
 			}
 
 			if ( $editCount > $wgShowRollbackEditCount ) {
@@ -1981,8 +2068,8 @@ class Linker {
 	 * Returns HTML for the "hidden categories on this page" list.
 	 *
 	 * @since 1.16.3
-	 * @param array $hiddencats Array of hidden categories from Article::getHiddenCategories
-	 *   or similar
+	 * @param array $hiddencats Array of hidden categories
+	 *    from {@link WikiPage::getHiddenCategories} or similar
 	 * @return string HTML output
 	 */
 	public static function formatHiddenCategories( $hiddencats ) {
@@ -2100,30 +2187,42 @@ class Linker {
 	 * undeletion.
 	 *
 	 * @param User $user
-	 * @param Revision $rev
+	 * @param RevisionRecord|Revision $rev (RevisionRecord allowed since 1.35, Revision
+	 *    deprecated since 1.35)
 	 * @param LinkTarget $title
 	 * @return string HTML fragment
 	 */
-	public static function getRevDeleteLink( User $user, Revision $rev, LinkTarget $title ) {
+	public static function getRevDeleteLink( User $user, $rev, LinkTarget $title ) {
+		if ( $rev instanceof Revision ) {
+			wfDeprecated( __METHOD__ . ' with a Revision object', '1.35' );
+			$revRecord = $rev->getRevisionRecord();
+		} else {
+			$revRecord = $rev;
+		}
+
 		$permissionManager = MediaWikiServices::getInstance()->getPermissionManager();
 		$canHide = $permissionManager->userHasRight( $user, 'deleterevision' );
 		$canHideHistory = $permissionManager->userHasRight( $user, 'deletedhistory' );
-		if ( !$canHide && !( $rev->getVisibility() && $canHideHistory ) ) {
+		if ( !$canHide && !( $revRecord->getVisibility() && $canHideHistory ) ) {
 			return '';
 		}
 
-		if ( !$rev->userCan( RevisionRecord::DELETED_RESTRICTED, $user ) ) {
+		if ( !RevisionRecord::userCanBitfield(
+			$revRecord->getVisibility(),
+			RevisionRecord::DELETED_RESTRICTED,
+			$user
+		) ) {
 			return self::revDeleteLinkDisabled( $canHide ); // revision was hidden from sysops
 		}
 		$prefixedDbKey = MediaWikiServices::getInstance()->getTitleFormatter()->
 			getPrefixedDBkey( $title );
-		if ( $rev->getId() ) {
+		if ( $revRecord->getId() ) {
 			// RevDelete links using revision ID are stable across
 			// page deletion and undeletion; use when possible.
 			$query = [
 				'type' => 'revision',
 				'target' => $prefixedDbKey,
-				'ids' => $rev->getId()
+				'ids' => $revRecord->getId()
 			];
 		} else {
 			// Older deleted entries didn't save a revision ID.
@@ -2131,11 +2230,14 @@ class Linker {
 			$query = [
 				'type' => 'archive',
 				'target' => $prefixedDbKey,
-				'ids' => $rev->getTimestamp()
+				'ids' => $revRecord->getTimestamp()
 			];
 		}
-		return self::revDeleteLink( $query,
-			$rev->isDeleted( RevisionRecord::DELETED_RESTRICTED ), $canHide );
+		return self::revDeleteLink(
+			$query,
+			$revRecord->isDeleted( RevisionRecord::DELETED_RESTRICTED ),
+			$canHide
+		);
 	}
 
 	/**
@@ -2196,9 +2298,31 @@ class Linker {
 	) {
 		$options = (array)$options;
 		$options[] = 'withaccess';
+		$tooltipTitle = $name;
+
+		// @since 1.35 - add a WatchlistExpiry feature flag to show new watchstar tooltip message
+		$skin = RequestContext::getMain()->getSkin();
+		$isWatchlistExpiryEnabled = $skin->getConfig()->get( 'WatchlistExpiry' );
+		if ( $name === 'ca-unwatch' && $isWatchlistExpiryEnabled ) {
+			$watchStore = MediaWikiServices::getInstance()->getWatchedItemStore();
+			$watchedItem = $watchStore->getWatchedItem( $skin->getUser(),
+				$skin->getRelevantTitle() );
+			if ( $watchedItem instanceof WatchedItem && $watchedItem->getExpiry() !== null ) {
+				$diffInDays = $watchedItem->getExpiryInDays();
+
+				if ( $diffInDays ) {
+					$msgParams = [ $diffInDays ];
+					// Resolves to tooltip-ca-unwatch-expiring message
+					$tooltipTitle = 'ca-unwatch-expiring';
+				} else { // Resolves to tooltip-ca-unwatch-expiring-hours message
+					$tooltipTitle = 'ca-unwatch-expiring-hours';
+				}
+
+			}
+		}
 
 		$attribs = [
-			'title' => self::titleAttrib( $name, $options, $msgParams ),
+			'title' => self::titleAttrib( $tooltipTitle, $options, $msgParams ),
 			'accesskey' => self::accesskey( $name )
 		];
 		if ( $attribs['title'] === false ) {

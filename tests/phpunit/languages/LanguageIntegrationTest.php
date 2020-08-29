@@ -1,5 +1,6 @@
 <?php
 
+use MediaWiki\Config\ServiceOptions;
 use MediaWiki\Languages\LanguageConverterFactory;
 use MediaWiki\Languages\LanguageFallback;
 use MediaWiki\Languages\LanguageNameUtils;
@@ -21,11 +22,12 @@ class LanguageIntegrationTest extends LanguageClassesTestCase {
 			$this->createNoOpMock( LocalisationCache::class ),
 			$this->createNoOpMock( LanguageNameUtils::class ),
 			$this->createNoOpMock( LanguageFallback::class ),
-			$this->createNoOpMock( LanguageConverterFactory::class )
+			$this->createNoOpMock( LanguageConverterFactory::class ),
+			$this->createHookContainer()
 		);
 	}
 
-	public function setUp() : void {
+	protected function setUp() : void {
 		global $wgHooks;
 
 		parent::setUp();
@@ -1779,7 +1781,7 @@ class LanguageIntegrationTest extends LanguageClassesTestCase {
 
 		Language::clearCaches();
 
-		$this->assertCount( 0, Language::$mLangObjCache );
+		$this->assertSame( [], Language::$mLangObjCache );
 	}
 
 	/**
@@ -1807,28 +1809,60 @@ class LanguageIntegrationTest extends LanguageClassesTestCase {
 	}
 
 	/**
-	 * @dataProvider provideGetNamespaceAliases
-	 * @covers Language::getNamespaceAliases
+	 * Example of the real localisation files being loaded.
+	 *
+	 * This might be a bit cumbersome to maintain long-term,
+	 * but still valueable to have as integration test.
+	 *
+	 * @covers Language
+	 * @covers LocalisationCache
 	 */
-	public function testGetNamespaceAliases( $languageCode, $subset ) {
-		$language = Language::factory( $languageCode );
+	public function testGetNamespaceAliasesReal() {
+		$language = Language::factory( 'zh' );
 		$aliases = $language->getNamespaceAliases();
-		foreach ( $subset as $alias => $nsId ) {
-			$this->assertEquals( $nsId, $aliases[$alias] );
-		}
+		$this->assertSame( NS_FILE, $aliases['文件'] );
+		$this->assertSame( NS_FILE, $aliases['檔案'] );
 	}
 
-	public static function provideGetNamespaceAliases() {
-		// TODO: Add tests for NS_PROJECT_TALK and GenderNamespaces
-		return [
+	/**
+	 * @covers Language::getNamespaceAliases
+	 */
+	public function testGetNamespaceAliasesFullLogic() {
+		$langNameUtils = $this->getMockBuilder( LanguageNameUtils::class )
+			->setConstructorArgs( [
+				new ServiceOptions( LanguageNameUtils::CONSTRUCTOR_OPTIONS, [
+					'ExtraLanguageNames' => [],
+					'UsePigLatinVariant' => false,
+				] ),
+				$this->createHookContainer()
+			] )
+			->setMethods( [ 'getMessagesFileName' ] )
+			->getMock();
+		$langNameUtils->method( 'getMessagesFileName' )->will(
+			$this->returnCallback( function ( $code ) {
+				return __DIR__ . '/../data/messages/Messages_' . $code . '.php';
+			} )
+		);
+		$this->setMwGlobals( 'wgNamespaceAliases', [
+			'Mouse' => NS_SPECIAL,
+		] );
+		$this->setService( 'LanguageNameUtils', $langNameUtils );
+
+		$language = MediaWikiServices::getInstance()->getLanguageFactory()->getLanguage( 'x-bar' );
+
+		$this->assertEquals(
 			[
-				'zh',
-				[
-					'文件' => NS_FILE,
-					'檔案' => NS_FILE,
-				],
+				// from x-bar
+				'Cat' => NS_FILE,
+				'Cat_toots' => NS_FILE_TALK,
+				// inherited from x-foo
+				'Dog' => NS_USER,
+				'Dog' => NS_USER_TALK,
+				// add from site configuration
+				'Mouse' => NS_SPECIAL,
 			],
-		];
+			$language->getNamespaceAliases()
+		);
 	}
 
 	/**
@@ -1879,7 +1913,7 @@ class LanguageIntegrationTest extends LanguageClassesTestCase {
 		return [
 			[ 'alice', 'Alice', 'simple ASCII string', false ],
 			[ 'århus',  'Århus', 'unicode string', false ],
-			//overrides do not affect ASCII characters
+			// overrides do not affect ASCII characters
 			[ 'foo', 'Foo', 'ASCII is not overriden', [ 'f' => 'b' ] ],
 			// but they do affect non-ascii ones
 			[ 'èl', 'Ll' , 'Non-ASCII is overridden', [ 'è' => 'L' ] ],
@@ -1932,15 +1966,15 @@ class LanguageIntegrationTest extends LanguageClassesTestCase {
 		return Language::fetchLanguageName( ...$args );
 	}
 
-	private static function getFileName( ...$args ) {
+	private function getFileName( ...$args ) {
 		return Language::getFileName( ...$args );
 	}
 
-	private static function getMessagesFileName( $code ) {
+	private function getMessagesFileName( $code ) {
 		return Language::getMessagesFileName( $code );
 	}
 
-	private static function getJsonMessagesFileName( $code ) {
+	private function getJsonMessagesFileName( $code ) {
 		return Language::getJsonMessagesFileName( $code );
 	}
 
@@ -1980,7 +2014,8 @@ class LanguageIntegrationTest extends LanguageClassesTestCase {
 			MediaWikiServices::getInstance()->getLocalisationCache(),
 			$this->createNoOpMock( LanguageNameUtils::class ),
 			$this->createNoOpMock( LanguageFallback::class ),
-			$this->createNoOpMock( LanguageConverterFactory::class )
+			$this->createNoOpMock( LanguageConverterFactory::class ),
+			$this->createHookContainer()
 		);
 		$config += [
 			'wgMetaNamespace' => 'Project',

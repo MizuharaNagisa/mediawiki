@@ -21,6 +21,7 @@
  */
 
 use MediaWiki\Block\DatabaseBlock;
+use MediaWiki\MediaWikiServices;
 use MediaWiki\ParamValidator\TypeDef\UserDef;
 
 /**
@@ -60,17 +61,9 @@ class ApiBlock extends ApiBase {
 			}
 		}
 
-		$editingRestriction = 'sitewide';
-		$pageRestrictions = '';
-		$namespaceRestrictions = '';
-		if ( $this->getConfig()->get( 'EnablePartialBlocks' ) ) {
-			if ( $params['partial'] ) {
-				$editingRestriction = 'partial';
-			}
-
-			$pageRestrictions = implode( "\n", (array)$params['pagerestrictions'] );
-			$namespaceRestrictions = implode( "\n", (array)$params['namespacerestrictions'] );
-		}
+		$editingRestriction = $params['partial'] ? 'partial' : 'sitewide';
+		$pageRestrictions = implode( "\n", (array)$params['pagerestrictions'] );
+		$namespaceRestrictions = implode( "\n", (array)$params['namespacerestrictions'] );
 
 		if ( $params['userid'] !== null ) {
 			$username = User::whoIs( $params['userid'] );
@@ -86,7 +79,8 @@ class ApiBlock extends ApiBase {
 			// T40633 - if the target is a user (not an IP address), but it
 			// doesn't exist or is unusable, error.
 			if ( $type === DatabaseBlock::TYPE_USER &&
-				( $target->isAnon() /* doesn't exist */ || !User::isUsableName( $params['user'] ) )
+				( $target->isAnon() /* doesn't exist */ ||
+					!MediaWikiServices::getInstance()->getUserNameUtils()->isUsable( $params['user'] ) )
 			) {
 				$this->dieWithError( [ 'nosuchusershort', $params['user'] ], 'nosuchuser' );
 			}
@@ -165,12 +159,9 @@ class ApiBlock extends ApiBase {
 		$res['hidename'] = $params['hidename'];
 		$res['allowusertalk'] = $params['allowusertalk'];
 		$res['watchuser'] = $params['watchuser'];
-
-		if ( $this->getConfig()->get( 'EnablePartialBlocks' ) ) {
-			$res['partial'] = $params['partial'];
-			$res['pagerestrictions'] = $params['pagerestrictions'];
-			$res['namespacerestrictions'] = $params['namespacerestrictions'];
-		}
+		$res['partial'] = $params['partial'];
+		$res['pagerestrictions'] = $params['pagerestrictions'];
+		$res['namespacerestrictions'] = $params['namespacerestrictions'];
 
 		$this->getResult()->addValue( null, $this->getModuleName(), $res );
 	}
@@ -184,7 +175,7 @@ class ApiBlock extends ApiBase {
 	}
 
 	public function getAllowedParams() {
-		$params = [
+		return [
 			'user' => [
 				ApiBase::PARAM_TYPE => 'user',
 				UserDef::PARAM_ALLOWED_USER_TYPES => [ 'name', 'ip', 'cidr', 'id' ],
@@ -207,22 +198,17 @@ class ApiBlock extends ApiBase {
 				ApiBase::PARAM_TYPE => 'tags',
 				ApiBase::PARAM_ISMULTI => true,
 			],
-		];
-
-		if ( $this->getConfig()->get( 'EnablePartialBlocks' ) ) {
-			$params['partial'] = false;
-			$params['pagerestrictions'] = [
+			'partial' => false,
+			'pagerestrictions' => [
 				ApiBase::PARAM_ISMULTI => true,
 				ApiBase::PARAM_ISMULTI_LIMIT1 => 10,
 				ApiBase::PARAM_ISMULTI_LIMIT2 => 10,
-			];
-			$params['namespacerestrictions'] = [
+			],
+			'namespacerestrictions' => [
 				ApiBase::PARAM_ISMULTI => true,
 				ApiBase::PARAM_TYPE => 'namespace',
-			];
-		}
-
-		return $params;
+			],
+		];
 	}
 
 	public function needsToken() {

@@ -3,12 +3,12 @@
 /**
  * @covers UnsupportedSlotDiffRenderer
  */
-class UnsupportedSlotDiffRendererTest extends MediaWikiTestCase {
+class UnsupportedSlotDiffRendererTest extends MediaWikiIntegrationTestCase {
 
 	public function provideDiff() {
 		$oldContent = new TextContent( 'Kittens' );
 		$newContent = new TextContent( 'Goats' );
-		$badContent = new UnknownContent( 'Dragons', 'xyzzy' );
+		$badContent = new FallbackContent( 'Dragons', 'xyzzy' );
 
 		yield [ '(unsupported-content-diff)', $oldContent, null ];
 		yield [ '(unsupported-content-diff)', null, $newContent ];

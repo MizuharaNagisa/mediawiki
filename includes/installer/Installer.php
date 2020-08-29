@@ -57,7 +57,7 @@ abstract class Installer {
 	 * Defining this is necessary because PHP may be linked with a system version
 	 * of PCRE, which may be older than that bundled with the minimum PHP version.
 	 */
-	const MINIMUM_PCRE_VERSION = '7.2';
+	public const MINIMUM_PCRE_VERSION = '7.2';
 
 	/**
 	 * @var array
@@ -222,10 +222,9 @@ abstract class Installer {
 		'_MemCachedServers' => '',
 		'_UpgradeKeySupplied' => false,
 		'_ExistingDBSettings' => false,
+		// Single quotes are intentional, LocalSettingsGenerator must output this unescaped.
+		'_Logo' => '$wgResourceBasePath/resources/assets/wiki.png',
 
-		// $wgLogo is probably wrong (T50084); set something that will work.
-		// Single quotes work fine here, as LocalSettingsGenerator outputs this unescaped.
-		'wgLogo' => '$wgResourceBasePath/resources/assets/wiki.png',
 		'wgAuthenticationTokenVersion' => 1,
 	];
 
@@ -405,7 +404,7 @@ abstract class Installer {
 	 * Constructor, always call this from child classes.
 	 */
 	public function __construct() {
-		global $wgMemc, $wgUser, $wgObjectCaches;
+		global $wgUser, $wgObjectCaches;
 
 		$defaultConfig = new GlobalVarConfig(); // all the stuff from DefaultSettings.php
 		$installerConfig = self::getInstallerConfig( $defaultConfig );
@@ -431,16 +430,22 @@ abstract class Installer {
 		// Disable object cache (otherwise CACHE_ANYTHING will try CACHE_DB and
 		// SqlBagOStuff will then throw since we just disabled wfGetDB)
 		$wgObjectCaches = $mwServices->getMainConfig()->get( 'ObjectCaches' );
-		$wgMemc = ObjectCache::getInstance( CACHE_NONE );
 
 		// Disable interwiki lookup, to avoid database access during parses
 		$mwServices->redefineService( 'InterwikiLookup', function () {
 			return new NullInterwikiLookup();
 		} );
+		// Disable user options database fetching, only rely on default options.
+		$mwServices->redefineService(
+			'UserOptionsLookup',
+			function ( MediaWikiServices $services ) {
+				return $services->get( '_DefaultOptionsLookup' );
+			}
+		);
 
-		// Having a user with id = 0 safeguards us from DB access via User::loadOptions().
-		$wgUser = User::newFromId( 0 );
-		RequestContext::getMain()->setUser( $wgUser );
+		$user = User::newFromId( 0 );
+		$wgUser = $user;
+		RequestContext::getMain()->setUser( $user );
 
 		$this->settings = $this->internalDefaults;
 
@@ -461,8 +466,7 @@ abstract class Installer {
 		}
 
 		$this->parserTitle = Title::newFromText( 'Installer' );
-		$this->parserOptions = new ParserOptions( $wgUser ); // language will be wrong :(
-		$this->parserOptions->setTidy( true );
+		$this->parserOptions = new ParserOptions( $user ); // language will be wrong :(
 		// Don't try to access DB before user language is initialised
 		$this->setParserLanguage( $mwServices->getLanguageFactory()->getLanguage( 'en' ) );
 	}
@@ -668,9 +672,7 @@ abstract class Installer {
 		# posix_getegid() *not* getmygid() because we want the group of the webserver,
 		# not whoever owns the current script.
 		$gid = posix_getegid();
-		$group = posix_getpwuid( $gid )['name'];
-
-		return $group;
+		return posix_getpwuid( $gid )['name'] ?? null;
 	}
 
 	/**
@@ -1513,9 +1515,9 @@ abstract class Installer {
 
 		$registry = new ExtensionRegistry();
 		$data = $registry->readFromQueue( $queue );
-		$wgAutoloadClasses += $data['autoload'];
+		$wgAutoloadClasses += $data['globals']['wgAutoloadClasses'];
 
-		// @phan-suppress-next-line PhanUndeclaredVariable $wgHooks is set by DefaultSettings
+		// @phan-suppress-next-line PhanUndeclaredVariable,PhanCoalescingAlwaysNull $wgHooks is set by DefaultSettings
 		$hooksWeWant = $wgHooks['LoadExtensionSchemaUpdates'] ?? [];
 
 		if ( isset( $data['globals']['wgHooks']['LoadExtensionSchemaUpdates'] ) ) {
@@ -1548,10 +1550,12 @@ abstract class Installer {
 		$coreInstallSteps = [
 			[ 'name' => 'database', 'callback' => [ $installer, 'setupDatabase' ] ],
 			[ 'name' => 'tables', 'callback' => [ $installer, 'createTables' ] ],
+			[ 'name' => 'tables-manual', 'callback' => [ $installer, 'createManualTables' ] ],
 			[ 'name' => 'interwiki', 'callback' => [ $installer, 'populateInterwikiTable' ] ],
 			[ 'name' => 'stats', 'callback' => [ $this, 'populateSiteStats' ] ],
 			[ 'name' => 'keys', 'callback' => [ $this, 'generateKeys' ] ],
 			[ 'name' => 'updates', 'callback' => [ $installer, 'insertUpdateKeys' ] ],
+			[ 'name' => 'restore-services', 'callback' => [ $this, 'restoreServices' ] ],
 			[ 'name' => 'sysop', 'callback' => [ $this, 'createSysop' ] ],
 			[ 'name' => 'mainpage', 'callback' => [ $this, 'createMainpage' ] ],
 		];
@@ -1645,6 +1649,21 @@ abstract class Installer {
 	}
 
 	/**
+	 * Restore services that have been redefined in the early stage of installation
+	 * @return Status
+	 */
+	public function restoreServices() {
+		MediaWikiServices::resetGlobalInstance();
+		MediaWikiServices::getInstance()->redefineService(
+			'UserOptionsLookup',
+			function ( MediaWikiServices $services ) {
+				return $services->get( 'UserOptionsManager' );
+			}
+		);
+		return Status::newGood();
+	}
+
+	/**
 	 * Generate a secret value for variables using a secure generator.
 	 *
 	 * @param array $keys
@@ -1678,10 +1697,15 @@ abstract class Installer {
 		if ( $user->idForName() == 0 ) {
 			$user->addToDatabase();
 
-			try {
-				$user->setPassword( $this->getVar( '_AdminPassword' ) );
-			} catch ( PasswordError $pwe ) {
-				return Status::newFatal( 'config-admin-error-password', $name, $pwe->getMessage() );
+			$password = $this->getVar( '_AdminPassword' );
+			$status = $user->changeAuthenticationData( [
+				'username' => $user->getName(),
+				'password' => $password,
+				'retype' => $password,
+			] );
+			if ( !$status->isGood() ) {
+				return Status::newFatal( 'config-admin-error-password',
+					$name, $status->getWikiText( null, null, $this->getVar( '_UserLang' ) ) );
 			}
 
 			$user->addGroup( 'sysop' );
@@ -1782,6 +1806,8 @@ abstract class Installer {
 		$GLOBALS['wgUseDatabaseMessages'] = false;
 		// Don't cache langconv tables
 		$GLOBALS['wgLanguageConverterCacheType'] = CACHE_NONE;
+		// Don't try to cache ResourceLoader dependencies in the database
+		$GLOBALS['wgResourceLoaderUseObjectCacheForDeps'] = true;
 		// Debug-friendly
 		$GLOBALS['wgShowExceptionDetails'] = true;
 		$GLOBALS['wgShowHostnames'] = true;
@@ -1807,6 +1833,9 @@ abstract class Installer {
 				] ]
 			]
 		];
+
+		// Don't use the DB as the main stash
+		$GLOBALS['wgMainStash'] = CACHE_NONE;
 
 		// Don't try to use any object cache for SessionManager either.
 		$GLOBALS['wgSessionCacheType'] = CACHE_NONE;

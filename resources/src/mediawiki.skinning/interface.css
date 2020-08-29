@@ -25,7 +25,7 @@ textarea {
 
 .editOptions {
 	background-color: #eaecf0;
-	color: #222;
+	color: #202122;
 	border: 1px solid #c8ccd1;
 	border-top: 0;
 	padding: 1em 1em 1.5em 1em;
@@ -68,4 +68,9 @@ textarea {
 
 span.subpages {
 	display: block;
+}
+
+/* Hide links which require JavaScript to work */
+.client-nojs #t-print {
+	display: none; /* T167956 */
 }

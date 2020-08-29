@@ -19,6 +19,7 @@ use Wikimedia\ParamValidator\ValidationException;
  *     - 'max': Normal maximum allowed, or null if there is no limit.
  *     - 'highmax': High limits maximum allowed, or null if there is no limit.
  *
+ * @stable to extend
  * @since 1.35
  * @unstable
  */
@@ -29,22 +30,22 @@ abstract class NumericDef extends TypeDef {
 	 *
 	 * If set and truthy, the 'outofrange' failure is non-fatal.
 	 */
-	const PARAM_IGNORE_RANGE = 'param-ignore-range';
+	public const PARAM_IGNORE_RANGE = 'param-ignore-range';
 
 	/**
 	 * (int|float) Minimum allowed value.
 	 */
-	const PARAM_MIN = 'param-min';
+	public const PARAM_MIN = 'param-min';
 
 	/**
 	 * (int|float) Maximum allowed value (normal limits)
 	 */
-	const PARAM_MAX = 'param-max';
+	public const PARAM_MAX = 'param-max';
 
 	/**
 	 * (int|float) Maximum allowed value (high limits)
 	 */
-	const PARAM_MAX2 = 'param-max2';
+	public const PARAM_MAX2 = 'param-max2';
 
 	/** @var string PHP type (as from `gettype()`) of values this NumericDef handles */
 	protected $valueType = 'integer';
@@ -105,6 +106,10 @@ abstract class NumericDef extends TypeDef {
 		return $value;
 	}
 
+	/**
+	 * @inheritDoc
+	 * @stable to override
+	 */
 	public function normalizeSettings( array $settings ) {
 		if ( !isset( $settings[self::PARAM_MAX] ) ) {
 			unset( $settings[self::PARAM_MAX2] );
@@ -119,6 +124,10 @@ abstract class NumericDef extends TypeDef {
 		return parent::normalizeSettings( $settings );
 	}
 
+	/**
+	 * @inheritDoc
+	 * @stable to override
+	 */
 	public function checkSettings( string $name, $settings, array $options, array $ret ) : array {
 		$ret = parent::checkSettings( $name, $settings, $options, $ret );
 
@@ -159,6 +168,10 @@ abstract class NumericDef extends TypeDef {
 		return $ret;
 	}
 
+	/**
+	 * @inheritDoc
+	 * @stable to override
+	 */
 	public function getParamInfo( $name, array $settings, array $options ) {
 		$info = parent::getParamInfo( $name, $settings, $options );
 
@@ -172,6 +185,10 @@ abstract class NumericDef extends TypeDef {
 		return $info;
 	}
 
+	/**
+	 * @inheritDoc
+	 * @stable to override
+	 */
 	public function getHelpInfo( $name, array $settings, array $options ) {
 		$info = parent::getHelpInfo( $name, $settings, $options );
 

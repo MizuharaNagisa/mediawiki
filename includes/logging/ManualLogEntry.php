@@ -33,6 +33,10 @@ use Wikimedia\Rdbms\IDatabase;
 /**
  * Class for creating new log entries and inserting them into the database.
  *
+ * @newable
+ * @note marked as newable in 1.35 for lack of a better alternative,
+ *       but should be changed to use the builder pattern or the
+ *       command pattern.
  * @since 1.19
  */
 class ManualLogEntry extends LogEntryBase implements Taggable {
@@ -79,6 +83,7 @@ class ManualLogEntry extends LogEntryBase implements Taggable {
 	protected $legacy = false;
 
 	/**
+	 * @stable to call
 	 * @since 1.19
 	 * @param string $type
 	 * @param string $subtype
@@ -385,7 +390,7 @@ class ManualLogEntry extends LogEntryBase implements Taggable {
 			function () use ( $newId, $to, $canAddTags ) {
 				$log = new LogPage( $this->getType() );
 				if ( !$log->isRestricted() ) {
-					Hooks::runWithoutAbort( 'ManualLogEntryBeforePublish', [ $this ] );
+					Hooks::runner()->onManualLogEntryBeforePublish( $this );
 					$rc = $this->getRecentChange( $newId );
 
 					if ( $to === 'rc' || $to === 'rcandudp' ) {

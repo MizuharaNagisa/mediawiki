@@ -13,21 +13,18 @@ use Wikimedia\TestingAccessWrapper;
  * @group Database
  */
 class ApiStashEditTest extends ApiTestCase {
-	public function setUp() : void {
+	protected function setUp() : void {
 		parent::setUp();
 		$this->setService( 'PageEditStash', new PageEditStash(
 			new HashBagOStuff( [] ),
 			MediaWikiServices::getInstance()->getDBLoadBalancer(),
 			new NullLogger(),
 			new NullStatsdDataFactory(),
+			MediaWikiServices::getInstance()->getHookContainer(),
 			PageEditStash::INITIATOR_USER
 		) );
 		// Clear rate-limiting cache between tests
 		$this->setMwGlobals( 'wgMainCacheType', 'hash' );
-	}
-
-	public function tearDown() : void {
-		parent::tearDown();
 	}
 
 	/**
@@ -187,81 +184,83 @@ class ApiStashEditTest extends ApiTestCase {
 
 	public function testPageWithNoRevisions() {
 		$name = ucfirst( __FUNCTION__ );
-		$rev = $this->editPage( $name, '' )->value['revision'];
+		$revRecord = $this->editPage( $name, '' )->value['revision-record'];
 
-		$this->setExpectedApiException( [ 'apierror-missingrev-pageid', $rev->getPage() ] );
+		$this->setExpectedApiException( [ 'apierror-missingrev-pageid', $revRecord->getPageId() ] );
 
 		// Corrupt the database.  @todo Does the API really need to fail gracefully for this case?
 		$dbw = wfGetDB( DB_MASTER );
 		$dbw->update(
 			'page',
 			[ 'page_latest' => 0 ],
-			[ 'page_id' => $rev->getPage() ],
+			[ 'page_id' => $revRecord->getPageId() ],
 			__METHOD__
 		);
 
-		$this->doStash( [ 'title' => $name, 'baserevid' => $rev->getId() ] );
+		$this->doStash( [ 'title' => $name, 'baserevid' => $revRecord->getId() ] );
 	}
 
 	public function testExistingPage() {
 		$name = ucfirst( __FUNCTION__ );
-		$rev = $this->editPage( $name, '' )->value['revision'];
+		$revRecord = $this->editPage( $name, '' )->value['revision-record'];
 
-		$this->doStash( [ 'title' => $name, 'baserevid' => $rev->getId() ] );
+		$this->doStash( [ 'title' => $name, 'baserevid' => $revRecord->getId() ] );
 	}
 
 	public function testInterveningEdit() {
 		$name = ucfirst( __FUNCTION__ );
-		$oldRev = $this->editPage( $name, "A\n\nB" )->value['revision'];
+		$oldRevRecord = $this->editPage( $name, "A\n\nB" )->value['revision-record'];
 		$this->editPage( $name, "A\n\nC" );
 
 		$this->doStash( [
 			'title' => $name,
-			'baserevid' => $oldRev->getId(),
+			'baserevid' => $oldRevRecord->getId(),
 			'text' => "D\n\nB",
 		] );
 	}
 
 	public function testEditConflict() {
 		$name = ucfirst( __FUNCTION__ );
-		$oldRev = $this->editPage( $name, 'A' )->value['revision'];
+		$oldRevRecord = $this->editPage( $name, 'A' )->value['revision-record'];
 		$this->editPage( $name, 'B' );
 
 		$this->doStash( [
 			'title' => $name,
-			'baserevid' => $oldRev->getId(),
+			'baserevid' => $oldRevRecord->getId(),
 			'text' => 'C',
 		], null, 'editconflict' );
 	}
 
 	public function testDeletedRevision() {
 		$name = ucfirst( __FUNCTION__ );
-		$oldRev = $this->editPage( $name, 'A' )->value['revision'];
+		$oldRevRecord = $this->editPage( $name, 'A' )->value['revision-record'];
 		$this->editPage( $name, 'B' );
 
-		$this->setExpectedApiException( [ 'apierror-missingcontent-pageid', $oldRev->getPage() ] );
+		$this->setExpectedApiException(
+			[ 'apierror-missingcontent-pageid', $oldRevRecord->getPageId() ]
+		);
 
-		$this->revisionDelete( $oldRev );
+		$this->revisionDelete( $oldRevRecord );
 
 		$this->doStash( [
 			'title' => $name,
-			'baserevid' => $oldRev->getId(),
+			'baserevid' => $oldRevRecord->getId(),
 			'text' => 'C',
 		] );
 	}
 
 	public function testDeletedRevisionSection() {
 		$name = ucfirst( __FUNCTION__ );
-		$oldRev = $this->editPage( $name, 'A' )->value['revision'];
+		$oldRevRecord = $this->editPage( $name, 'A' )->value['revision-record'];
 		$this->editPage( $name, 'B' );
 
 		$this->setExpectedApiException( 'apierror-sectionreplacefailed' );
 
-		$this->revisionDelete( $oldRev );
+		$this->revisionDelete( $oldRevRecord );
 
 		$this->doStash( [
 			'title' => $name,
-			'baserevid' => $oldRev->getId(),
+			'baserevid' => $oldRevRecord->getId(),
 			'text' => 'C',
 			'section' => '1',
 		] );

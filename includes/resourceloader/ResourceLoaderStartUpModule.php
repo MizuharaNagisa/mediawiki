@@ -45,7 +45,7 @@ class ResourceLoaderStartUpModule extends ResourceLoaderModule {
 
 	private $groupIds = [
 		// These reserved numbers MUST start at 0 and not skip any. These are preset
-		// for forward compatiblity so that they can be safely referenced by mediawiki.js,
+		// for forward compatibility so that they can be safely referenced by mediawiki.js,
 		// even when the code is cached and the order of registrations (and implicit
 		// group ids) changes between versions of the software.
 		'user' => 0,
@@ -127,7 +127,7 @@ class ResourceLoaderStartUpModule extends ResourceLoaderModule {
 	 * @phan-param array<string,array{version:string,dependencies:array,group:?string,source:string}> &$registryData
 	 * @codingStandardsIgnoreEnd
 	 */
-	public static function compileUnresolvedDependencies( array &$registryData ) {
+	public static function compileUnresolvedDependencies( array &$registryData ) : void {
 		foreach ( $registryData as $name => &$data ) {
 			$dependencies = $data['dependencies'];
 			try {
@@ -311,6 +311,21 @@ class ResourceLoaderStartUpModule extends ResourceLoaderModule {
 	}
 
 	/**
+	 * @see $wgResourceLoaderMaxQueryLength
+	 * @return int
+	 */
+	private function getMaxQueryLength() : int {
+		$len = $this->getConfig()->get( 'ResourceLoaderMaxQueryLength' );
+		// - Ignore -1, which in MW 1.34 and earlier was used to mean "unlimited".
+		// - Ignore invalid values, e.g. non-int or other negative values.
+		if ( $len === false || $len < 0 ) {
+			// Default
+			$len = 2000;
+		}
+		return $len;
+	}
+
+	/**
 	 * Get the key on which the JavaScript module cache (mw.loader.store) will vary.
 	 *
 	 * @param ResourceLoaderContext $context
@@ -351,11 +366,11 @@ class ResourceLoaderStartUpModule extends ResourceLoaderModule {
 
 		// Perform replacements for mediawiki.js
 		$mwLoaderPairs = [
-			'$VARS.reqBase' => $context->encodeJson( $context->getReqBase() ),
+			// This should always be an object, even if the base vars are empty
+			// (such as when using the default lang/skin).
+			'$VARS.reqBase' => $context->encodeJson( (object)$context->getReqBase() ),
 			'$VARS.baseModules' => $context->encodeJson( $this->getBaseModules() ),
-			'$VARS.maxQueryLength' => $context->encodeJson(
-				$conf->get( 'ResourceLoaderMaxQueryLength' )
-			),
+			'$VARS.maxQueryLength' => $context->encodeJson( $this->getMaxQueryLength() ),
 			// The client-side module cache can be disabled by site configuration.
 			// It is also always disabled in debug mode.
 			'$VARS.storeEnabled' => $context->encodeJson(

@@ -21,6 +21,7 @@
  * @ingroup Pager
  */
 
+use MediaWiki\HookContainer\ProtectedHookAccessorTrait;
 use MediaWiki\Linker\LinkRenderer;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Navigation\PrevNextNavigationRenderer;
@@ -67,18 +68,21 @@ use Wikimedia\Rdbms\IResultWrapper;
  *  getQueryInfo() and getIndexField(). Don't forget to call the parent
  *  constructor if you override it.
  *
+ * @stable to extend
  * @ingroup Pager
  */
 abstract class IndexPager extends ContextSource implements Pager {
+	use ProtectedHookAccessorTrait;
+
 	/** Backwards-compatible constant for $mDefaultDirection field (do not change) */
-	const DIR_ASCENDING = false;
+	public const DIR_ASCENDING = false;
 	/** Backwards-compatible constant for $mDefaultDirection field (do not change) */
-	const DIR_DESCENDING = true;
+	public const DIR_DESCENDING = true;
 
 	/** Backwards-compatible constant for reallyDoQuery() (do not change) */
-	const QUERY_ASCENDING = true;
+	public const QUERY_ASCENDING = true;
 	/** Backwards-compatible constant for reallyDoQuery() (do not change) */
-	const QUERY_DESCENDING = false;
+	public const QUERY_DESCENDING = false;
 
 	/** @var WebRequest */
 	public $mRequest;
@@ -135,11 +139,11 @@ abstract class IndexPager extends ContextSource implements Pager {
 	/** @var bool */
 	public $mIsLast;
 
-	/** @var mixed */
+	/** @var array */
 	protected $mLastShown;
-	/** @var mixed */
+	/** @var array */
 	protected $mFirstShown;
-	/** @var mixed */
+	/** @var array */
 	protected $mPastTheEndIndex;
 	/** @var array */
 	protected $mDefaultQuery;
@@ -162,6 +166,12 @@ abstract class IndexPager extends ContextSource implements Pager {
 	/** @var LinkRenderer */
 	private $linkRenderer;
 
+	/**
+	 * @stable to call
+	 *
+	 * @param IContextSource|null $context
+	 * @param LinkRenderer|null $linkRenderer
+	 */
 	public function __construct( IContextSource $context = null, LinkRenderer $linkRenderer = null ) {
 		if ( $context ) {
 			$this->setContext( $context );
@@ -178,7 +188,8 @@ abstract class IndexPager extends ContextSource implements Pager {
 		$this->mDefaultLimit = $this->getUser()->getIntOption( 'rclimit' );
 		if ( !$this->mLimit ) {
 			// Don't override if a subclass calls $this->setLimit() in its constructor.
-			list( $this->mLimit, /* $offset */ ) = $this->mRequest->getLimitOffset();
+			list( $this->mLimit, /* $offset */ ) = $this->mRequest
+				->getLimitOffsetForUser( $this->getUser() );
 		}
 
 		$this->mIsBackwards = ( $this->mRequest->getVal( 'dir' ) == 'prev' );
@@ -238,6 +249,8 @@ abstract class IndexPager extends ContextSource implements Pager {
 	 * Do the query, using information from the object context. This function
 	 * has been kept minimal to make it overridable if necessary, to allow for
 	 * result sets formed from multiple DB queries.
+	 *
+	 * @stable to override
 	 */
 	public function doQuery() {
 		$defaultOrder = ( $this->mDefaultDirection === self::DIR_ASCENDING )
@@ -287,7 +300,7 @@ abstract class IndexPager extends ContextSource implements Pager {
 	/**
 	 * @return IResultWrapper The result wrapper.
 	 */
-	function getResult() {
+	public function getResult() {
 		return $this->mResult;
 	}
 
@@ -296,7 +309,7 @@ abstract class IndexPager extends ContextSource implements Pager {
 	 *
 	 * @param int|string $offset
 	 */
-	function setOffset( $offset ) {
+	public function setOffset( $offset ) {
 		$this->mOffset = $offset;
 	}
 
@@ -305,11 +318,13 @@ abstract class IndexPager extends ContextSource implements Pager {
 	 *
 	 * Verifies limit is between 1 and 5000
 	 *
+	 * @stable to override
+	 *
 	 * @param int|string $limit
 	 */
-	function setLimit( $limit ) {
+	public function setLimit( $limit ) {
 		$limit = (int)$limit;
-		// WebRequest::getLimitOffset() puts a cap of 5000, so do same here.
+		// WebRequest::getLimitOffsetForUser() puts a cap of 5000, so do same here.
 		if ( $limit > 5000 ) {
 			$limit = 5000;
 		}
@@ -323,7 +338,7 @@ abstract class IndexPager extends ContextSource implements Pager {
 	 *
 	 * @return int
 	 */
-	function getLimit() {
+	public function getLimit() {
 		return $this->mLimit;
 	}
 
@@ -342,12 +357,14 @@ abstract class IndexPager extends ContextSource implements Pager {
 	 * Extract some useful data from the result object for use by
 	 * the navigation bar, put it into $this
 	 *
+	 * @stable to override
+	 *
 	 * @param bool $isFirst False if there are rows before those fetched (i.e.
 	 *     if a "previous" link would make sense)
 	 * @param int $limit Exact query limit
 	 * @param IResultWrapper $res
 	 */
-	function extractResultInfo( $isFirst, $limit, IResultWrapper $res ) {
+	protected function extractResultInfo( $isFirst, $limit, IResultWrapper $res ) {
 		$numRows = $res->numRows();
 
 		$firstIndex = [];
@@ -405,9 +422,11 @@ abstract class IndexPager extends ContextSource implements Pager {
 	/**
 	 * Get some text to go in brackets in the "function name" part of the SQL comment
 	 *
+	 * @stable to override
+	 *
 	 * @return string
 	 */
-	function getSqlComment() {
+	protected function getSqlComment() {
 		return static::class;
 	}
 
@@ -415,6 +434,8 @@ abstract class IndexPager extends ContextSource implements Pager {
 	 * Do a query with specified parameters, rather than using the object context
 	 *
 	 * @note For b/c, query direction is true for ascending and false for descending
+	 *
+	 * @stable to override
 	 *
 	 * @param string $offset Index offset, inclusive
 	 * @param int $limit Exact query limit
@@ -432,6 +453,8 @@ abstract class IndexPager extends ContextSource implements Pager {
 	 * Build variables to use by the database wrapper.
 	 *
 	 * @note For b/c, query direction is true for ascending and false for descending
+	 *
+	 * @stable to override
 	 *
 	 * @param int|string $offset Index offset, inclusive
 	 * @param int $limit Exact query limit
@@ -461,7 +484,8 @@ abstract class IndexPager extends ContextSource implements Pager {
 			$operator = $this->mIncludeOffset ? '<=' : '<';
 		}
 		if ( $offset != '' ) {
-			$offsets = explode( '|', $offset );
+			$offsets = explode( '|', $offset, /* Limit to max of indices */ count( $indexColumns ) );
+
 			$conds[] = $this->buildOffsetConds(
 				$offsets,
 				$indexColumns,
@@ -544,6 +568,8 @@ abstract class IndexPager extends ContextSource implements Pager {
 	/**
 	 * Pre-process results; useful for performing batch existence checks, etc.
 	 *
+	 * @stable to override
+	 *
 	 * @param IResultWrapper $result
 	 */
 	protected function preprocessResults( $result ) {
@@ -552,6 +578,8 @@ abstract class IndexPager extends ContextSource implements Pager {
 	/**
 	 * Get the formatted result list. Calls getStartBody(), formatRow() and
 	 * getEndBody(), concatenates the results and returns them.
+	 *
+	 * @stable to override
 	 *
 	 * @return string
 	 */
@@ -593,13 +621,15 @@ abstract class IndexPager extends ContextSource implements Pager {
 	/**
 	 * Make a self-link
 	 *
+	 * @stable to override
+	 *
 	 * @param string $text Text displayed on the link
 	 * @param array|null $query Associative array of parameter to be in the query string
 	 * @param string|null $type Link type used to create additional attributes, like "rel", "class" or
 	 *  "title". Valid values (non-exhaustive list): 'first', 'last', 'prev', 'next', 'asc', 'desc'.
 	 * @return string HTML fragment
 	 */
-	function makeLink( $text, array $query = null, $type = null ) {
+	protected function makeLink( $text, array $query = null, $type = null ) {
 		if ( $query === null ) {
 			return $text;
 		}
@@ -630,6 +660,8 @@ abstract class IndexPager extends ContextSource implements Pager {
 	 * after doQuery() was called. This will be called only if there
 	 * are rows in the result set.
 	 *
+	 * @stable to override
+	 *
 	 * @return void
 	 */
 	protected function doBatchLookups() {
@@ -648,6 +680,8 @@ abstract class IndexPager extends ContextSource implements Pager {
 	/**
 	 * Hook into getBody() for the end of the list
 	 *
+	 * @stable to override
+	 *
 	 * @return string
 	 */
 	protected function getEndBody() {
@@ -657,6 +691,8 @@ abstract class IndexPager extends ContextSource implements Pager {
 	/**
 	 * Hook into getBody(), for the bit between the start and the
 	 * end when there are no rows
+	 *
+	 * @stable to override
 	 *
 	 * @return string
 	 */
@@ -669,9 +705,11 @@ abstract class IndexPager extends ContextSource implements Pager {
 	 * By default, all parameters passed in the URL are used, except for a
 	 * short blacklist.
 	 *
+	 * @stable to override
+	 *
 	 * @return array Associative array
 	 */
-	function getDefaultQuery() {
+	public function getDefaultQuery() {
 		if ( !isset( $this->mDefaultQuery ) ) {
 			$this->mDefaultQuery = $this->getRequest()->getQueryValues();
 			unset( $this->mDefaultQuery['title'] );
@@ -690,7 +728,7 @@ abstract class IndexPager extends ContextSource implements Pager {
 	 *
 	 * @return int
 	 */
-	function getNumRows() {
+	public function getNumRows() {
 		if ( !$this->mQueryDone ) {
 			$this->doQuery();
 		}
@@ -700,9 +738,11 @@ abstract class IndexPager extends ContextSource implements Pager {
 	/**
 	 * Get a URL query array for the prev, next, first and last links.
 	 *
+	 * @stable to override
+	 *
 	 * @return array
 	 */
-	function getPagingQueries() {
+	public function getPagingQueries() {
 		if ( !$this->mQueryDone ) {
 			$this->doQuery();
 		}
@@ -716,7 +756,7 @@ abstract class IndexPager extends ContextSource implements Pager {
 		} else {
 			$prev = [
 				'dir' => 'prev',
-				'offset' => implode( '|', $this->mFirstShown ),
+				'offset' => implode( '|', (array)$this->mFirstShown ),
 				'limit' => $urlLimit
 			];
 			$first = [ 'limit' => $urlLimit ];
@@ -725,7 +765,7 @@ abstract class IndexPager extends ContextSource implements Pager {
 			$next = false;
 			$last = false;
 		} else {
-			$next = [ 'offset' => implode( '|', $this->mLastShown ), 'limit' => $urlLimit ];
+			$next = [ 'offset' => implode( '|', (array)$this->mLastShown ), 'limit' => $urlLimit ];
 			$last = [ 'dir' => 'prev', 'limit' => $urlLimit ];
 		}
 
@@ -739,10 +779,11 @@ abstract class IndexPager extends ContextSource implements Pager {
 
 	/**
 	 * Returns whether to show the "navigation bar"
+	 * @stable to override
 	 *
 	 * @return bool
 	 */
-	function isNavigationBarShown() {
+	protected function isNavigationBarShown() {
 		if ( !$this->mQueryDone ) {
 			$this->doQuery();
 		}
@@ -760,7 +801,7 @@ abstract class IndexPager extends ContextSource implements Pager {
 	 * @param array $disabledTexts
 	 * @return array
 	 */
-	function getPagingLinks( $linkTexts, $disabledTexts = [] ) {
+	protected function getPagingLinks( $linkTexts, $disabledTexts = [] ) {
 		$queries = $this->getPagingQueries();
 		$links = [];
 
@@ -781,10 +822,10 @@ abstract class IndexPager extends ContextSource implements Pager {
 		return $links;
 	}
 
-	function getLimitLinks() {
+	protected function getLimitLinks() {
 		$links = [];
 		if ( $this->mIsBackwards ) {
-			$offset = implode( '|', $this->mPastTheEndIndex );
+			$offset = implode( '|', (array)$this->mPastTheEndIndex );
 		} else {
 			$offset = $this->mOffset;
 		}
@@ -799,19 +840,17 @@ abstract class IndexPager extends ContextSource implements Pager {
 	}
 
 	/**
-	 * Abstract formatting function. This should return an HTML string
-	 * representing the result row $row. Rows will be concatenated and
-	 * returned by getBody()
+	 * Returns an HTML string representing the result row $row.
+	 * Rows will be concatenated and returned by getBody()
 	 *
 	 * @param array|stdClass $row Database row
 	 * @return string
 	 */
-	abstract function formatRow( $row );
+	abstract public function formatRow( $row );
 
 	/**
-	 * This function should be overridden to provide all parameters
-	 * needed for the main paged query. It returns an associative
-	 * array with the following elements:
+	 * Provides all parameters needed for the main paged query. It returns
+	 * an associative array with the following elements:
 	 *    tables => Table(s) for passing to Database::select()
 	 *    fields => Field(s) for passing to Database::select(), may be *
 	 *    conds => WHERE conditions
@@ -820,14 +859,13 @@ abstract class IndexPager extends ContextSource implements Pager {
 	 *
 	 * @return array
 	 */
-	abstract function getQueryInfo();
+	abstract public function getQueryInfo();
 
 	/**
-	 * This function should be overridden to return the name of the index fi-
-	 * eld.  If the pager supports multiple orders, it may return an array of
-	 * 'querykey' => 'indexfield' pairs, so that a request with &order=querykey
-	 * will use indexfield to sort.  In this case, the first returned key is
-	 * the default.
+	 * Returns the name of the index field.  If the pager supports multiple
+	 * orders, it may return an array of 'querykey' => 'indexfield' pairs,
+	 * so that a request with &order=querykey will use indexfield to sort.
+	 * In this case, the first returned key is the default.
 	 *
 	 * Needless to say, it's really not a good idea to use a non-unique index
 	 * for this!  That won't page right.
@@ -859,12 +897,12 @@ abstract class IndexPager extends ContextSource implements Pager {
 	 *
 	 * @return string|string[]|array[]
 	 */
-	abstract function getIndexField();
+	abstract public function getIndexField();
 
 	/**
-	 * This function should be overridden to return the names of secondary columns
-	 * to order by in addition to the column in getIndexField(). These fields will
-	 * not be used in the pager offset or in any links for users.
+	 * Returns the names of secondary columns to order by in addition to the
+	 * column in getIndexField(). These fields will not be used in the pager
+	 * offset or in any links for users.
 	 *
 	 * If getIndexField() returns an array of 'querykey' => 'indexfield' pairs then
 	 * this must return a corresponding array of 'querykey' => [ fields... ] pairs
@@ -879,6 +917,8 @@ abstract class IndexPager extends ContextSource implements Pager {
 	 * and ORDER BY another (say page_len). Using GROUP BY and ORDER BY both on
 	 * page_len,page_id avoids temp tables (given a page_len index). This would
 	 * also work if page_id was non-unique but we had a page_len,page_id index.
+	 *
+	 * @stable to override
 	 *
 	 * @return string[]|array[]
 	 */
@@ -903,6 +943,8 @@ abstract class IndexPager extends ContextSource implements Pager {
 	 * particular instantiation, which is a single value.  This is the set of
 	 * all defaults for the class.
 	 *
+	 * @stable to override
+	 *
 	 * @return bool
 	 */
 	protected function getDefaultDirections() {
@@ -919,12 +961,16 @@ abstract class IndexPager extends ContextSource implements Pager {
 	 * @param bool $atend Optional param for specified if this is the last page
 	 * @return string
 	 */
-	protected function buildPrevNextNavigation( Title $title, $offset, $limit,
-												array $query = [], $atend = false
+	protected function buildPrevNextNavigation(
+		Title $title,
+		$offset,
+		$limit,
+		array $query = [],
+		$atend = false
 	) {
 		$prevNext = new PrevNextNavigationRenderer( $this );
 
-		return $prevNext->buildPrevNextNavigation( $title, $offset, $limit, $query,  $atend );
+		return $prevNext->buildPrevNextNavigation( $title, $offset, $limit, $query, $atend );
 	}
 
 	protected function getLinkRenderer() {

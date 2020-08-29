@@ -100,7 +100,7 @@ class ImageBuilder extends Maintenance {
 	 */
 	private function getRepo() {
 		if ( $this->repo === null ) {
-			$this->repo = RepoGroup::singleton()->getLocalRepo();
+			$this->repo = MediaWikiServices::getInstance()->getRepoGroup()->getLocalRepo();
 		}
 
 		return $this->repo;
@@ -212,7 +212,8 @@ class ImageBuilder extends Maintenance {
 			[ 'img_name' => $filename ],
 			__METHOD__ );
 
-		if ( !$row ) { // file not registered
+		if ( !$row ) {
+			// file not registered
 			$this->addMissingImage( $filename, $fullpath );
 		}
 	}
@@ -240,15 +241,19 @@ class ImageBuilder extends Maintenance {
 		}
 		if ( !$this->dryrun ) {
 			$file = $services->getRepoGroup()->getLocalRepo()->newFile( $filename );
-			if ( !$file->recordUpload(
+			$pageText = SpecialUpload::getInitialPageText(
+				'(recovered file, missing upload log entry)'
+			);
+			$user = User::newSystemUser( 'Maintenance script', [ 'steal' => true ] );
+			$status = $file->recordUpload2(
 				'',
 				'(recovered file, missing upload log entry)',
-				'',
-				'',
-				'',
+				$pageText,
 				false,
-				$timestamp
-			) ) {
+				$timestamp,
+				$user
+			);
+			if ( !$status->isOK() ) {
 				$this->output( "Error uploading file $fullpath\n" );
 
 				return;

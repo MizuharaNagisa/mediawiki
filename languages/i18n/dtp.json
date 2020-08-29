@@ -1,12 +1,12 @@
 {
 	"@metadata": {
 		"authors": [
+			"DannyS712",
 			"FRANCIS5091",
 			"FRANELYA",
-			"아라",
 			"Macofe",
 			"Tofeiku",
-			"DannyS712"
+			"아라"
 		]
 	},
 	"tog-underline": "Mangagaris pioputan:",
@@ -272,7 +272,7 @@
 	"databaseerror-query": "Timuhot: $1",
 	"databaseerror-function": "Gunoon: $1",
 	"databaseerror-error": "Silap: $1",
-	"laggedslavemode": "'''Panansarahan:''' Awu moti kaanto nopinwoguan suang do bolikon diti.",
+	"laggedreplicamode": "'''Panansarahan:''' Awu moti kaanto nopinwoguan suang do bolikon diti.",
 	"readonly": "Nokunsian databing",
 	"enterlockreason": "Posuango sabab do mongunsi, poobion do gisom soira oukaban kunsi",
 	"readonlytext": "Databing diti nokunsian mantad monuang-suang om nogi pinsimbanan, koubasan do maso doropion, nga koguli miagal kasari do opongoh po ilo.\n\nMandur di minongunsi minomisunud do: $1",
@@ -425,7 +425,6 @@
 	"passwordreset-email": "Porikatan surat-i:",
 	"passwordreset-emailtitle": "Kointalangan takaun id {{SITENAME}}",
 	"passwordreset-emailelement": "Ngaranmoguno: \n$1\n\nKaatalib daamot: \n$2",
-	"passwordreset-emailsentemail": "Surat-i pononsorou nakaatod noh.",
 	"changeemail": "Alanai porikatan surat-i",
 	"changeemail-header": "Alanai akaun porikatan surat-i",
 	"changeemail-no-info": "Mositi sumuang log ko do mongoguno monilombus id bolikon diti.",
@@ -550,11 +549,11 @@
 	"rev-deleted-user": "(nidu momomoguno)",
 	"rev-deleted-event": "(nidu log kinaraja)",
 	"rev-deleted-user-contribs": "[nidu momomoguno toi alamat IP - poilisok do minongidit di bolikon pinotoluod]",
-	"rev-deleted-text-permission": "Sinimakan bolikon diti '''nopugas'''.\nKointalangan oihum id [{{fullurl:{{#Special:Log}}/delete|page={{FULLPAGENAMEE}}}} log pinugas].",
+	"rev-deleted-text-permission": "Sinimakan bolikon diti '''nopugas'''.\nKointalangan oihum id [{{fullurl:{{#Special:Log}}/delete|page=$1}} log pinugas].",
 	"rev-deleted-text-unhide": "Sinimakan bolikon diti '''nopugas'''.\nKointalangan oihum id [{{fullurl:{{#Special:Log}}/delete|page={{FULLPAGENAMEE}}}} log pinugas].\nMilo ko poh do [$1 mongintong sinimakan diti] nung orohian ko.",
 	"rev-suppressed-text-unhide": "Sinimakan bolikon diti '''nalapahan'''.\nKointalangan oihum id [{{fullurl:{{#Special:Log}}/suppress|page={{FULLPAGENAMEE}}}} log nalapahan].\nMilo ko nogi do [$1 mongintong sinimakan diti] nung orohian ko.",
-	"rev-deleted-text-view": "Sinimakan bolikon diti '''nopugas'''.\nMilo ko do montong diti; kointalangan oihum id [{{fullurl:{{#Special:Log}}/delete|page={{FULLPAGENAMEE}}}} log pinugas].",
-	"rev-suppressed-text-view": "Sinimakan bolikon diti '''nalapahan'''.\nMilo ko do montong diti; kointalangan oihum id [{{fullurl:{{#Special:Log}}/suppress|page={{FULLPAGENAMEE}}}} log nalapahan].",
+	"rev-deleted-text-view": "Sinimakan bolikon diti '''nopugas'''.\nMilo ko do montong diti; kointalangan oihum id [{{fullurl:{{#Special:Log}}/delete|page=$1}} log pinugas].",
+	"rev-suppressed-text-view": "Sinimakan bolikon diti '''nalapahan'''.\nMilo ko do montong diti; kointalangan oihum id [{{fullurl:{{#Special:Log}}/suppress|page=$1}} log nalapahan].",
 	"rev-deleted-no-diff": "Awu nu okito pisuaian diti tu iso mantad sinimakan diti '''nopugas'''.\nKointalangan oihum id [{{fullurl:{{#Special:Log}}/delete|page={{FULLPAGENAMEE}}}} log pinugas].",
 	"rev-suppressed-no-diff": "Awu ko milo do mongintong pisuaian tu iso mantad do sinimakan '''nopugas'''.",
 	"rev-deleted-unhide-diff": "Iso mantad pisuaian sinimakan bolikon diti '''nopugas'''.\nKointalangan oihum id [{{fullurl:{{#Special:Log}}/delete|page={{FULLPAGENAMEE}}}} log pinugas].\nMilo ko nogi do [$1 mongintong sinimakan diti] nung orohian ko.",

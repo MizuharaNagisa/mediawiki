@@ -34,6 +34,7 @@
  * additional (string) keys present with other types of values.
  *
  * @since 1.23
+ * @stable to extend
  */
 class HTMLFormFieldCloner extends HTMLFormField {
 	private static $counter = 0;
@@ -45,6 +46,10 @@ class HTMLFormFieldCloner extends HTMLFormField {
 	 */
 	protected $uniqueId;
 
+	/**
+	 * @stable to call
+	 * @inheritDoc
+	 */
 	public function __construct( $params ) {
 		$this->uniqueId = static::class . ++self::$counter . 'x';
 		parent::__construct( $params );
@@ -54,6 +59,7 @@ class HTMLFormFieldCloner extends HTMLFormField {
 		}
 
 		// Make sure the delete button, if explicitly specified, is sane
+		// @phan-suppress-next-line PhanTypeMismatchDimFetch Phan is very confused
 		if ( isset( $this->mParams['fields']['delete'] ) ) {
 			$class = 'mw-htmlform-cloner-delete-button';
 			$info = $this->mParams['fields']['delete'] + [

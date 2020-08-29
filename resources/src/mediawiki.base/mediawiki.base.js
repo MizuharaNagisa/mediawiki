@@ -113,7 +113,7 @@
 			var text = this.map.get( this.key );
 			if (
 				mw.config.get( 'wgUserLanguage' ) === 'qqx' &&
-				( !text || text === '(' + this.key + ')' )
+				text === '(' + this.key + ')'
 			) {
 				text = '(' + this.key + '$*)';
 			}
@@ -231,9 +231,6 @@
 		 * @return {boolean}
 		 */
 		exists: function () {
-			if ( mw.config.get( 'wgUserLanguage' ) === 'qqx' ) {
-				return true;
-			}
 			return this.map.exists( this.key );
 		}
 	};
@@ -248,7 +245,7 @@
 	 * want to add a new global, or the global is bad and needs containment
 	 * or wrapping.
 	 *
-	 * @property
+	 * @property {Object}
 	 */
 	mw.libs = {};
 
@@ -342,6 +339,19 @@
 	};
 
 	/**
+	 * @see mw.notification#notify
+	 * @param {HTMLElement|HTMLElement[]|jQuery|mw.Message|string} message
+	 * @param {Object} [options] See mw.notification#defaults for the defaults.
+	 * @return {jQuery.Promise}
+	 */
+	mw.notify = function ( message, options ) {
+		// Lazy load
+		return mw.loader.using( 'mediawiki.notification', function () {
+			return mw.notification.notify( message, options );
+		} );
+	};
+
+	/**
 	 * Track an analytic event.
 	 *
 	 * This method provides a generic means for MediaWiki JavaScript code to capture state
@@ -351,7 +361,7 @@
 	 * well-defined purpose.
 	 *
 	 * Data handlers are registered via `mw.trackSubscribe`, and receive the full set of
-	 * events that match their subcription, including those that fired before the handler was
+	 * events that match their subscription, including those that fired before the handler was
 	 * bound.
 	 *
 	 * @param {string} topic Topic name
@@ -608,7 +618,18 @@
 	}() );
 
 	/**
-	 * Execute a function as soon as one or more required modules are ready.
+	 * Execute a function after one or more modules are ready.
+	 *
+	 * Use this method if you need to dynamically control which modules are loaded
+	 * and/or when they loaded (instead of declaring them as dependencies directly
+	 * on your module.)
+	 *
+	 * This uses the same loader as for regular module dependencies. This means
+	 * ResourceLoader will not re-download or re-execute a module for the second
+	 * time if something else already needed it. And the same browser HTTP cache,
+	 * and localStorage are checked before considering to fetch from the network.
+	 * And any on-going requests from other dependencies or using() calls are also
+	 * automatically re-used.
 	 *
 	 * Example of inline dependency on OOjs:
 	 *
@@ -622,7 +643,7 @@
 	 *         var util = require( 'mediawiki.util' );
 	 *     } );
 	 *
-	 * Since MediaWiki 1.23 this also returns a promise.
+	 * Since MediaWiki 1.23 this returns a promise.
 	 *
 	 * Since MediaWiki 1.28 the promise is resolved with a `require` function.
 	 *

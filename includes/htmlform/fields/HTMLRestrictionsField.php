@@ -11,10 +11,16 @@ use Wikimedia\IPUtils;
  *
  * The value returned will be an MWRestrictions or the input string if it was not a list of
  * valid IP ranges.
+ *
+ * @stable to extend
  */
 class HTMLRestrictionsField extends HTMLTextAreaField {
-	const DEFAULT_ROWS = 5;
+	protected const DEFAULT_ROWS = 5;
 
+	/**
+	 * @stable to call
+	 * @inheritDoc
+	 */
 	public function __construct( array $params ) {
 		parent::__construct( $params );
 		if ( !$this->mLabel ) {
@@ -81,7 +87,7 @@ class HTMLRestrictionsField extends HTMLTextAreaField {
 		if ( is_string( $value ) ) {
 			// MWRestrictions::newFromArray failed; one of the IP ranges must be invalid
 			$status = Status::newGood();
-			foreach ( explode( "\n",  $value ) as $range ) {
+			foreach ( explode( "\n", $value ) as $range ) {
 				if ( !IPUtils::isIPAddress( $range ) ) {
 					$status->fatal( 'restrictionsfield-badip', $range );
 				}

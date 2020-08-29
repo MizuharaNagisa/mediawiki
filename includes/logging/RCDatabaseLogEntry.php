@@ -23,11 +23,25 @@
  * @since 1.19
  */
 
+use Wikimedia\Rdbms\IDatabase;
+
 /**
  * A subclass of DatabaseLogEntry for objects constructed from entries in the
  * recentchanges table (rather than the logging table).
+ *
+ * This class should only be used in context of the LogFormatter class.
  */
 class RCDatabaseLogEntry extends DatabaseLogEntry {
+
+	public static function newFromId( $id, IDatabase $db ) {
+		// Make the LSP violation explicit to prevent sneaky failures
+		throw new LogicException( 'Not implemented!' );
+	}
+
+	public static function getSelectQueryData() {
+		// Make the LSP violation explicit to prevent sneaky failures
+		throw new LogicException( 'Not implemented!' );
+	}
 
 	public function getId() {
 		return $this->row->rc_logid;
@@ -39,16 +53,6 @@ class RCDatabaseLogEntry extends DatabaseLogEntry {
 
 	public function getAssociatedRevId() {
 		return $this->row->rc_this_oldid;
-	}
-
-	/**
-	 * Get the rev_id associated to the parent revision
-	 * @since 1.35
-	 *
-	 * @return string
-	 */
-	public function getParentRevId() {
-		return $this->row->rc_last_oldid;
 	}
 
 	public function getType() {

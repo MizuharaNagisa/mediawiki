@@ -1,20 +1,20 @@
 {
 	"@metadata": {
 		"authors": [
+			"DannyS712",
+			"Fitoschido",
+			"Impersonator 1",
 			"Kaganer",
+			"LNDDYL",
+			"Macofe",
 			"Mark85296341",
+			"Mywood",
 			"Reedy",
 			"Symane",
 			"Urhixidur",
 			"Vipuser",
 			"Xiaomingyan",
-			"아라",
-			"Mywood",
-			"Impersonator 1",
-			"LNDDYL",
-			"Macofe",
-			"Fitoschido",
-			"DannyS712"
+			"아라"
 		]
 	},
 	"tog-underline": "下劃連結",
@@ -248,7 +248,7 @@
 	"nospecialpagetext": "<strong>倷要求嗰特殊頁冇有用。</strong>\n\n[[Special:SpecialPages]]上尋得到用得上嗰特殊頁。",
 	"error": "錯誤",
 	"databaseerror": "資料庫錯誤",
-	"laggedslavemode": "警告：頁面可能冇有新近內容。",
+	"laggedreplicamode": "警告：頁面可能冇有新近內容。",
 	"readonly": "資料庫上正鎖哩",
 	"enterlockreason": "請輸入鎖到資料庫嗰理由，包括預計幾時間解鎖",
 	"readonlytext": "資料庫上嘞鎖改伓正，可能佢正維修中，搞正嘞仰上會還原。管理員嗰解釋： $1",
@@ -452,7 +452,7 @@
 	"rev-deleted-user": "（用戶名挪吥哩）",
 	"rev-deleted-event": "（項目挪吥哩）",
 	"rev-deleted-text-permission": "箇頁嗰改動從共用文檔挪吥嘞。到[{{fullurl:{{#Special:Log}}/suppress|page={{PAGENAMEE}}}} 刪除日誌] 裡度倷話伓定有詳細嗰資料。",
-	"rev-deleted-text-view": "箇頁嗰改動從共用文檔挪吥嘞。作為本站嗰管理員，倷查看得正；到[{{fullurl:{{#Special:Log}}/suppress|page={{FULLPAGENAMEE}}}} 刪除日誌] 裡度有詳細嗰資料。",
+	"rev-deleted-text-view": "箇頁嗰改動從共用文檔挪吥嘞。作為本站嗰管理員，倷查看得正；到[{{fullurl:{{#Special:Log}}/suppress|page=$1}} 刪除日誌] 裡度有詳細嗰資料。",
 	"rev-delundel": "顯示/弆到",
 	"rev-showdeleted": "敨開",
 	"revisiondelete": "刪除/反刪除修改",

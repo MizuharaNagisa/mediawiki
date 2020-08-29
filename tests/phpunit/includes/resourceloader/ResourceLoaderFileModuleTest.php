@@ -1,5 +1,8 @@
 <?php
 
+use Psr\Container\ContainerInterface;
+use Wikimedia\ObjectFactory;
+
 /**
  * @group ResourceLoader
  */
@@ -8,14 +11,14 @@ class ResourceLoaderFileModuleTest extends ResourceLoaderTestCase {
 	protected function setUp() : void {
 		parent::setUp();
 
-		$skinFactory = new SkinFactory();
-		// The return value of the closure shouldn't matter since this test should
-		// never call it
+		$skinFactory = new SkinFactory(
+			new ObjectFactory( $this->createMock( ContainerInterface::class ) ), []
+		);
+		// The empty spec shouldn't matter since this test should never call it
 		$skinFactory->register(
 			'fakeskin',
 			'FakeSkin',
-			function () {
-			}
+			[]
 		);
 		$this->setService( 'SkinFactory', $skinFactory );
 
@@ -539,6 +542,8 @@ class ResourceLoaderFileModuleTest extends ResourceLoaderTestCase {
 		$base = [ 'localBasePath' => $basePath ];
 		$commentScript = file_get_contents( "$basePath/script-comment.js" );
 		$nosemiScript = file_get_contents( "$basePath/script-nosemi.js" );
+		$vueComponentDebug = trim( file_get_contents( "$basePath/vue-component-output-debug.js.txt" ) );
+		$vueComponentNonDebug = trim( file_get_contents( "$basePath/vue-component-output-nondebug.js.txt" ) );
 		$config = RequestContext::getMain()->getConfig();
 		return [
 			[
@@ -625,7 +630,7 @@ class ResourceLoaderFileModuleTest extends ResourceLoaderTestCase {
 						],
 						[ 'name' => 'config.json', 'config' => [
 							'Sitename',
-							'wgVersion' => 'Version',
+							'server' => 'ServerName',
 						] ],
 					]
 				],
@@ -651,7 +656,7 @@ class ResourceLoaderFileModuleTest extends ResourceLoaderTestCase {
 							'type' => 'data',
 							'content' => [
 								'Sitename' => $config->get( 'Sitename' ),
-								'wgVersion' => $config->get( 'Version' ),
+								'server' => $config->get( 'ServerName' ),
 							]
 						]
 					],
@@ -736,6 +741,45 @@ class ResourceLoaderFileModuleTest extends ResourceLoaderTestCase {
 				],
 				[
 					'lang' => 'nl'
+				]
+			],
+			'.vue file in debug mode' => [
+				$base + [
+					'packageFiles' => [
+						'vue-component.vue'
+					]
+				],
+				[
+					'files' => [
+						'vue-component.vue' => [
+							'type' => 'script',
+							'content' => $vueComponentDebug
+						]
+					],
+					'main' => 'vue-component.vue',
+				],
+				[
+					'debug' => 'true'
+				]
+			],
+			'.vue file in non-debug mode' => [
+				$base + [
+					'packageFiles' => [
+						'vue-component.vue'
+					],
+					'name' => 'nondebug',
+				],
+				[
+					'files' => [
+						'vue-component.vue' => [
+							'type' => 'script',
+							'content' => $vueComponentNonDebug
+						]
+					],
+					'main' => 'vue-component.vue'
+				],
+				[
+					'debug' => 'false'
 				]
 			],
 			[

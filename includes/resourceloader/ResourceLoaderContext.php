@@ -31,8 +31,8 @@ use MediaWiki\MediaWikiServices;
  * @since 1.17
  */
 class ResourceLoaderContext implements MessageLocalizer {
-	const DEFAULT_LANG = 'qqx';
-	const DEFAULT_SKIN = 'fallback';
+	public const DEFAULT_LANG = 'qqx';
+	public const DEFAULT_SKIN = 'fallback';
 
 	protected $resourceLoader;
 	protected $request;
@@ -88,7 +88,9 @@ class ResourceLoaderContext implements MessageLocalizer {
 		$this->format = $request->getRawVal( 'format' );
 
 		$this->skin = $request->getRawVal( 'skin' );
-		$skinnames = Skin::getSkinNames();
+		$skinFactory = MediaWikiServices::getInstance()->getSkinFactory();
+		$skinnames = $skinFactory->getSkinNames();
+
 		if ( !$this->skin || !isset( $skinnames[$this->skin] ) ) {
 			// The 'skin' parameter is required. (Not yet enforced.)
 			// For requests without a known skin specified,
@@ -157,7 +159,9 @@ class ResourceLoaderContext implements MessageLocalizer {
 			// Only support uselang values that follow built-in conventions (T102058)
 			$lang = $this->getRequest()->getRawVal( 'lang', '' );
 			// Stricter version of RequestContext::sanitizeLangCode()
-			if ( !Language::isValidBuiltInCode( $lang ) ) {
+			$validBuiltinCode = MediaWikiServices::getInstance()->getLanguageNameUtils()
+				->isValidBuiltInCode( $lang );
+			if ( !$validBuiltinCode ) {
 				// The 'lang' parameter is required. (Not yet enforced.)
 				// If omitted, localise with the dummy language code.
 				$lang = self::DEFAULT_LANG;
@@ -374,7 +378,7 @@ class ResourceLoaderContext implements MessageLocalizer {
 	 * Get the request base parameters, omitting any defaults.
 	 *
 	 * @internal For use by ResourceLoaderStartUpModule only
-	 * @return array
+	 * @return string[]
 	 */
 	public function getReqBase() : array {
 		$reqBase = [];

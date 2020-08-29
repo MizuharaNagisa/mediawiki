@@ -38,8 +38,14 @@ class ResourceLoaderSkinModule extends ResourceLoaderFileModule {
 	 * The following features are available:
 	 *
 	 * "logo":
-	 *     Adds CSS to style an element with class `mw-wiki-logo` using the value of wgLogo.
+	 *     Adds CSS to style an element with class `mw-wiki-logo` using the value of wgLogos['1x'].
 	 *     This is enabled by default if no features are added.
+	 *
+	 * "normalize":
+	 *     Styles needed to normalize rendering across different browser rendering engines.
+	 *     All to address bugs and common browser inconsistencies for skins and extensions.
+	 *     Inspired by necolas' normalize.css. This is meant to be kept lean,
+	 *     basic styling beyond normalization should live in one of the following modules.
 	 *
 	 * "elements":
 	 *     The base level that only contains the most basic of common skin styles.
@@ -88,17 +94,22 @@ class ResourceLoaderSkinModule extends ResourceLoaderFileModule {
 		'interface' => [
 			'screen' => [ 'resources/src/mediawiki.skinning/interface.css' ],
 		],
+		'normalize' => [
+			'screen' => [ 'resources/src/mediawiki.skinning/normalize.less' ],
+		],
 		'elements' => [
 			'screen' => [ 'resources/src/mediawiki.skinning/elements.css' ],
 		],
 		'legacy' => [
+			'all' => [ 'resources/src/mediawiki.skinning/messageBoxes.less' ],
+			'print' => [ 'resources/src/mediawiki.skinning/commonPrint.css' ],
 			'screen' => [ 'resources/src/mediawiki.skinning/legacy.less' ],
 		],
 		'i18n-ordered-lists' => [
 			'screen' => [ 'resources/src/mediawiki.skinning/i18n-ordered-lists.less' ],
 		],
 		'i18n-all-lists-margins' => [
-			'screen' => [ 'resources/src/mediawiki.skinning/i18n-lists.less' ],
+			'screen' => [ 'resources/src/mediawiki.skinning/i18n-all-lists-margins.less' ],
 		],
 		'i18n-headings' => [
 			'screen' => [ 'resources/src/mediawiki.skinning/i18n-headings.less' ],
@@ -114,7 +125,7 @@ class ResourceLoaderSkinModule extends ResourceLoaderFileModule {
 		$remoteBasePath = null
 	) {
 		parent::__construct( $options, $localBasePath, $remoteBasePath );
-		$this->features = $options['features'] ?? [ 'logo' ];
+		$this->features = $options['features'] ?? [ 'logo', 'legacy' ];
 	}
 
 	/**
@@ -138,10 +149,16 @@ class ResourceLoaderSkinModule extends ResourceLoaderFileModule {
 					$styles[$mediaType] = [];
 				}
 				foreach ( $files as $filepath ) {
-					$styles[$mediaType][] = new ResourceLoaderFilePath(
-						$filepath,
-						$defaultLocalBasePath,
-						$defaultRemoteBasePath
+					// Use array_unshift to prepend the feature files to the list of styles.
+					// This ensures that their styles can be overridden in skin stylesheets
+					// without overqualifying the selectors.
+					array_unshift(
+						$styles[$mediaType],
+						new ResourceLoaderFilePath(
+							$filepath,
+							$defaultLocalBasePath,
+							$defaultRemoteBasePath
+						)
 					);
 				}
 			}
@@ -213,7 +230,7 @@ class ResourceLoaderSkinModule extends ResourceLoaderFileModule {
 	 * Helper method for getPreloadLinks()
 	 * @return array
 	 */
-	private function getLogoPreloadlinks() {
+	private function getLogoPreloadlinks() : array {
 		$logo = $this->getLogoData( $this->getConfig() );
 
 		$logosPerDppx = [];
@@ -297,7 +314,7 @@ class ResourceLoaderSkinModule extends ResourceLoaderFileModule {
 	 * @param array &$styles Associative array, keys are strings (media queries),
 	 *   values are strings or arrays
 	 */
-	private function normalizeStyles( array &$styles ) {
+	private function normalizeStyles( array &$styles ) : void {
 		foreach ( $styles as $key => $val ) {
 			if ( !is_array( $val ) ) {
 				$styles[$key] = [ $val ];
@@ -315,7 +332,7 @@ class ResourceLoaderSkinModule extends ResourceLoaderFileModule {
 	 *  - wordmark: a rectangle logo (wordmark) for print media and skins which desire
 	 *      horizontal logo (optional)
 	 */
-	public static function getAvailableLogos( $conf ) {
+	public static function getAvailableLogos( $conf ) : array {
 		$logos = $conf->get( 'Logos' );
 		if ( $logos === false ) {
 			// no logos were defined... this will either
@@ -336,7 +353,7 @@ class ResourceLoaderSkinModule extends ResourceLoaderFileModule {
 			$logoHD = $conf->get( 'LogoHD' );
 			// make sure not false
 			if ( $logoHD ) {
-				wfDeprecated( '$wgLogoHD', '1.35', 'Rename configuration variable to $wgLogos' );
+				// wfDeprecated( __METHOD__ . ' with $wgLogoHD set instead of $wgLogos', '1.35', false, 1 );
 				$logos += $logoHD;
 			}
 		} catch ( ConfigException $e ) {

@@ -39,12 +39,12 @@ use MediaWiki\MediaWikiServices;
  * @ingroup FileRepo
  */
 class FileRepo {
-	const DELETE_SOURCE = 1;
-	const OVERWRITE = 2;
-	const OVERWRITE_SAME = 4;
-	const SKIP_LOCKING = 8;
+	public const DELETE_SOURCE = 1;
+	public const OVERWRITE = 2;
+	public const OVERWRITE_SAME = 4;
+	public const SKIP_LOCKING = 8;
 
-	const NAME_AND_TIME_ONLY = 1;
+	public const NAME_AND_TIME_ONLY = 1;
 
 	/** @var bool Whether to fetch commons image description pages and display
 	 *    them on the local wiki
@@ -146,11 +146,13 @@ class FileRepo {
 
 	/**
 	 * @var string
-	 * @protected Use $this->getName(). Public for back-compat only
+	 * @note Use $this->getName(). Public for back-compat only
+	 * @todo make protected
 	 */
 	public $name;
 
 	/**
+	 * @see Documentation of info options at $wgLocalFileRepo
 	 * @param array|null $info
 	 * @throws MWException
 	 * @phan-assert array $info
@@ -487,7 +489,7 @@ class FileRepo {
 			return false;
 		}
 		$redir = $this->checkRedirect( $title );
-		if ( $redir && $title->getNamespace() == NS_FILE ) {
+		if ( $redir && $title->getNamespace() === NS_FILE ) {
 			$img = $this->newFile( $redir );
 			if ( !$img ) {
 				return false;
@@ -911,7 +913,7 @@ class FileRepo {
 			list( $src, $dstZone, $dstRel ) = $triplet;
 			$srcPath = ( $src instanceof FSFile ) ? $src->getPath() : $src;
 			wfDebug( __METHOD__
-				. "( \$src='$srcPath', \$dstZone='$dstZone', \$dstRel='$dstRel' )\n"
+				. "( \$src='$srcPath', \$dstZone='$dstZone', \$dstRel='$dstRel' )"
 			);
 			// Resolve source path
 			if ( $src instanceof FSFile ) {
@@ -1149,7 +1151,7 @@ class FileRepo {
 
 		$temp = $this->getVirtualUrl( 'temp' );
 		if ( substr( $virtualUrl, 0, strlen( $temp ) ) != $temp ) {
-			wfDebug( __METHOD__ . ": Invalid temp virtual URL\n" );
+			wfDebug( __METHOD__ . ": Invalid temp virtual URL" );
 
 			return false;
 		}
@@ -1727,7 +1729,7 @@ class FileRepo {
 	 *
 	 * @return callable
 	 */
-	function getErrorCleanupFunction() {
+	private function getErrorCleanupFunction() {
 		switch ( $this->pathDisclosureProtection ) {
 			case 'none':
 			case 'simple': // b/c
@@ -1745,7 +1747,7 @@ class FileRepo {
 	 * @param string $param
 	 * @return string
 	 */
-	function paranoidClean( $param ) {
+	public function paranoidClean( $param ) {
 		return '[hidden]';
 	}
 
@@ -1755,7 +1757,7 @@ class FileRepo {
 	 * @param string $param
 	 * @return string
 	 */
-	function passThrough( $param ) {
+	public function passThrough( $param ) {
 		return $param;
 	}
 
@@ -1763,10 +1765,11 @@ class FileRepo {
 	 * Create a new fatal error
 	 *
 	 * @param string $message
+	 * @param mixed ...$parameters
 	 * @return Status
 	 */
-	public function newFatal( $message /*, parameters...*/ ) {
-		$status = Status::newFatal( ...func_get_args() );
+	public function newFatal( $message, ...$parameters ) {
+		$status = Status::newFatal( $message, ...$parameters );
 		$status->cleanCallback = $this->getErrorCleanupFunction();
 
 		return $status;

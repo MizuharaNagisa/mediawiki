@@ -37,6 +37,7 @@ class ApiQueryRecentChanges extends ApiQueryGeneratorBase {
 		parent::__construct( $query, $moduleName, 'rc' );
 	}
 
+	/** @var CommentStore */
 	private $commentStore;
 
 	private $fld_comment = false, $fld_parsedcomment = false, $fld_user = false, $fld_userid = false,
@@ -68,7 +69,7 @@ class ApiQueryRecentChanges extends ApiQueryGeneratorBase {
 		$this->tokenFunctions = [
 			'patrol' => [ self::class, 'getPatrolToken' ]
 		];
-		Hooks::run( 'APIQueryRecentChangesTokens', [ &$this->tokenFunctions ] );
+		$this->getHookRunner()->onAPIQueryRecentChangesTokens( $this->tokenFunctions );
 
 		return $this->tokenFunctions;
 	}

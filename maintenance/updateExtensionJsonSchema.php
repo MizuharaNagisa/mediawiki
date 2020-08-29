@@ -95,7 +95,7 @@ class UpdateExtensionJsonSchema extends Maintenance {
 					$json['config'][$name] = [ 'value' => $value ];
 					if ( isset( $value[ExtensionRegistry::MERGE_STRATEGY] ) ) {
 						$json['config'][$name]['merge_strategy'] = $value[ExtensionRegistry::MERGE_STRATEGY];
-						unset( $value[ExtensionRegistry::MERGE_STRATEGY] );
+						unset( $json['config'][$name]['value'][ExtensionRegistry::MERGE_STRATEGY] );
 					}
 					if ( isset( $config["@$name"] ) ) {
 						// Put 'description' first for better human-legibility.
@@ -106,6 +106,27 @@ class UpdateExtensionJsonSchema extends Maintenance {
 					}
 				}
 			}
+		}
+
+		// Re-maps top level keys under attributes
+		$attributes = [
+			'CodeMirrorPluginModules' => [ 'CodeMirror', 'PluginModules' ],
+			'CodeMirrorTagModes' => [ 'CodeMirror', 'TagModes' ],
+			'EventLoggingSchemas' => [ 'EventLogging', 'Schemas' ],
+			'SyntaxHighlightModels' => [ 'SyntaxHighlight', 'Models' ],
+			'VisualEditorAvailableContentModels' => [ 'VisualEditor', 'AvailableContentModels' ],
+			'VisualEditorAvailableNamespaces' => [ 'VisualEditor', 'AvailableNamespaces' ],
+			'VisualEditorPreloadModules' => [ 'VisualEditor', 'PreloadModules' ],
+			'VisualEditorPluginModules' => [ 'VisualEditor', 'PluginModules' ],
+		];
+
+		foreach ( $attributes as $name => $value ) {
+			if ( !isset( $json[$name] ) ) {
+				continue;
+			}
+
+			$json['attributes'][$value[0]][$value[1]] = $json[$name];
+			unset( $json[$name] );
 		}
 	}
 }

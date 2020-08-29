@@ -23,18 +23,30 @@
  *
  * This is a wrapper that will call the EditPage class or a custom editor from an extension.
  *
+ * @stable for subclasssing
  * @ingroup Actions
  */
 class EditAction extends FormlessAction {
 
+	/**
+	 * @stable to override
+	 * @return string
+	 */
 	public function getName() {
 		return 'edit';
 	}
 
+	/**
+	 * @stable to override
+	 * @return string|null
+	 */
 	public function onView() {
 		return null;
 	}
 
+	/**
+	 * @stable to override
+	 */
 	public function show() {
 		$this->useTransactionalTimeLimit();
 
@@ -51,11 +63,10 @@ class EditAction extends FormlessAction {
 				'mediawiki.ui.checkbox',
 			] );
 		}
-		$page = $this->page;
-		$user = $this->getUser();
 
-		if ( Hooks::run( 'CustomEditor', [ $page, $user ] ) ) {
-			$editor = new EditPage( $page );
+		$article = $this->getArticle();
+		if ( $this->getHookRunner()->onCustomEditor( $article, $this->getUser() ) ) {
+			$editor = new EditPage( $article );
 			$editor->setContextTitle( $this->getTitle() );
 			$editor->edit();
 		}

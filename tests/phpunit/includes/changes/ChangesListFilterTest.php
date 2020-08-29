@@ -5,10 +5,10 @@ use Wikimedia\TestingAccessWrapper;
 /**
  * @covers ChangesListFilter
  */
-class ChangesListFilterTest extends MediaWikiTestCase {
+class ChangesListFilterTest extends MediaWikiIntegrationTestCase {
 	protected $group;
 
-	public function setUp() : void {
+	protected function setUp() : void {
 		$this->group = $this->getGroup( [ 'name' => 'group' ] );
 
 		parent::setUp();

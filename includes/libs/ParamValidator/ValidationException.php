@@ -2,7 +2,6 @@
 
 namespace Wikimedia\ParamValidator;
 
-use Exception;
 use Throwable;
 use UnexpectedValueException;
 use Wikimedia\Message\DataMessageValue;
@@ -10,6 +9,7 @@ use Wikimedia\Message\DataMessageValue;
 /**
  * Error reporting for ParamValidator
  *
+ * @newable
  * @since 1.34
  * @unstable
  */
@@ -28,14 +28,15 @@ class ValidationException extends UnexpectedValueException {
 	protected $settings;
 
 	/**
+	 * @stable to call
 	 * @param DataMessageValue $failureMessage Failure message.
 	 * @param string $name Parameter name being validated
 	 * @param mixed $value Value of the parameter
 	 * @param array $settings Settings array being used for validation
-	 * @param Throwable|Exception|null $previous Previous exception causing this failure
+	 * @param Throwable|null $previous Previous throwable causing this failure
 	 */
 	public function __construct(
-		DataMessageValue $failureMessage, $name, $value, $settings, $previous = null
+		DataMessageValue $failureMessage, $name, $value, $settings, Throwable $previous = null
 	) {
 		$this->failureMessage = $failureMessage;
 		$this->paramName = $name;

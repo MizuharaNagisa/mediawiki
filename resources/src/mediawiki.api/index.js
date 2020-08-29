@@ -50,12 +50,12 @@
 		return action;
 	}
 
-	// Pre-populate with fake ajax promises to save http requests for tokens
-	// we already have on the page via the user.tokens module (T36733).
+	// Pre-populate with fake ajax promises to avoid HTTP requests for tokens that
+	// we already have on the page from the embedded user.options module (T36733).
 	promises[ defaultOptions.ajax.url ] = {};
 	// eslint-disable-next-line no-jquery/no-each-util
 	$.each( mw.user.tokens.get(), function ( key, value ) {
-		// This requires #getToken to use the same key as user.tokens.
+		// This requires #getToken to use the same key as mw.user.tokens.
 		// Format: token-type + "Token" (eg. csrfToken, patrolToken, watchToken).
 		promises[ defaultOptions.ajax.url ][ key ] = $.Deferred()
 			.resolve( value )
@@ -234,10 +234,6 @@
 					ajaxOptions.data += '&token=' + encodeURIComponent( token );
 				}
 
-				// Depending on server configuration, MediaWiki may forbid periods in URLs, due to an IE 6
-				// XSS bug. So let's escape them here. See WebRequest::checkUrlExtension() and T30235.
-				ajaxOptions.data = ajaxOptions.data.replace( /\./g, '%2E' );
-
 				if ( ajaxOptions.contentType === 'multipart/form-data' ) {
 					// We were asked to emulate but can't, so drop the Content-Type header, otherwise
 					// it'll be wrong and the server will fail to decode the POST body
@@ -249,9 +245,9 @@
 			xhr = $.ajax( ajaxOptions )
 				// If AJAX fails, reject API call with error code 'http'
 				// and details in second argument.
-				.fail( function ( xhr, textStatus, exception ) {
+				.fail( function ( jqXHR, textStatus, exception ) {
 					apiDeferred.reject( 'http', {
-						xhr: xhr,
+						xhr: jqXHR,
 						textStatus: textStatus,
 						exception: exception
 					} );
@@ -310,12 +306,16 @@
 		 */
 		postWithToken: function ( tokenType, params, ajaxOptions ) {
 			var api = this,
+				assertParams = {
+					assert: params.assert,
+					assertuser: params.assertuser
+				},
 				abortedPromise = $.Deferred().reject( 'http',
 					{ textStatus: 'abort', exception: 'abort' } ).promise(),
 				abortable,
 				aborted;
 
-			return api.getToken( tokenType, params.assert ).then( function ( token ) {
+			return api.getToken( tokenType, assertParams ).then( function ( token ) {
 				params.token = token;
 				// Request was aborted while token request was running, but we
 				// don't want to unnecessarily abort token requests, so abort
@@ -332,8 +332,8 @@
 							// Try again, once
 							params.token = undefined;
 							abortable = null;
-							return api.getToken( tokenType, params.assert ).then( function ( token ) {
-								params.token = token;
+							return api.getToken( tokenType, assertParams ).then( function ( t ) {
+								params.token = t;
 								if ( aborted ) {
 									return abortedPromise;
 								}
@@ -358,30 +358,32 @@
 		/**
 		 * Get a token for a certain action from the API.
 		 *
-		 * The assert parameter is only for internal use by #postWithToken.
-		 *
 		 * @since 1.22
 		 * @param {string} type Token type
-		 * @param {string} [assert]
+		 * @param {Object|string} [additionalParams] Additional parameters for the API (since 1.35).
+		 *   When given a string, it's treated as the 'assert' parameter (since 1.25).
 		 * @return {jQuery.Promise} Received token.
 		 */
-		getToken: function ( type, assert ) {
+		getToken: function ( type, additionalParams ) {
 			var apiPromise, promiseGroup, d, reject;
 			type = mapLegacyToken( type );
 			promiseGroup = promises[ this.defaults.ajax.url ];
 			d = promiseGroup && promiseGroup[ type + 'Token' ];
+
+			if ( typeof additionalParams === 'string' ) {
+				additionalParams = { assert: additionalParams };
+			}
 
 			if ( !promiseGroup ) {
 				promiseGroup = promises[ this.defaults.ajax.url ] = {};
 			}
 
 			if ( !d ) {
-				apiPromise = this.get( {
+				apiPromise = this.get( $.extend( {
 					action: 'query',
 					meta: 'tokens',
-					type: type,
-					assert: assert
-				} );
+					type: type
+				}, additionalParams ) );
 				reject = function () {
 					// Clear promise. Do not cache errors.
 					delete promiseGroup[ type + 'Token' ];

@@ -32,7 +32,7 @@ class CategoryChangesAsRdf extends Maintenance {
 	/**
 	 * Insert query
 	 */
-	const SPARQL_INSERT = <<<SPARQL
+	private const SPARQL_INSERT = <<<SPARQL
 INSERT DATA {
 %s
 };
@@ -42,7 +42,7 @@ SPARQL;
 	/**
 	 * Delete query
 	 */
-	const SPARQL_DELETE = <<<SPARQLD
+	private const SPARQL_DELETE = <<<SPARQLD
 DELETE {
 ?category ?x ?y
 } WHERE {
@@ -53,23 +53,6 @@ DELETE {
 };
 
 SPARQLD;
-
-	/**
-	 * Delete/Insert query
-	 */
-	const SPARQL_DELETE_INSERT = <<<SPARQLDI
-DELETE {
-?category ?x ?y
-} INSERT {
-%s
-} WHERE {
-  ?category ?x ?y
-   VALUES ?category {
-     %s
-   }
-};
-
-SPARQLDI;
 
 	/**
 	 * @var RdfWriter
@@ -639,6 +622,7 @@ SPARQL;
 						continue;
 					}
 					$this->writeCategoryData( $row );
+					$pages[$row->page_id] = $row->rc_title;
 					$deleteUrls[] = '<' . $this->categoriesRdf->labelToUrl( $row->rc_title ) . '>';
 					$this->processed[$row->page_id] = true;
 				}
@@ -682,6 +666,7 @@ SPARQL;
 						continue;
 					}
 					$this->writeCategoryData( $row );
+					$pages[$row->page_id] = $row->rc_title;
 					$deleteUrls[] = '<' . $this->categoriesRdf->labelToUrl( $row->rc_title ) . '>';
 					if ( $row->page_id ) {
 						$this->processed[$row->page_id] = true;

@@ -3,14 +3,14 @@
 use MediaWiki\MediaWikiServices;
 use Psr\Log\LoggerInterface;
 
-abstract class ResourceLoaderTestCase extends MediaWikiTestCase {
+abstract class ResourceLoaderTestCase extends MediaWikiIntegrationTestCase {
 	// Version hash for a blank file module.
 	// Result of ResourceLoader::makeHash(), ResourceLoaderTestModule
 	// and ResourceLoaderFileModule::getDefinitionSummary().
-	const BLANK_VERSION = '9p30q';
+	public const BLANK_VERSION = '9p30q';
 	// Result of ResoureLoader::makeVersionQuery() for a blank file module.
 	// In other words, result of ResourceLoader::makeHash( BLANK_VERSION );
-	const BLANK_COMBI = 'rbml8';
+	public const BLANK_COMBI = 'rbml8';
 
 	/**
 	 * @param array|string $options Language code or options array
@@ -63,9 +63,6 @@ abstract class ResourceLoaderTestCase extends MediaWikiTestCase {
 			'ScriptPath' => '/w',
 			'Script' => '/w/index.php',
 			'LoadScript' => '/w/load.php',
-
-			// For ResourceLoader::register() - TODO: Inject somehow T32956
-			'ResourceModuleSkinStyles' => [],
 
 			// For ResourceLoader::respond() - TODO: Inject somehow T32956
 			'UseFileCache' => false,

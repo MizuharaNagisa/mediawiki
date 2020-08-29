@@ -1,6 +1,6 @@
 <?php
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\Revision\RevisionRecord;
 
 /**
  * @covers CategoryMembershipChangeJob
@@ -11,16 +11,16 @@ use MediaWiki\MediaWikiServices;
  * @license GPL-2.0-or-later
  * @author Addshore
  */
-class CategoryMembershipChangeJobTest extends MediaWikiTestCase {
+class CategoryMembershipChangeJobTest extends MediaWikiIntegrationTestCase {
 
-	const TITLE_STRING = 'UTCatChangeJobPage';
+	private const TITLE_STRING = 'UTCatChangeJobPage';
 
 	/**
 	 * @var Title
 	 */
 	private $title;
 
-	public function setUp() : void {
+	protected function setUp() : void {
 		parent::setUp();
 		$this->setMwGlobals( 'wgRCWatchCategoryMembership', true );
 		$this->setContentLang( 'qqx' );
@@ -50,11 +50,11 @@ class CategoryMembershipChangeJobTest extends MediaWikiTestCase {
 			ContentHandler::makeContent( $text, $this->title ),
 			__METHOD__
 		);
-		/** @var Revision $revision */
-		$revision = $editResult->value['revision'];
+		/** @var RevisionRecord $revisionRecord */
+		$revisionRecord = $editResult->value['revision-record'];
 		$this->runJobs();
 
-		return $revision->getId();
+		return $revisionRecord->getId();
 	}
 
 	/**
@@ -92,7 +92,6 @@ class CategoryMembershipChangeJobTest extends MediaWikiTestCase {
 	public function testJobSpecRemovesDuplicates() {
 		$jobSpec = CategoryMembershipChangeJob::newSpec( $this->title, MWTimestamp::now() );
 		$job = new CategoryMembershipChangeJob(
-			MediaWikiServices::getInstance()->getParserCache(),
 			$this->title,
 			$jobSpec->getParams()
 		);

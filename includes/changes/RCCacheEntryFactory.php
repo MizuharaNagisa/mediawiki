@@ -24,10 +24,10 @@ use MediaWiki\Revision\RevisionRecord;
 
 class RCCacheEntryFactory {
 
-	/* @var IContextSource */
+	/** @var IContextSource */
 	private $context;
 
-	/* @var string[] */
+	/** @var string[] */
 	private $messages;
 
 	/**
@@ -64,6 +64,7 @@ class RCCacheEntryFactory {
 
 		$cacheEntry->watched = $cacheEntry->mAttribs['rc_type'] == RC_LOG ? false : $watched;
 		$cacheEntry->numberofWatchingusers = $baseRC->numberofWatchingusers;
+		$cacheEntry->watchlistExpiry = $baseRC->watchlistExpiry;
 
 		$cacheEntry->link = $this->buildCLink( $cacheEntry );
 		$cacheEntry->timestamp = $this->buildTimestamp( $cacheEntry );

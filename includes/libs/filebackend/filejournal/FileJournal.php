@@ -34,6 +34,7 @@ use Wikimedia\Timestamp\ConvertibleTimestamp;
  *
  * Subclasses should avoid throwing exceptions at all costs.
  *
+ * @stable to extend
  * @ingroup FileJournal
  * @since 1.20
  */
@@ -45,6 +46,7 @@ abstract class FileJournal {
 
 	/**
 	 * Construct a new instance from configuration.
+	 * @stable to call
 	 *
 	 * @param array $config Includes:
 	 *   - 'backend': The name of a registered file backend

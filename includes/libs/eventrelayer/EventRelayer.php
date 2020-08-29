@@ -23,12 +23,16 @@ use Psr\Log\NullLogger;
 
 /**
  * Base class for reliable event relays
+ *
+ * @stable to extend
  */
 abstract class EventRelayer implements LoggerAwareInterface {
 	/** @var LoggerInterface */
 	protected $logger;
 
 	/**
+	 * @stable to call
+	 *
 	 * @param array $params
 	 */
 	public function __construct( array $params ) {

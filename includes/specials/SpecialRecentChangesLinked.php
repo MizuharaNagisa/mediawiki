@@ -21,8 +21,6 @@
  * @ingroup SpecialPage
  */
 
-use MediaWiki\MediaWikiServices;
-
 /**
  * This is to display changes made to all articles linked in an article.
  *
@@ -32,7 +30,7 @@ class SpecialRecentChangesLinked extends SpecialRecentChanges {
 	/** @var bool|Title */
 	protected $rclTargetTitle;
 
-	function __construct() {
+	public function __construct() {
 		parent::__construct( 'Recentchangeslinked' );
 	}
 
@@ -91,20 +89,8 @@ class SpecialRecentChangesLinked extends SpecialRecentChanges {
 		$select = array_merge( $rcQuery['fields'], $select );
 		$join_conds = array_merge( $join_conds, $rcQuery['joins'] );
 
-		// left join with watchlist table to highlight watched rows
-		$uid = $this->getUser()->getId();
-		if ( $uid && MediaWikiServices::getInstance()
-				->getPermissionManager()
-				->userHasRight( $this->getUser(), 'viewmywatchlist' )
-		) {
-			$tables[] = 'watchlist';
-			$select[] = 'wl_user';
-			$join_conds['watchlist'] = [ 'LEFT JOIN', [
-				'wl_user' => $uid,
-				'wl_title=rc_title',
-				'wl_namespace=rc_namespace'
-			] ];
-		}
+		// Join with watchlist and watchlist_expiry tables to highlight watched rows.
+		$this->addWatchlistJoins( $dbr, $tables, $select, $join_conds, $conds );
 
 		// JOIN on page, used for 'last revision' filter highlight
 		$tables[] = 'page';
@@ -143,7 +129,7 @@ class SpecialRecentChangesLinked extends SpecialRecentChanges {
 			return false;
 		}
 
-		if ( $ns == NS_CATEGORY && !$showlinkedto ) {
+		if ( $ns === NS_CATEGORY && !$showlinkedto ) {
 			// special handling for categories
 			// XXX: should try to make this less kludgy
 			$link_tables = [ 'categorylinks' ];
@@ -152,7 +138,7 @@ class SpecialRecentChangesLinked extends SpecialRecentChanges {
 			// for now, always join on these tables; really should be configurable as in whatlinkshere
 			$link_tables = [ 'pagelinks', 'templatelinks' ];
 			// imagelinks only contains links to pages in NS_FILE
-			if ( $ns == NS_FILE || !$showlinkedto ) {
+			if ( $ns === NS_FILE || !$showlinkedto ) {
 				$link_tables[] = 'imagelinks';
 			}
 		}
@@ -237,7 +223,7 @@ class SpecialRecentChangesLinked extends SpecialRecentChanges {
 		return $dbr->query( $sql, __METHOD__ );
 	}
 
-	function setTopText( FormOptions $opts ) {
+	public function setTopText( FormOptions $opts ) {
 		$target = $this->getTargetTitle();
 		if ( $target ) {
 			$this->getOutput()->addBacklinkSubtitle( $target );
@@ -251,7 +237,7 @@ class SpecialRecentChangesLinked extends SpecialRecentChanges {
 	 * @param FormOptions $opts
 	 * @return array
 	 */
-	function getExtraOptions( $opts ) {
+	public function getExtraOptions( $opts ) {
 		$extraOpts = parent::getExtraOptions( $opts );
 
 		$opts->consumeValues( [ 'showlinkedto', 'target' ] );
@@ -268,7 +254,7 @@ class SpecialRecentChangesLinked extends SpecialRecentChanges {
 	/**
 	 * @return Title
 	 */
-	function getTargetTitle() {
+	private function getTargetTitle() {
 		if ( $this->rclTargetTitle === null ) {
 			$opts = $this->getOptions();
 			if ( isset( $opts['target'] ) && $opts['target'] !== '' ) {

@@ -34,7 +34,7 @@ use Wikimedia\TestingAccessWrapper;
  * @group medium
  * @covers \Wikimedia\Rdbms\LoadBalancer
  */
-class LoadBalancerTest extends MediaWikiTestCase {
+class LoadBalancerTest extends MediaWikiIntegrationTestCase {
 	private function makeServerConfig( $flags = DBO_DEFAULT ) {
 		global $wgDBserver, $wgDBname, $wgDBuser, $wgDBpassword, $wgDBtype, $wgSQLiteDataDir;
 
@@ -57,6 +57,7 @@ class LoadBalancerTest extends MediaWikiTestCase {
 	 * @covers \Wikimedia\Rdbms\LoadBalancer::resolveDomainID()
 	 * @covers \Wikimedia\Rdbms\LoadBalancer::haveIndex()
 	 * @covers \Wikimedia\Rdbms\LoadBalancer::isNonZeroLoad()
+	 * @covers \Wikimedia\Rdbms\LoadBalancer::setDomainAliases()
 	 */
 	public function testWithoutReplica() {
 		global $wgDBname;
@@ -72,7 +73,7 @@ class LoadBalancerTest extends MediaWikiTestCase {
 			}
 		] );
 
-		$this->assertEquals( 1, $lb->getServerCount() );
+		$this->assertSame( 1, $lb->getServerCount() );
 		$this->assertFalse( $lb->hasReplicaServers() );
 		$this->assertFalse( $lb->hasStreamingReplicaServers() );
 
@@ -326,7 +327,7 @@ class LoadBalancerTest extends MediaWikiTestCase {
 			'servers' => $servers,
 			'localDomain' => new DatabaseDomain( $wgDBname, null, $this->dbPrefix() ),
 			'queryLogger' => MediaWiki\Logger\LoggerFactory::getInstance( 'DBQuery' ),
-			'loadMonitorClass' => LoadMonitorNull::class
+			'loadMonitor' => [ 'class' => LoadMonitorNull::class ]
 		] );
 	}
 
@@ -382,6 +383,9 @@ class LoadBalancerTest extends MediaWikiTestCase {
 		}
 	}
 
+	/**
+	 * @covers \Wikimedia\Rdbms\LoadBalancer::getServerAttributes
+	 */
 	public function testServerAttributes() {
 		$servers = [
 			[ // master
@@ -396,7 +400,7 @@ class LoadBalancerTest extends MediaWikiTestCase {
 		$lb = new LoadBalancer( [
 			'servers' => $servers,
 			'localDomain' => new DatabaseDomain( 'my_unittest_wiki', null, 'unittest_' ),
-			'loadMonitorClass' => LoadMonitorNull::class
+			'loadMonitor' => [ 'class' => LoadMonitorNull::class ]
 		] );
 
 		$this->assertTrue( $lb->getServerAttributes( 0 )[Database::ATTR_DB_LEVEL_LOCKING] );
@@ -425,7 +429,7 @@ class LoadBalancerTest extends MediaWikiTestCase {
 		$lb = new LoadBalancer( [
 			'servers' => $servers,
 			'localDomain' => new DatabaseDomain( 'my_unittest_wiki', null, 'unittest_' ),
-			'loadMonitorClass' => LoadMonitorNull::class
+			'loadMonitor' => [ 'class' => LoadMonitorNull::class ]
 		] );
 
 		$this->assertFalse( $lb->getServerAttributes( 1 )[Database::ATTR_DB_LEVEL_LOCKING] );
@@ -600,6 +604,7 @@ class LoadBalancerTest extends MediaWikiTestCase {
 	/**
 	 * @covers \Wikimedia\Rdbms\LoadBalancer::getConnectionRef()
 	 * @covers \Wikimedia\Rdbms\LoadBalancer::getConnection()
+	 * @covers \Wikimedia\Rdbms\LoadBalancer::getConnectionRef()
 	 */
 	public function testDBConnRefReadsMasterAndReplicaRoles() {
 		$lb = $this->newSingleServerLocalLoadBalancer();
@@ -782,5 +787,25 @@ class LoadBalancerTest extends MediaWikiTestCase {
 		$rReplica->query( "SELECT 1", __METHOD__ );
 		$this->assertNotFalse( $lb->getAnyOpenConnection( 0 ) );
 		$this->assertNotFalse( $lb->getAnyOpenConnection( 1 ) );
+	}
+
+	/**
+	 * @covers LoadBalancer::setDomainAliases()
+	 * @covers LoadBalancer::resolveDomainID()
+	 */
+	public function testSetDomainAliases() {
+		$lb = $this->newMultiServerLocalLoadBalancer();
+		$origDomain = $lb->getLocalDomainID();
+
+		$this->assertEquals( $origDomain, $lb->resolveDomainID( false ) );
+		$this->assertEquals( "db-prefix_", $lb->resolveDomainID( "db-prefix_" ) );
+
+		$lb->setDomainAliases( [
+			'alias-db' => 'realdb',
+			'alias-db-prefix_' => 'realdb-realprefix_'
+		] );
+
+		$this->assertEquals( 'realdb', $lb->resolveDomainID( 'alias-db' ) );
+		$this->assertEquals( "realdb-realprefix_", $lb->resolveDomainID( "alias-db-prefix_" ) );
 	}
 }

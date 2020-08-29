@@ -1,20 +1,44 @@
 var checkboxShift = require( './checkboxShift.js' );
-mw.hook( 'wikipage.content' ).add( function ( $content ) {
-	var $sortable, $collapsible;
+var config = require( './config.json' );
 
-	$collapsible = $content.find( '.mw-collapsible' );
-	if ( $collapsible.length ) {
-		// Preloaded by Skin::getDefaultModules()
-		mw.loader.using( 'jquery.makeCollapsible', function () {
-			$collapsible.makeCollapsible();
-		} );
+// Break out of framesets
+if ( mw.config.get( 'wgBreakFrames' ) ) {
+	// Note: In IE < 9 strict comparison to window is non-standard (the standard didn't exist yet)
+	// it works only comparing to window.self or window.window (https://stackoverflow.com/q/4850978/319266)
+	if ( window.top !== window.self ) {
+		// Un-trap us from framesets
+		window.top.location.href = location.href;
 	}
+}
 
-	$sortable = $content.find( 'table.sortable' );
-	if ( $sortable.length ) {
-		// Preloaded by Skin::getDefaultModules()
-		mw.loader.using( 'jquery.tablesorter', function () {
-			$sortable.tablesorter();
+mw.hook( 'wikipage.content' ).add( function ( $content ) {
+	var $sortable, $collapsible,
+		dependencies = [];
+	if ( config.sortable ) {
+		$collapsible = $content.find( '.mw-collapsible' );
+		if ( $collapsible.length ) {
+			dependencies.push( 'jquery.makeCollapsible' );
+		}
+	}
+	if ( config.collapsible ) {
+		$sortable = $content.find( 'table.sortable' );
+		if ( $sortable.length ) {
+			dependencies.push( 'jquery.tablesorter' );
+		}
+	}
+	if ( dependencies.length ) {
+		// Both modules are preloaded by Skin::getDefaultModules()
+		mw.loader.using( dependencies ).then( function () {
+			// For tables that are both sortable and collapsible,
+			// it must be made sortable first and collapsible second.
+			// This is because jquery.tablesorter stumbles on the
+			// elements inserted by jquery.makeCollapsible (T64878)
+			if ( $sortable && $sortable.length ) {
+				$sortable.tablesorter();
+			}
+			if ( $collapsible && $collapsible.length ) {
+				$collapsible.makeCollapsible();
+			}
 		} );
 	}
 
@@ -27,6 +51,24 @@ $( function () {
 
 	// Add accesskey hints to the tooltips
 	$( '[accesskey]' ).updateTooltipAccessKeys();
+
+	/**
+	 * Fired when wiki content is being added to the DOM
+	 *
+	 * It is encouraged to fire it before the main DOM is changed (when $content
+	 * is still detached).  However, this order is not defined either way, so you
+	 * should only rely on $content itself.
+	 *
+	 * This includes the ready event on a page load (including post-edit loads)
+	 * and when content has been previewed with LivePreview.
+	 *
+	 * @event wikipage_content
+	 * @member mw.hook
+	 * @param {jQuery} $content The most appropriate element containing the content,
+	 *   such as #mw-content-text (regular content root) or #wikiPreview (live preview
+	 *   root)
+	 */
+	mw.hook( 'wikipage.content' ).fire( $( '#mw-content-text' ) );
 
 	$nodes = $( '.catlinks[data-mw="interface"]' );
 	if ( $nodes.length ) {
@@ -48,13 +90,28 @@ $( function () {
 		mw.hook( 'wikipage.categories' ).fire( $nodes );
 	}
 
+	$nodes = $( 'table.diff[data-mw="interface"]' );
+	if ( $nodes.length ) {
+		/**
+		 * Fired when the diff is added to a page containing a diff
+		 *
+		 * Similar to the {@link mw.hook#event-wikipage_content wikipage.content hook}
+		 * $diff may still be detached when the hook is fired.
+		 *
+		 * @event wikipage_diff
+		 * @member mw.hook
+		 * @param {jQuery} $diff The root element of the MediaWiki diff (`table.diff`).
+		 */
+		mw.hook( 'wikipage.diff' ).fire( $nodes.eq( 0 ) );
+	}
+
 	$( '#t-print a' ).on( 'click', function ( e ) {
 		window.print();
 		e.preventDefault();
 	} );
 
 	// Turn logout to a POST action
-	$( '#pt-logout a' ).on( 'click', function ( e ) {
+	$( '#pt-logout a[data-mw="interface"]' ).on( 'click', function ( e ) {
 		var api = new mw.Api(),
 			url = this.href;
 		mw.notify(
@@ -78,25 +135,49 @@ $( function () {
 	} );
 } );
 
-// Load the search suggestion module when focus the search box.
-function eventListener( e ) {
-	if (
-		e.target.id === 'searchInput' ||
-		/(^|\s)mw-searchInput($|\s)/.test( e.target.className )
-	) {
-		mw.loader.load( 'mediawiki.searchSuggest' );
-		document.removeEventListener( 'focusin', eventListener );
+/**
+ * @class mw.plugin.page.ready
+ * @singleton
+ */
+
+/**
+ * @private
+ * @param {HTMLElement} element
+ * @return {boolean} Whether the element is a search input.
+ */
+function isSearchInput( element ) {
+	return element.id === 'searchInput' ||
+		/(^|\s)mw-searchInput($|\s)/.test( element.className );
+}
+
+/**
+ * Load a given module when a search input is focused.
+ *
+ * @param {string} moduleName Name of a module
+ */
+function loadSearchModule( moduleName ) {
+	// Load the module once a search input is focussed.
+	function eventListener( e ) {
+		if ( isSearchInput( e.target ) ) {
+			mw.loader.load( moduleName );
+			document.removeEventListener( 'focusin', eventListener );
+		}
+	}
+	document.addEventListener( 'focusin', eventListener );
+
+	// Load the module now if the search input is already focused,
+	// because the user started typing before the JavaScript arrived.
+	if ( document.activeElement && isSearchInput( document.activeElement ) ) {
+		mw.loader.load( moduleName );
 	}
 }
-document.addEventListener( 'focusin', eventListener );
 
-// Load the search suggestion module when the search box is already focused
-// because the user started typing before the JavaScript is loaded.
-if (
-	document.activeElement && (
-		document.activeElement.id === 'searchInput' ||
-		/(^|\s)mw-searchInput($|\s)/.test( document.activeElement.className )
-	)
-) {
-	mw.loader.load( 'mediawiki.searchSuggest' );
+// Skins may decide to disable this behaviour or use an alternative module.
+if ( config.search ) {
+	loadSearchModule( 'mediawiki.searchSuggest' );
 }
+
+module.exports = {
+	loadSearchModule: loadSearchModule,
+	checkboxHack: require( './checkboxHack.js' )
+};

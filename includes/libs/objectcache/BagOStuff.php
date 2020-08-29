@@ -29,6 +29,8 @@
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
+use Wikimedia\LightweightObjectStore\ExpirationAwareness;
+use Wikimedia\LightweightObjectStore\StorageAwareness;
 use Wikimedia\ScopedCallback;
 
 /**
@@ -58,9 +60,15 @@ use Wikimedia\ScopedCallback;
  * having poor scalability). The same goes for the "segmentedValueMaxSize" member, which limits
  * the maximum size and chunk count (indirectly) of values.
  *
+ * @stable to extend
  * @ingroup Cache
  */
-abstract class BagOStuff implements IExpiringStore, IStoreKeyEncoder, LoggerAwareInterface {
+abstract class BagOStuff implements
+	ExpirationAwareness,
+	StorageAwareness,
+	IStoreKeyEncoder,
+	LoggerAwareInterface
+{
 	/** @var LoggerInterface */
 	protected $logger;
 
@@ -76,14 +84,14 @@ abstract class BagOStuff implements IExpiringStore, IStoreKeyEncoder, LoggerAwar
 	private $wallClockOverride;
 
 	/** Bitfield constants for get()/getMulti(); these are only advisory */
-	const READ_LATEST = 1; // if supported, avoid reading stale data due to replication
-	const READ_VERIFIED = 2; // promise that the caller handles detection of staleness
+	public const READ_LATEST = 1; // if supported, avoid reading stale data due to replication
+	public const READ_VERIFIED = 2; // promise that the caller handles detection of staleness
 	/** Bitfield constants for set()/merge(); these are only advisory */
-	const WRITE_SYNC = 4; // if supported, block until the write is fully replicated
-	const WRITE_CACHE_ONLY = 8; // only change state of the in-memory cache
-	const WRITE_ALLOW_SEGMENTS = 16; // allow partitioning of the value if it is large
-	const WRITE_PRUNE_SEGMENTS = 32; // delete all the segments if the value is partitioned
-	const WRITE_BACKGROUND = 64; // if supported, do not block on completion until the next read
+	public const WRITE_SYNC = 4; // if supported, block until the write is fully replicated
+	public const WRITE_CACHE_ONLY = 8; // only change state of the in-memory cache
+	public const WRITE_ALLOW_SEGMENTS = 16; // allow partitioning of the value if it is large
+	public const WRITE_PRUNE_SEGMENTS = 32; // delete all the segments if the value is partitioned
+	public const WRITE_BACKGROUND = 64; // if supported, do not block on completion until the next read
 
 	/**
 	 * Parameters include:
@@ -104,6 +112,14 @@ abstract class BagOStuff implements IExpiringStore, IStoreKeyEncoder, LoggerAwar
 	 */
 	public function setLogger( LoggerInterface $logger ) {
 		$this->logger = $logger;
+	}
+
+	/**
+	 * @since 1.35
+	 * @return LoggerInterface
+	 */
+	public function getLogger() : LoggerInterface {
+		return $this->logger;
 	}
 
 	/**
@@ -514,6 +530,33 @@ abstract class BagOStuff implements IExpiringStore, IStoreKeyEncoder, LoggerAwar
 
 		return $map;
 	}
+
+	/**
+	 * Prepare values for storage and get their serialized sizes, or, estimate those sizes
+	 *
+	 * All previously prepared values will be cleared. Each of the new prepared values will be
+	 * individually cleared as they get used by write operations for that key. This is done to
+	 * avoid unchecked growth in PHP memory usage.
+	 *
+	 * Example usage:
+	 * @code
+	 *     $valueByKey = [ $key1 => $value1, $key2 => $value2, $key3 => $value3 ];
+	 *     $cache->setNewPreparedValues( $valueByKey );
+	 *     $cache->set( $key1, $value1, $cache::TTL_HOUR );
+	 *     $cache->setMulti( [ $key2 => $value2, $key3 => $value3 ], $cache::TTL_HOUR );
+	 * @endcode
+	 *
+	 * This is only useful if the caller needs an estimate of the serialized object sizes.
+	 * The caller cannot know the serialization format and even if it did, it could be expensive
+	 * to serialize complex values twice just to get the size information before writing them to
+	 * cache. This method solves both problems by making the cache instance do the serialization
+	 * and having it reuse the result when the cache write happens.
+	 *
+	 * @param array $valueByKey Map of (cache key => PHP variable value to serialize)
+	 * @return int[]|null[] Corresponding list of size estimates (null for invalid values)
+	 * @since 1.35
+	 */
+	abstract public function setNewPreparedValues( array $valueByKey );
 
 	/**
 	 * @internal For testing only

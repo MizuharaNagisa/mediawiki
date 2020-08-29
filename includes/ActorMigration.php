@@ -25,7 +25,8 @@ use MediaWiki\User\UserIdentity;
 use Wikimedia\Rdbms\IDatabase;
 
 /**
- * This class handles the logic for the actor table migration.
+ * This class handles the logic for the actor table migration and should
+ * always be used in lieu of directly accessing database tables.
  *
  * This is not intended to be a long-term part of MediaWiki; it will be
  * deprecated and removed once actor migration is complete.
@@ -41,7 +42,7 @@ class ActorMigration {
 	 * Constant for extensions to feature-test whether $wgActorTableSchemaMigrationStage
 	 * (in MW <1.34) expects MIGRATION_* or SCHEMA_COMPAT_*
 	 */
-	const MIGRATION_STAGE_SCHEMA_COMPAT = 1;
+	public const MIGRATION_STAGE_SCHEMA_COMPAT = 1;
 
 	/**
 	 * Define fields that use temporary tables for transitional purposes
@@ -109,7 +110,7 @@ class ActorMigration {
 	private $stage;
 
 	/**
-	 * @private
+	 * @internal
 	 * @param int $stage
 	 */
 	public function __construct( $stage ) {
@@ -319,7 +320,7 @@ class ActorMigration {
 					$dbw->upsert(
 						$t['table'],
 						[ $t['pk'] => $pk ] + $set,
-						[ $t['pk'] ],
+						[ [ $t['pk'] ] ],
 						$set,
 						$func
 					);

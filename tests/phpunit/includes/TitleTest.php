@@ -8,7 +8,7 @@ use MediaWiki\MediaWikiServices;
  * @group Database
  * @group Title
  */
-class TitleTest extends MediaWikiTestCase {
+class TitleTest extends MediaWikiIntegrationTestCase {
 	protected function setUp() : void {
 		parent::setUp();
 
@@ -16,6 +16,11 @@ class TitleTest extends MediaWikiTestCase {
 			'wgAllowUserJs' => false,
 			'wgDefaultLanguageVariant' => false,
 			'wgMetaNamespace' => 'Project',
+			'wgServer' => 'https://example.org',
+			'wgCanonicalServer' => 'https://example.org',
+			'wgScriptPath' => '/w',
+			'wgScript' => '/w/index.php',
+			'wgArticlePath' => '/wiki/$1',
 		] );
 		$this->setUserLang( 'en' );
 		$this->setContentLang( 'en' );
@@ -283,97 +288,6 @@ class TitleTest extends MediaWikiTestCase {
 		];
 	}
 
-	/**
-	 * Auth-less test of Title::userCan
-	 *
-	 * @param array $whitelistRegexp
-	 * @param string $source
-	 * @param string $action
-	 * @param array|string|bool $expected Required error
-	 *
-	 * @covers \Mediawiki\Permissions\PermissionManager::checkReadPermissions
-	 * @dataProvider dataWgWhitelistReadRegexp
-	 */
-	public function testWgWhitelistReadRegexp( $whitelistRegexp, $source, $action, $expected ) {
-		// $wgWhitelistReadRegexp must be an array. Since the provided test cases
-		// usually have only one regex, it is more concise to write the lonely regex
-		// as a string. Thus we cast to a [] to honor $wgWhitelistReadRegexp
-		// type requisite.
-		if ( is_string( $whitelistRegexp ) ) {
-			$whitelistRegexp = [ $whitelistRegexp ];
-		}
-
-		$this->setMwGlobals( [
-			// So PermissionManager::isEveryoneAllowed( 'read' ) === false
-			'wgGroupPermissions' => [ '*' => [ 'read' => false ] ],
-			'wgWhitelistRead' => [ 'some random non sense title' ],
-			'wgWhitelistReadRegexp' => $whitelistRegexp,
-		] );
-
-		$title = Title::newFromDBkey( $source );
-
-		// New anonymous user with no rights
-		$user = new User;
-		$this->overrideUserPermissions( $user, [] );
-		$errors = $title->userCan( $action, $user );
-
-		if ( is_bool( $expected ) ) {
-			# Forge the assertion message depending on the assertion expectation
-			$allowableness = $expected
-				? " should be allowed"
-				: " should NOT be allowed";
-			$this->assertEquals(
-				$expected,
-				$errors,
-				"User action '$action' on [[$source]] $allowableness."
-			);
-		} else {
-			$errors = $this->flattenErrorsArray( $errors );
-			foreach ( (array)$expected as $error ) {
-				$this->assertContains( $error, $errors );
-			}
-		}
-	}
-
-	/**
-	 * Provides test parameter values for testWgWhitelistReadRegexp()
-	 */
-	public function dataWgWhitelistReadRegexp() {
-		$ALLOWED = true;
-		$DISALLOWED = false;
-
-		return [
-			// Everything, if this doesn't work, we're really in trouble
-			[ '/.*/', 'Main_Page', 'read', $ALLOWED ],
-			[ '/.*/', 'Main_Page', 'edit', $DISALLOWED ],
-
-			// We validate against the title name, not the db key
-			[ '/^Main_Page$/', 'Main_Page', 'read', $DISALLOWED ],
-			// Main page
-			[ '/^Main/', 'Main_Page', 'read', $ALLOWED ],
-			[ '/^Main.*/', 'Main_Page', 'read', $ALLOWED ],
-			// With spaces
-			[ '/Mic\sCheck/', 'Mic Check', 'read', $ALLOWED ],
-			// Unicode multibyte
-			// ...without unicode modifier
-			[ '/Unicode Test . Yes/', 'Unicode Test Ñ Yes', 'read', $DISALLOWED ],
-			// ...with unicode modifier
-			[ '/Unicode Test . Yes/u', 'Unicode Test Ñ Yes', 'read', $ALLOWED ],
-			// Case insensitive
-			[ '/MiC ChEcK/', 'mic check', 'read', $DISALLOWED ],
-			[ '/MiC ChEcK/i', 'mic check', 'read', $ALLOWED ],
-
-			// From DefaultSettings.php:
-			[ "@^UsEr.*@i", 'User is banned', 'read', $ALLOWED ],
-			[ "@^UsEr.*@i", 'User:John Doe', 'read', $ALLOWED ],
-
-			// With namespaces:
-			[ '/^Special:NewPages$/', 'Special:NewPages', 'read', $ALLOWED ],
-			[ null, 'Special:Newpages', 'read', $DISALLOWED ],
-
-		];
-	}
-
 	public function flattenErrorsArray( $errors ) {
 		$result = [];
 		foreach ( $errors as $error ) {
@@ -476,8 +390,16 @@ class TitleTest extends MediaWikiTestCase {
 	public static function provideBaseTitleCases() {
 		return [
 			# Title, expected base, optional message
+			[ 'User:John_Doe', 'John Doe' ],
 			[ 'User:John_Doe/subOne/subTwo', 'John Doe/subOne' ],
 			[ 'User:Foo / Bar / Baz', 'Foo / Bar ' ],
+			[ 'User:Foo/', 'Foo' ],
+			[ 'User:Foo/Bar/', 'Foo/Bar' ],
+			[ 'User:/', '/' ],
+			[ 'User://', '/' ],
+			[ 'User:/oops/', '/oops' ],
+			[ 'User:/Ramba/Zamba/Mamba/', '/Ramba/Zamba/Mamba' ],
+			[ 'User://x//y//z//', '//x//y//z/' ],
 		];
 	}
 
@@ -510,10 +432,18 @@ class TitleTest extends MediaWikiTestCase {
 	public static function provideRootTitleCases() {
 		return [
 			# Title, expected base, optional message
+			[ 'User:John_Doe', 'John Doe' ],
 			[ 'User:John_Doe/subOne/subTwo', 'John Doe' ],
 			[ 'User:Foo / Bar / Baz', 'Foo ' ],
-			[ 'Talk:////', '////' ],
-			[ 'Template:////', '////' ],
+			[ 'User:Foo/', 'Foo' ],
+			[ 'User:Foo/Bar/', 'Foo' ],
+			[ 'User:/', '/' ],
+			[ 'User://', '/' ],
+			[ 'User:/oops/', '/oops' ],
+			[ 'User:/Ramba/Zamba/Mamba/', '/Ramba' ],
+			[ 'User://x//y//z//', '//x' ],
+			[ 'Talk:////', '///' ],
+			[ 'Template:////', '///' ],
 			[ 'Template:Foo////', 'Foo' ],
 			[ 'Template:Foo////Bar', 'Foo' ],
 		];
@@ -535,8 +465,15 @@ class TitleTest extends MediaWikiTestCase {
 	public static function provideSubpageTitleCases() {
 		return [
 			# Title, expected base, optional message
+			[ 'User:John_Doe', 'John Doe' ],
 			[ 'User:John_Doe/subOne/subTwo', 'subTwo' ],
 			[ 'User:John_Doe/subOne', 'subOne' ],
+			[ 'User:/', '/' ],
+			[ 'User://', '' ],
+			[ 'User:/oops/', '' ],
+			[ 'User:/Ramba/Zamba/Mamba/', '' ],
+			[ 'User://x//y//z//', '' ],
+			[ 'Template:Foo', 'Foo' ]
 		];
 	}
 
@@ -1675,7 +1612,7 @@ class TitleTest extends MediaWikiTestCase {
 			$title->getCascadeProtectionSources( true )
 		);
 
-		//TODO: this might partially duplicate testIsCascadeProtected method above
+		// TODO: this might partially duplicate testIsCascadeProtected method above
 
 		$cascade = 1;
 		$anotherPage = $this->getExistingTestPage( 'UTest2' );
@@ -1704,4 +1641,17 @@ class TitleTest extends MediaWikiTestCase {
 		);
 	}
 
+	/**
+	 * @covers Title::getCdnUrls
+	 */
+	public function testGetCdnUrls() {
+		$this->assertEquals(
+			[
+				'https://example.org/wiki/Example',
+				'https://example.org/w/index.php?title=Example&action=history',
+			],
+			Title::makeTitle( NS_MAIN, 'Example' )->getCdnUrls(),
+			'article'
+		);
+	}
 }

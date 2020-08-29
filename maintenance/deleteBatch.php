@@ -82,6 +82,8 @@ class DeleteBatch extends Maintenance {
 			$this->fatalError( "Unable to read file, exiting" );
 		}
 
+		$lbFactory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
+
 		# Handle each entry
 		for ( $linenum = 1; !feof( $file ); $linenum++ ) {
 			$line = trim( fgets( $file ) );
@@ -99,18 +101,28 @@ class DeleteBatch extends Maintenance {
 			}
 
 			$this->output( $title->getPrefixedText() );
-			if ( $title->getNamespace() == NS_FILE ) {
+			if ( $title->getNamespace() === NS_FILE ) {
 				$img = MediaWikiServices::getInstance()->getRepoGroup()->findFile(
 					$title, [ 'ignoreRedirect' => true ]
 				);
-				if ( $img && $img->isLocal() && !$img->delete( $reason ) ) {
+				if ( $img && $img->isLocal() && !$img->deleteFile( $reason, $user ) ) {
 					$this->output( " FAILED to delete associated file... " );
 				}
 			}
 			$page = WikiPage::factory( $title );
 			$error = '';
-			$success = $page->doDeleteArticle( $reason, false, null, null, $error, $user, true );
-			if ( $success ) {
+			$status = $page->doDeleteArticleReal(
+				$reason,
+				$user,
+				false,
+				null,
+				$error,
+				null,
+				[],
+				'delete',
+				true
+			);
+			if ( $status->isOK() ) {
 				$this->output( " Deleted!\n" );
 			} else {
 				$this->output( " FAILED to delete article\n" );
@@ -119,7 +131,7 @@ class DeleteBatch extends Maintenance {
 			if ( $interval ) {
 				sleep( $interval );
 			}
-			wfWaitForSlaves();
+			$lbFactory->waitForReplication();
 		}
 	}
 }

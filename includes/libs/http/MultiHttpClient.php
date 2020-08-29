@@ -47,6 +47,9 @@ use Psr\Log\NullLogger;
  *                  - relayResponseHeaders : write out header via header()
  * Request maps can use integer index 0 instead of 'method' and 1 instead of 'url'.
  *
+ * Since 1.35, callers should use HttpRequestFactory::createMultiClient() to get
+ * a client object with appropriately configured timeouts.
+ *
  * @since 1.23
  */
 class MultiHttpClient implements LoggerAwareInterface {
@@ -57,7 +60,11 @@ class MultiHttpClient implements LoggerAwareInterface {
 	/** @var float */
 	protected $connTimeout = 10;
 	/** @var float */
-	protected $reqTimeout = 900;
+	protected $maxConnTimeout = INF;
+	/** @var float */
+	protected $reqTimeout = 30;
+	/** @var float */
+	protected $maxReqTimeout = INF;
 	/** @var bool */
 	protected $usePipelining = false;
 	/** @var int */
@@ -72,12 +79,18 @@ class MultiHttpClient implements LoggerAwareInterface {
 	// In PHP 7 due to https://bugs.php.net/bug.php?id=76480 the request/connect
 	// timeouts are periodically polled instead of being accurately respected.
 	// The select timeout is set to the minimum timeout multiplied by this factor.
-	const TIMEOUT_ACCURACY_FACTOR = 0.1;
+	private const TIMEOUT_ACCURACY_FACTOR = 0.1;
 
 	/**
+	 * Since 1.35, callers should use HttpRequestFactory::createMultiClient() to get
+	 * a client object with appropriately configured timeouts instead of constructing
+	 * a MultiHttpClient directly.
+	 *
 	 * @param array $options
 	 *   - connTimeout     : default connection timeout (seconds)
 	 *   - reqTimeout      : default request timeout (seconds)
+	 *   - maxConnTimeout  : maximum connection timeout (seconds)
+	 *   - maxReqTimeout   : maximum request timeout (seconds)
 	 *   - proxy           : HTTP proxy to use
 	 *   - usePipelining   : whether to use HTTP pipelining if possible (for all hosts)
 	 *   - maxConnsPerHost : maximum number of concurrent connections (per host)
@@ -94,8 +107,8 @@ class MultiHttpClient implements LoggerAwareInterface {
 			}
 		}
 		static $opts = [
-			'connTimeout', 'reqTimeout', 'usePipelining', 'maxConnsPerHost',
-			'proxy', 'userAgent', 'logger'
+			'connTimeout', 'maxConnTimeout', 'reqTimeout', 'maxReqTimeout',
+			'usePipelining', 'maxConnsPerHost', 'proxy', 'userAgent', 'logger'
 		];
 		foreach ( $opts as $key ) {
 			if ( isset( $options[$key] ) ) {
@@ -165,6 +178,13 @@ class MultiHttpClient implements LoggerAwareInterface {
 		$this->normalizeRequests( $reqs );
 		$opts += [ 'connTimeout' => $this->connTimeout, 'reqTimeout' => $this->reqTimeout ];
 
+		if ( $opts['connTimeout'] > $this->maxConnTimeout ) {
+			$opts['connTimeout'] = $this->maxConnTimeout;
+		}
+		if ( $opts['reqTimeout'] > $this->maxReqTimeout ) {
+			$opts['reqTimeout'] = $this->maxReqTimeout;
+		}
+
 		if ( $this->isCurlEnabled() ) {
 			return $this->runMultiCurl( $reqs, $opts );
 		} else {
@@ -178,7 +198,9 @@ class MultiHttpClient implements LoggerAwareInterface {
 	 * @return bool true if curl is available, false otherwise.
 	 */
 	protected function isCurlEnabled() {
-		return extension_loaded( 'curl' );
+		// Explicitly test if curl_multi* is blocked, as some users' hosts provide
+		// them with a modified curl with the multi-threaded parts removed(!)
+		return extension_loaded( 'curl' ) && function_exists( 'curl_multi_init' );
 	}
 
 	/**
@@ -470,7 +492,7 @@ class MultiHttpClient implements LoggerAwareInterface {
 			}
 
 			$httpRequest = MediaWikiServices::getInstance()->getHttpRequestFactory()->create(
-				$url, $reqOptions );
+				$url, $reqOptions, __METHOD__ );
 			$sv = $httpRequest->execute()->getStatusValue();
 
 			$respHeaders = array_map(

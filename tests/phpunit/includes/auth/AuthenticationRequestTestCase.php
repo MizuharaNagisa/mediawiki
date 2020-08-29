@@ -5,7 +5,13 @@ namespace MediaWiki\Auth;
 /**
  * @group AuthManager
  */
-abstract class AuthenticationRequestTestCase extends \MediaWikiTestCase {
+abstract class AuthenticationRequestTestCase extends \MediaWikiIntegrationTestCase {
+
+	/**
+	 * @param array $args
+	 *
+	 * @return AuthenticationRequest
+	 */
 	abstract protected function getInstance( array $args = [] );
 
 	/**
@@ -83,7 +89,7 @@ abstract class AuthenticationRequestTestCase extends \MediaWikiTestCase {
 		$ret = $instance->loadFromSubmission( $data );
 		if ( is_array( $expectState ) ) {
 			$this->assertTrue( $ret );
-			$expect = call_user_func( [ get_class( $instance ), '__set_state' ], $expectState );
+			$expect = $instance::__set_state( $expectState );
 			$this->assertEquals( $expect, $instance );
 		} else {
 			$this->assertFalse( $ret );

@@ -3,7 +3,7 @@
 namespace MediaWiki\Session;
 
 use BadMethodCallException;
-use MediaWikiTestCase;
+use MediaWikiIntegrationTestCase;
 use Psr\Log\LogLevel;
 use UnexpectedValueException;
 use Wikimedia\TestingAccessWrapper;
@@ -12,7 +12,7 @@ use Wikimedia\TestingAccessWrapper;
  * @group Session
  * @covers MediaWiki\Session\PHPSessionHandler
  */
-class PHPSessionHandlerTest extends MediaWikiTestCase {
+class PHPSessionHandlerTest extends MediaWikiIntegrationTestCase {
 
 	private function getResetter( &$rProp = null ) {
 		$reset = [];
@@ -326,7 +326,7 @@ class PHPSessionHandlerTest extends MediaWikiTestCase {
 
 		$this->expectException( BadMethodCallException::class );
 		$this->expectExceptionMessage( "Attempt to use PHP session management" );
-		call_user_func_array( [ $handler, $method ], $args );
+		$handler->$method( ...$args );
 	}
 
 	public static function provideDisabled() {
@@ -349,8 +349,8 @@ class PHPSessionHandlerTest extends MediaWikiTestCase {
 		TestingAccessWrapper::newFromObject( $handler )->setEnableFlags( 'enable' );
 
 		$this->expectException( UnexpectedValueException::class );
-		$this->expectExceptionMessageRegExp( "/: Wrong instance called!$/" );
-		call_user_func_array( [ $handler, $method ], $args );
+		$this->expectExceptionMessageMatches( "/: Wrong instance called!$/" );
+		$handler->$method( ...$args );
 	}
 
 	public static function provideWrongInstance() {

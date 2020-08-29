@@ -1,16 +1,12 @@
 <?php
 
-use Wikimedia\TestingAccessWrapper;
-
 /**
  * @group Search
  * @group Database
  * @covers PrefixSearch
  */
 class PrefixSearchTest extends MediaWikiLangTestCase {
-	const NS_NONCAP = 12346;
-
-	private $originalHandlers;
+	private const NS_NONCAP = 12346;
 
 	public function addDBDataOnce() {
 		if ( !$this->isWikitextNS( NS_MAIN ) ) {
@@ -57,15 +53,6 @@ class PrefixSearchTest extends MediaWikiLangTestCase {
 			'wgExtraNamespaces' => [ self::NS_NONCAP => 'NonCap' ],
 			'wgCapitalLinkOverrides' => [ self::NS_NONCAP => false ],
 		] );
-
-		$this->originalHandlers = TestingAccessWrapper::newFromClass( Hooks::class )->handlers;
-		TestingAccessWrapper::newFromClass( Hooks::class )->handlers = [];
-	}
-
-	public function tearDown() : void {
-		parent::tearDown();
-
-		TestingAccessWrapper::newFromClass( Hooks::class )->handlers = $this->originalHandlers;
 	}
 
 	protected function searchProvision( array $results = null ) {

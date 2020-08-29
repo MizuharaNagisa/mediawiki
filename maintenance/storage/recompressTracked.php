@@ -130,7 +130,7 @@ class RecompressTracked {
 	}
 
 	public function debug( $msg ) {
-		wfDebug( "$msg\n" );
+		wfDebug( "$msg" );
 		if ( $this->debugLog ) {
 			$this->logToFile( $msg, $this->debugLog );
 		}
@@ -203,7 +203,7 @@ class RecompressTracked {
 	 */
 	private function checkTrackingTable() {
 		$dbr = wfGetDB( DB_REPLICA );
-		if ( !$dbr->tableExists( 'blob_tracking' ) ) {
+		if ( !$dbr->tableExists( 'blob_tracking', __METHOD__ ) ) {
 			$this->critical( "Error: blob_tracking table does not exist" );
 
 			return false;
@@ -225,7 +225,7 @@ class RecompressTracked {
 	 * writing are all slow.
 	 */
 	private function startChildProcs() {
-		$wiki = WikiMap::getWikiIdFromDbDomain( WikiMap::getCurrentWikiDbDomain() );
+		$wiki = WikiMap::getCurrentWikiId();
 
 		$cmd = 'php ' . Shell::escape( __FILE__ );
 		foreach ( self::$cmdLineOptionMap as $cmdOption => $classOption ) {

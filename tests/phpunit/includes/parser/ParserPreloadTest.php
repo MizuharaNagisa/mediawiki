@@ -21,7 +21,7 @@ use MediaWiki\MediaWikiServices;
  * @covers PPNode_Hash_Array
  * @covers PPNode_Hash_Attr
  */
-class ParserPreloadTest extends MediaWikiTestCase {
+class ParserPreloadTest extends MediaWikiIntegrationTestCase {
 	/**
 	 * @var Parser
 	 */
@@ -37,11 +37,13 @@ class ParserPreloadTest extends MediaWikiTestCase {
 
 	protected function setUp() : void {
 		parent::setUp();
+		$services = MediaWikiServices::getInstance();
+
 		$this->testParserOptions = ParserOptions::newFromUserAndLang( new User,
 			MediaWikiServices::getInstance()->getContentLanguage() );
 
-		$this->testParser = new Parser();
-		$this->testParser->Options( $this->testParserOptions );
+		$this->testParser = $services->getParserFactory()->create();
+		$this->testParser->setOptions( $this->testParserOptions );
 		$this->testParser->clearState();
 
 		$this->title = Title::newFromText( 'Preload Test' );

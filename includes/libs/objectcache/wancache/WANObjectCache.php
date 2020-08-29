@@ -23,6 +23,8 @@ use Liuggio\StatsdClient\Factory\StatsdDataFactoryInterface;
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
+use Wikimedia\LightweightObjectStore\ExpirationAwareness;
+use Wikimedia\LightweightObjectStore\StorageAwareness;
 
 /**
  * Multi-datacenter aware caching interface
@@ -60,7 +62,7 @@ use Psr\Log\NullLogger;
  *        be stale, one should consider using TTL only – using the value's age as
  *        method of validation.
  *
- * The purge strategy refers to the the approach whereby your application knows that
+ * The purge strategy refers to the approach whereby your application knows that
  * source data has changed and can react by purging the relevant cache keys.
  * As purges are expensive, this strategy should be avoided if possible.
  * The simplest purge method is delete().
@@ -72,7 +74,8 @@ use Psr\Log\NullLogger;
  * The need for immediate updates should be avoided. If needed, solutions must be
  * sought outside WANObjectCache.
  *
- * ### Deploying WANObjectCache
+ * @anchor wanobjectcache-deployment
+ * ### Deploying %WANObjectCache
  *
  * There are two supported ways to set up broadcasted operations:
  *
@@ -102,18 +105,24 @@ use Psr\Log\NullLogger;
  * should not be relied on for cases where reads are used to determine writes to source
  * (e.g. non-cache) data stores, except when reading immutable data.
  *
- * All values are wrapped in metadata arrays. Keys use a "WANCache:" prefix
- * to avoid collisions with keys that are not wrapped as metadata arrays. The
- * prefixes are as follows:
- *   - a) "WANCache:v" : used for regular value keys
- *   - b) "WANCache:i" : used for temporarily storing values of tombstoned keys
- *   - c) "WANCache:t" : used for storing timestamp "check" keys
- *   - d) "WANCache:m" : used for temporary mutex keys to avoid cache stampedes
+ * All values are wrapped in metadata arrays. Keys use a "WANCache:" prefix to avoid
+ * collisions with keys that are not wrapped as metadata arrays. For any given key that
+ * a caller uses, there are several "sister" keys that might be involved under the hood.
+ * Each "sister" key differs only by a single-character:
+ *   - v: used for regular value keys
+ *   - i: used for temporarily storing values of tombstoned keys
+ *   - t: used for storing timestamp "check" keys
+ *   - m: used for temporary mutex keys to avoid cache stampedes
  *
  * @ingroup Cache
  * @since 1.26
  */
-class WANObjectCache implements IExpiringStore, IStoreKeyEncoder, LoggerAwareInterface {
+class WANObjectCache implements
+	ExpirationAwareness,
+	StorageAwareness,
+	IStoreKeyEncoder,
+	LoggerAwareInterface
+{
 	/** @var BagOStuff The local datacenter cache */
 	protected $cache;
 	/** @var MapCacheLRU[] Map of group PHP instance caches */
@@ -137,8 +146,15 @@ class WANObjectCache implements IExpiringStore, IStoreKeyEncoder, LoggerAwareInt
 	protected $epoch;
 	/** @var string Stable secret used for hasing long strings into key components */
 	protected $secret;
-	/** @var bool Whether to use Hash Tags and Hash Stops in key names */
+	/** @var string|bool Whether "sister" keys should be coalesced to the same cache server */
 	protected $coalesceKeys;
+	/** @var int Scheme to use for key coalescing (Hash Tags or Hash Stops) */
+	protected $coalesceScheme;
+
+	/** @var int Reads/second assumed during a hypothetical cache write stampede for a key */
+	private $keyHighQps;
+	/** @var float Max tolerable bytes/second to spend on a cache write stampede for a key */
+	private $keyHighUplinkBps;
 
 	/** @var int Callback stack depth for getWithSetCallback() */
 	private $callbackDepth = 0;
@@ -151,45 +167,47 @@ class WANObjectCache implements IExpiringStore, IStoreKeyEncoder, LoggerAwareInt
 	private $wallClockOverride;
 
 	/** @var int Max expected seconds to pass between delete() and DB commit finishing */
-	const MAX_COMMIT_DELAY = 3;
+	private const MAX_COMMIT_DELAY = 3;
 	/** @var int Max expected seconds of combined lag from replication and view snapshots */
-	const MAX_READ_LAG = 7;
+	private const MAX_READ_LAG = 7;
 	/** @var int Seconds to tombstone keys on delete() and treat as volatile after invalidation */
-	const HOLDOFF_TTL = self::MAX_COMMIT_DELAY + self::MAX_READ_LAG + 1;
-
-	/** @var int Idiom for getWithSetCallback() meaning "do not store the callback result" */
-	const TTL_UNCACHEABLE = -1;
+	public const HOLDOFF_TTL = self::MAX_COMMIT_DELAY + self::MAX_READ_LAG + 1;
 
 	/** @var int Consider regeneration if the key will expire within this many seconds */
-	const LOW_TTL = 30;
+	private const LOW_TTL = 30;
 	/** @var int Max TTL, in seconds, to store keys when a data sourced is lagged */
-	const TTL_LAGGED = 30;
+	public const TTL_LAGGED = 30;
 
 	/** @var int Expected time-till-refresh, in seconds, if the key is accessed once per second */
-	const HOT_TTR = 900;
+	private const HOT_TTR = 900;
 	/** @var int Minimum key age, in seconds, for expected time-till-refresh to be considered */
-	const AGE_NEW = 60;
+	private const AGE_NEW = 60;
 
 	/** @var int Idiom for getWithSetCallback() meaning "no cache stampede mutex required" */
-	const TSE_NONE = -1;
+	private const TSE_NONE = -1;
 
 	/** @var int Idiom for set()/getWithSetCallback() meaning "no post-expiration persistence" */
-	const STALE_TTL_NONE = 0;
+	private const STALE_TTL_NONE = 0;
 	/** @var int Idiom for set()/getWithSetCallback() meaning "no post-expiration grace period" */
-	const GRACE_TTL_NONE = 0;
+	private const GRACE_TTL_NONE = 0;
 	/** @var int Idiom for delete()/touchCheckKey() meaning "no hold-off period" */
-	const HOLDOFF_TTL_NONE = 0;
+	public const HOLDOFF_TTL_NONE = 0;
 	/** @var int Alias for HOLDOFF_TTL_NONE (b/c) (deprecated since 1.34) */
-	const HOLDOFF_NONE = self::HOLDOFF_TTL_NONE;
+	public const HOLDOFF_NONE = self::HOLDOFF_TTL_NONE;
 
 	/** @var float Idiom for getWithSetCallback() meaning "no minimum required as-of timestamp" */
-	const MIN_TIMESTAMP_NONE = 0.0;
+	public const MIN_TIMESTAMP_NONE = 0.0;
 
 	/** @var string Default process cache name and max key count */
-	const PC_PRIMARY = 'primary:1000';
+	private const PC_PRIMARY = 'primary:1000';
 
-	/** @var int Idion for get()/getMulti() to return extra information by reference */
-	const PASS_BY_REF = -1;
+	/** @var int Idiom for get()/getMulti() to return extra information by reference */
+	public const PASS_BY_REF = -1;
+
+	/** @var int Use twemproxy-style Hash Tag key scheme (e.g. "{...}") */
+	private const SCHEME_HASH_TAG = 1;
+	/** @var int Use mcrouter-style Hash Stop key scheme (e.g. "...|#|") */
+	private const SCHEME_HASH_STOP = 2;
 
 	/** @var int Seconds to keep dependency purge keys around */
 	private static $CHECK_KEY_TTL = self::TTL_YEAR;
@@ -208,8 +226,6 @@ class WANObjectCache implements IExpiringStore, IStoreKeyEncoder, LoggerAwareInt
 	/** @var float Tiny positive float to use when using "minTime" to assert an inequality */
 	private static $TINY_POSTIVE = 0.000001;
 
-	/** @var int Milliseconds of key fetch/validate/regenerate delay prone to set() stampedes */
-	private static $SET_DELAY_HIGH_MS = 50;
 	/** @var int Min millisecond set() backoff during hold-off (far less than INTERIM_KEY_TTL) */
 	private static $RECENT_SET_LOW_MS = 50;
 	/** @var int Max millisecond set() backoff during hold-off (far less than INTERIM_KEY_TTL) */
@@ -279,9 +295,17 @@ class WANObjectCache implements IExpiringStore, IStoreKeyEncoder, LoggerAwareInt
 	 *       requires that "region" and "cluster" are both set above. [optional]
 	 *   - epoch: lowest UNIX timestamp a value/tombstone must have to be valid. [optional]
 	 *   - secret: stable secret used for hashing long strings into key components. [optional]
-	 *   - coalesceKeys: whether to use Hash Tags and Hash Stops in key names so that related
-	 *       keys use the same cache server. This can reduce network overhead and reduce the
-	 *       chance the a single down cache server causes disruption. [default: false]
+	 *   - coalesceKeys: whether to use a key scheme that encourages the backend to place any
+	 *       "helper" keys for a "value" key within the same cache server. This reduces network
+	 *       overhead and reduces the chance the a single downed cache server causes disruption.
+	 *       Set this to "non-global" to only apply the scheme to non-global keys. [default: false]
+	 *   - keyHighQps: reads/second assumed during a hypothetical cache write stampede for
+	 *       a single key. This is used to decide when the overhead of checking short-lived
+	 *       write throttling keys is worth it.
+	 *       [default: 100]
+	 *   - keyHighUplinkBps: maximum tolerable bytes/second to spend on a cache write stampede
+	 *       for a single key. This is used to decide when the overhead of checking short-lived
+	 *       write throttling keys is worth it. [default: (1/100 of a 1Gbps link)]
 	 */
 	public function __construct( array $params ) {
 		$this->cache = $params['cache'];
@@ -290,7 +314,19 @@ class WANObjectCache implements IExpiringStore, IStoreKeyEncoder, LoggerAwareInt
 		$this->mcrouterAware = !empty( $params['mcrouterAware'] );
 		$this->epoch = $params['epoch'] ?? 0;
 		$this->secret = $params['secret'] ?? (string)$this->epoch;
-		$this->coalesceKeys = $params['coalesce'] ?? false;
+		$this->coalesceKeys = $params['coalesceKeys'] ?? false;
+		if ( !empty( $params['mcrouterAware'] ) ) {
+			// https://github.com/facebook/mcrouter/wiki/Key-syntax
+			$this->coalesceScheme = self::SCHEME_HASH_STOP;
+		} else {
+			// https://redis.io/topics/cluster-spec
+			// https://github.com/twitter/twemproxy/blob/v0.4.1/notes/recommendation.md#hash-tags
+			// https://github.com/Netflix/dynomite/blob/v0.7.0/notes/recommendation.md#hash-tags
+			$this->coalesceScheme = self::SCHEME_HASH_TAG;
+		}
+
+		$this->keyHighQps = $params['keyHighQps'] ?? 100;
+		$this->keyHighUplinkBps = $params['keyHighUplinkBps'] ?? ( 1e9 / 8 / 100 );
 
 		$this->setLogger( $params['logger'] ?? new NullLogger() );
 		$this->stats = $params['stats'] ?? new NullStatsdDataFactory();
@@ -357,7 +393,7 @@ class WANObjectCache implements IExpiringStore, IStoreKeyEncoder, LoggerAwareInt
 	 *
 	 * Otherwise, $info will transform into the cached value timestamp.
 	 *
-	 * @param string $key Cache key made from makeKey() or makeGlobalKey()
+	 * @param string $key Cache key made from makeKey()/makeGlobalKey()
 	 * @param mixed|null &$curTTL Approximate TTL left on the key if present/tombstoned [returned]
 	 * @param string[] $checkKeys The "check" keys used to validate the value
 	 * @param mixed|null &$info Key info if WANObjectCache::PASS_BY_REF [returned]
@@ -401,7 +437,7 @@ class WANObjectCache implements IExpiringStore, IStoreKeyEncoder, LoggerAwareInt
 	 *
 	 * @see WANObjectCache::get()
 	 *
-	 * @param string[] $keys List of cache keys made from makeKey() or makeGlobalKey()
+	 * @param string[] $keys List/map with cache keys made from makeKey()/makeGlobalKey() as values
 	 * @param mixed|null &$curTTLs Map of (key => TTL left) for existing/tombstoned keys [returned]
 	 * @param string[]|string[][] $checkKeys Map of (integer or cache key => "check" key(s))
 	 * @param mixed|null &$info Map of (key => info) if WANObjectCache::PASS_BY_REF [returned]
@@ -417,34 +453,42 @@ class WANObjectCache implements IExpiringStore, IStoreKeyEncoder, LoggerAwareInt
 		$curTTLs = [];
 		$infoByKey = [];
 
+		// Order-corresponding list of value keys for the provided base keys
 		$valueKeys = $this->makeSisterKeys( $keys, self::$TYPE_VALUE );
 
+		$fullKeysNeeded = $valueKeys;
 		$checkKeysForAll = [];
 		$checkKeysByKey = [];
-		$checkKeysFlat = [];
-		foreach ( $checkKeys as $i => $checkKeyGroup ) {
-			$prefixed = $this->makeSisterKeys( (array)$checkKeyGroup, self::$TYPE_TIMESTAMP );
-			$checkKeysFlat = array_merge( $checkKeysFlat, $prefixed );
-			// Are these check keys for a specific cache key, or for all keys being fetched?
+		foreach ( $checkKeys as $i => $checkKeyOrKeyGroup ) {
+			// Note: avoid array_merge() inside loop in case there are many keys
 			if ( is_int( $i ) ) {
-				$checkKeysForAll = array_merge( $checkKeysForAll, $prefixed );
+				// Single check key that applies to all value keys
+				$fullKey = $this->makeSisterKey( $checkKeyOrKeyGroup, self::$TYPE_TIMESTAMP );
+				$fullKeysNeeded[] = $fullKey;
+				$checkKeysForAll[] = $fullKey;
 			} else {
-				$checkKeysByKey[$i] = $prefixed;
+				// List of check keys that apply to a specific value key
+				foreach ( (array)$checkKeyOrKeyGroup as $checkKey ) {
+					$fullKey = $this->makeSisterKey( $checkKey, self::$TYPE_TIMESTAMP );
+					$fullKeysNeeded[] = $fullKey;
+					$checkKeysByKey[$i][] = $fullKey;
+				}
 			}
 		}
 
-		// Fetch all of the raw values
-		$keysGet = array_merge( $valueKeys, $checkKeysFlat );
 		if ( $this->warmupCache ) {
-			$wrappedValues = array_intersect_key( $this->warmupCache, array_flip( $keysGet ) );
-			$keysGet = array_diff( $keysGet, array_keys( $wrappedValues ) ); // keys left to fetch
-			$this->warmupKeyMisses += count( $keysGet );
+			// Get the raw values of the keys from the warmup cache
+			$wrappedValues = $this->warmupCache;
+			$fullKeysMissing = array_diff( $fullKeysNeeded, array_keys( $wrappedValues ) );
+			if ( $fullKeysMissing ) { // sanity
+				$this->warmupKeyMisses += count( $fullKeysMissing );
+				$wrappedValues += $this->cache->getMulti( $fullKeysMissing );
+			}
 		} else {
-			$wrappedValues = [];
+			// Fetch the raw values of the keys from the backend
+			$wrappedValues = $this->cache->getMulti( $fullKeysNeeded );
 		}
-		if ( $keysGet ) {
-			$wrappedValues += $this->cache->getMulti( $keysGet );
-		}
+
 		// Time used to compare/init "check" keys (derived after getMulti() to be pessimistic)
 		$now = $this->getCurrentTime();
 
@@ -452,13 +496,16 @@ class WANObjectCache implements IExpiringStore, IStoreKeyEncoder, LoggerAwareInt
 		$purgeValuesForAll = $this->processCheckKeys( $checkKeysForAll, $wrappedValues, $now );
 		$purgeValuesByKey = [];
 		foreach ( $checkKeysByKey as $cacheKey => $checks ) {
-			$purgeValuesByKey[$cacheKey] =
-				$this->processCheckKeys( $checks, $wrappedValues, $now );
+			$purgeValuesByKey[$cacheKey] = $this->processCheckKeys( $checks, $wrappedValues, $now );
 		}
 
 		// Get the main cache value for each key and validate them
-		foreach ( $valueKeys as $vKey ) {
-			$key = $this->extractBaseKey( $vKey ); // unprefix
+		reset( $keys );
+		foreach ( $valueKeys as $i => $vKey ) {
+			// Get the corresponding base key for this value key
+			$key = current( $keys );
+			next( $keys );
+
 			list( $value, $keyInfo ) = $this->unwrap(
 				array_key_exists( $vKey, $wrappedValues ) ? $wrappedValues[$vKey] : false,
 				$now
@@ -501,11 +548,11 @@ class WANObjectCache implements IExpiringStore, IStoreKeyEncoder, LoggerAwareInt
 	}
 
 	/**
-	 * @since 1.27
 	 * @param string[] $timeKeys List of prefixed time check keys
-	 * @param mixed[] $wrappedValues
+	 * @param mixed[] $wrappedValues Preloaded map of (key => value)
 	 * @param float $now
 	 * @return array[] List of purge value arrays
+	 * @since 1.27
 	 */
 	private function processCheckKeys( array $timeKeys, array $wrappedValues, $now ) {
 		$purgeValues = [];
@@ -592,7 +639,7 @@ class WANObjectCache implements IExpiringStore, IStoreKeyEncoder, LoggerAwareInt
 	 *      Default: false
 	 *   - version: Integer version number signifiying the format of the value.
 	 *      Default: null
-	 *   - walltime: How long the value took to generate in seconds. Default: 0.0
+	 *   - walltime: How long the value took to generate in seconds. Default: null
 	 * @codingStandardsIgnoreStart
 	 * @phan-param array{lag?:int,since?:int,pending?:bool,lockTSE?:int,staleTTL?:int,creating?:bool,version?:?string,walltime?:int|float} $opts
 	 * @codingStandardsIgnoreEnd
@@ -610,10 +657,10 @@ class WANObjectCache implements IExpiringStore, IStoreKeyEncoder, LoggerAwareInt
 		$staleTTL = $opts['staleTTL'] ?? self::STALE_TTL_NONE;
 		$creating = $opts['creating'] ?? false;
 		$version = $opts['version'] ?? null;
-		$walltime = $opts['walltime'] ?? 0.0;
+		$walltime = $opts['walltime'] ?? null;
 
 		if ( $ttl < 0 ) {
-			return true;
+			return true; // not cacheable
 		}
 
 		// Do not cache potentially uncommitted data as it might get rolled back
@@ -626,53 +673,72 @@ class WANObjectCache implements IExpiringStore, IStoreKeyEncoder, LoggerAwareInt
 			return true; // no-op the write for being unsafe
 		}
 
-		$logicalTTL = null; // logical TTL override
-		// Check if there's a risk of writing stale data after the purge tombstone expired
-		if ( $lag === false || ( $lag + $age ) > self::MAX_READ_LAG ) {
-			// Case A: any long-running transaction
-			if ( $age > self::MAX_READ_LAG ) {
-				if ( $lockTSE >= 0 ) {
-					// Store value as *almost* stale to avoid cache and mutex stampedes
-					$logicalTTL = self::TTL_SECOND;
-					$this->logger->info(
-						'Lowered set() TTL for {cachekey} due to snapshot lag.',
-						[ 'cachekey' => $key, 'lag' => $lag, 'age' => $age ]
-					);
-				} else {
-					$this->logger->info(
-						'Rejected set() for {cachekey} due to snapshot lag.',
-						[ 'cachekey' => $key, 'lag' => $lag, 'age' => $age ]
-					);
-
-					return true; // no-op the write for being unsafe
-				}
-			// Case B: high replication lag; lower TTL instead of ignoring all set()s
-			} elseif ( $lag === false || $lag > self::MAX_READ_LAG ) {
-				if ( $lockTSE >= 0 ) {
-					$logicalTTL = min( $ttl ?: INF, self::TTL_LAGGED );
-				} else {
-					$ttl = min( $ttl ?: INF, self::TTL_LAGGED );
-				}
-				$this->logger->warning(
-					'Lowered set() TTL for {cachekey} due to replication lag.',
-					[ 'cachekey' => $key, 'lag' => $lag, 'age' => $age ]
-				);
-			// Case C: medium length request with medium replication lag
-			} elseif ( $lockTSE >= 0 ) {
-				// Store value as *almost* stale to avoid cache and mutex stampedes
-				$logicalTTL = self::TTL_SECOND;
-				$this->logger->info(
-					'Lowered set() TTL for {cachekey} due to high read lag.',
-					[ 'cachekey' => $key, 'lag' => $lag, 'age' => $age ]
-				);
+		// Check if there is a risk of caching (stale) data that predates the last delete()
+		// tombstone due to the tombstone having expired. If so, then the behavior should depend
+		// on whether the problem is specific to this regeneration attempt or systemically affects
+		// attempts to regenerate this key. For systemic cases, the cache writes should set a low
+		// TTL so that the value at least remains cacheable. For non-systemic cases, the cache
+		// write can simply be rejected.
+		if ( $age > self::MAX_READ_LAG ) {
+			// Case A: high snapshot lag
+			if ( $walltime === null ) {
+				// Case A0: high snapshot lag without regeneration wall time info.
+				// Probably systemic; use a low TTL to avoid stampedes/uncacheability.
+				$mitigated = 'snapshot lag';
+				$mitigationTTL = self::TTL_SECOND;
+			} elseif ( ( $age - $walltime ) > self::MAX_READ_LAG ) {
+				// Case A1: value regeneration during an already long-running transaction.
+				// Probably non-systemic; rely on a less problematic regeneration attempt.
+				$mitigated = 'snapshot lag (late regeneration)';
+				$mitigationTTL = self::TTL_UNCACHEABLE;
 			} else {
-				$this->logger->info(
-					'Rejected set() for {cachekey} due to high read lag.',
-					[ 'cachekey' => $key, 'lag' => $lag, 'age' => $age ]
-				);
-
-				return true; // no-op the write for being unsafe
+				// Case A2: value regeneration takes a long time.
+				// Probably systemic; use a low TTL to avoid stampedes/uncacheability.
+				$mitigated = 'snapshot lag (high regeneration time)';
+				$mitigationTTL = self::TTL_SECOND;
 			}
+		} elseif ( $lag === false || $lag > self::MAX_READ_LAG ) {
+			// Case B: high replication lag without high snapshot lag
+			// Probably systemic; use a low TTL to avoid stampedes/uncacheability
+			$mitigated = 'replication lag';
+			$mitigationTTL = self::TTL_LAGGED;
+		} elseif ( ( $lag + $age ) > self::MAX_READ_LAG ) {
+			// Case C: medium length request with medium replication lag
+			// Probably non-systemic; rely on a less problematic regeneration attempt
+			$mitigated = 'read lag';
+			$mitigationTTL = self::TTL_UNCACHEABLE;
+		} else {
+			// New value generated with recent enough data
+			$mitigated = null;
+			$mitigationTTL = null;
+		}
+
+		if ( $mitigationTTL === self::TTL_UNCACHEABLE ) {
+			$this->logger->warning(
+				"Rejected set() for {cachekey} due to $mitigated.",
+				[ 'cachekey' => $key, 'lag' => $lag, 'age' => $age, 'walltime' => $walltime ]
+			);
+
+			return true; // no-op the write for being unsafe
+		}
+
+		// TTL to use in staleness checks (does not effect persistence layer TTL)
+		$logicalTTL = null;
+
+		if ( $mitigationTTL !== null ) {
+			// New value generated from data that is old enough to be risky
+			if ( $lockTSE >= 0 ) {
+				// Value will have the normal expiry but will be seen as stale sooner
+				$logicalTTL = min( $ttl ?: INF, $mitigationTTL );
+			} else {
+				// Value expires sooner (leaving enough TTL for preemptive refresh)
+				$ttl = min( $ttl ?: INF, max( $mitigationTTL, self::LOW_TTL ) );
+			}
+
+			$this->logger->warning(
+				"Lowered set() TTL for {cachekey} due to $mitigated.",
+				[ 'cachekey' => $key, 'lag' => $lag, 'age' => $age, 'walltime' => $walltime ]
+			);
 		}
 
 		// Wrap that value with time/TTL/version metadata
@@ -1179,7 +1245,7 @@ class WANObjectCache implements IExpiringStore, IStoreKeyEncoder, LoggerAwareInt
 	 * @see WANObjectCache::get()
 	 * @see WANObjectCache::set()
 	 *
-	 * @param string $key Cache key made from makeKey() or makeGlobalKey()
+	 * @param string $key Cache key made from makeKey()/makeGlobalKey()
 	 * @param int $ttl Nominal seconds-to-live for newly computed values. Special values are:
 	 *   - WANObjectCache::TTL_INDEFINITE: Cache forever (subject to LRU-style evictions)
 	 *   - WANObjectCache::TTL_UNCACHEABLE: Do not cache (if the key exists, it is not deleted)
@@ -1205,8 +1271,8 @@ class WANObjectCache implements IExpiringStore, IStoreKeyEncoder, LoggerAwareInt
 	 *      stampede is worth avoiding. Note that if the key falls out of cache then concurrent
 	 *      threads will all run the callback on cache miss until the value is saved in cache.
 	 *      The only stampede protection in that case is from duplicate cache sets when the
-	 *      callback takes longer than WANObjectCache::SET_DELAY_HIGH_MS milliseconds; consider
-	 *      using "busyValue" if such stampedes are a problem. Note that the higher "lockTSE" is
+	 *      callback is slow and/or yields large values; consider using "busyValue" if such
+	 *      stampedes are a problem (e.g. high query load). Note that the higher "lockTSE" is
 	 *      set, the higher the worst-case staleness of returned values can be. Also note that
 	 *      this option does not by itself handle the case of the key simply expiring on account
 	 *      of its TTL, so make sure that "lowTTL" is not disabled when using this option. Avoid
@@ -1481,7 +1547,7 @@ class WANObjectCache implements IExpiringStore, IStoreKeyEncoder, LoggerAwareInt
 			// Current thread was not raced out of a regeneration lock or key is tombstoned
 			( !$useRegenerationLock || $hasLock || $isKeyTombstoned ) &&
 			// Key does not appear to be undergoing a set() stampede
-			$this->checkAndSetCooloff( $key, $kClass, $elapsed, $lockTSE, $hasLock )
+			$this->checkAndSetCooloff( $key, $kClass, $value, $elapsed, $hasLock )
 		) {
 			// How long it took to generate the value
 			$walltime = max( $postCallbackTime - $preCallbackTime, 0.0 );
@@ -1561,46 +1627,28 @@ class WANObjectCache implements IExpiringStore, IStoreKeyEncoder, LoggerAwareInt
 	 * Get a cache key that should be collocated with a base key
 	 *
 	 * @param string $baseKey Cache key made from makeKey()/makeGlobalKey()
-	 * @param string $type Consistent hashing agnostic suffix character matching [a-zA-Z]
+	 * @param string $typeChar Consistent hashing agnostic suffix character matching [a-zA-Z]
 	 * @return string Cache key
 	 */
-	private function makeSisterKey( $baseKey, $type ) {
-		if ( !$this->coalesceKeys ) {
-			// Old key style: "WANCache:<character>:<base key>"
-			return 'WANCache:' . $type . ':' . $baseKey;
+	private function makeSisterKey( $baseKey, $typeChar ) {
+		if ( $this->coalesceKeys === 'non-global' ) {
+			$useColocationScheme = ( strncmp( $baseKey, "global:", 7 ) !== 0 );
+		} else {
+			$useColocationScheme = ( $this->coalesceKeys === true );
 		}
 
-		return $this->mcrouterAware
-			// https://github.com/facebook/mcrouter/wiki/Key-syntax
-			// Note that the prefix prevents callers from making route keys.
-			? 'WANCache:' . $baseKey . '|#|' . $type
-			// https://redis.io/topics/cluster-spec
-			// https://github.com/twitter/twemproxy/blob/master/notes/recommendation.md
-			// https://github.com/Netflix/dynomite/blob/master/notes/recommendation.md
-			: 'WANCache:{' . $baseKey . '}:' . $type;
-	}
-
-	/**
-	 * Get a cache key that should be collocated with a base key
-	 *
-	 * @param string $sisterKey Cache key made from makeSisterKey()
-	 * @return string Original cache key made from makeKey()/makeGlobalKey()
-	 */
-	private function extractBaseKey( $sisterKey ) {
-		if ( !$this->coalesceKeys ) {
+		if ( !$useColocationScheme ) {
 			// Old key style: "WANCache:<character>:<base key>"
-			return substr( $sisterKey, 11 );
-		}
-
-		return $this->mcrouterAware
+			$fullKey = 'WANCache:' . $typeChar . ':' . $baseKey;
+		} elseif ( $this->coalesceScheme === self::SCHEME_HASH_STOP ) {
 			// Key style: "WANCache:<base key>|#|<character>"
-			// https://github.com/facebook/mcrouter/wiki/Key-syntax
-			? substr( $sisterKey, 9, -4 )
+			$fullKey = 'WANCache:' . $baseKey . '|#|' . $typeChar;
+		} else {
 			// Key style: "WANCache:{<base key>}:<character>"
-			// https://redis.io/topics/cluster-spec
-			// https://github.com/twitter/twemproxy/blob/master/notes/recommendation.md
-			// https://github.com/Netflix/dynomite/blob/master/notes/recommendation.md
-			: substr( $sisterKey, 10, -3 );
+			$fullKey = 'WANCache:{' . $baseKey . '}:' . $typeChar;
+		}
+
+		return $fullKey;
 	}
 
 	/**
@@ -1612,42 +1660,72 @@ class WANObjectCache implements IExpiringStore, IStoreKeyEncoder, LoggerAwareInt
 	}
 
 	/**
+	 * Check whether set() is rate-limited to avoid concurrent I/O spikes
+	 *
+	 * This mitigates problems caused by popular keys suddenly becoming unavailable due to
+	 * unexpected evictions or cache server outages. These cases are not handled by the usual
+	 * preemptive refresh logic.
+	 *
+	 * With a typical scale-out infrastructure, CPU and query load from getWithSetCallback()
+	 * invocations is distributed among appservers and replica DBs, but cache operations for
+	 * a given key route to a single cache server (e.g. striped consistent hashing). A set()
+	 * stampede to a key can saturate the network link to its cache server. The intensity of
+	 * the problem is proportionate to the value size and access rate. The duration of the
+	 * problem is proportionate to value regeneration time.
+	 *
 	 * @param string $key
 	 * @param string $kClass
-	 * @param float $elapsed Seconds spent regenerating the value
-	 * @param float $lockTSE
-	 * @param bool $hasLock
+	 * @param mixed $value The regenerated value
+	 * @param float $elapsed Seconds spent fetching, validating, and regenerating the value
+	 * @param bool $hasLock Whether this thread has an exclusive regeneration lock
 	 * @return bool Whether it is OK to proceed with a key set operation
 	 */
-	private function checkAndSetCooloff( $key, $kClass, $elapsed, $lockTSE, $hasLock ) {
+	private function checkAndSetCooloff( $key, $kClass, $value, $elapsed, $hasLock ) {
+		$valueKey = $this->makeSisterKey( $key, self::$TYPE_VALUE );
+		list( $estimatedSize ) = $this->cache->setNewPreparedValues( [ $valueKey => $value ] );
+
+		if ( !$hasLock ) {
+			// Suppose that this cache key is very popular (KEY_HIGH_QPS reads/second).
+			// After eviction, there will be cache misses until it gets regenerated and saved.
+			// If the time window when the key is missing lasts less than one second, then the
+			// number of misses will not reach KEY_HIGH_QPS. This window largely corresponds to
+			// the key regeneration time. Estimate the count/rate of cache misses, e.g.:
+			//  - 100 QPS, 20ms regeneration => ~2 misses (< 1s)
+			//  - 100 QPS, 100ms regeneration => ~10 misses (< 1s)
+			//  - 100 QPS, 3000ms regeneration => ~300 misses (100/s for 3s)
+			$missesPerSecForHighQPS = ( min( $elapsed, 1 ) * $this->keyHighQps );
+
+			// Determine whether there is enough I/O stampede risk to justify throttling set().
+			// Estimate unthrottled set() overhead, as bps, from miss count/rate and value size,
+			// comparing it to the per-key uplink bps limit (KEY_HIGH_UPLINK_BPS), e.g.:
+			//  - 2 misses (< 1s), 10KB value, 1250000 bps limit => 160000 bits (low risk)
+			//  - 2 misses (< 1s), 100KB value, 1250000 bps limit => 1600000 bits (high risk)
+			//  - 10 misses (< 1s), 10KB value, 1250000 bps limit => 800000 bits (low risk)
+			//  - 10 misses (< 1s), 100KB value, 1250000 bps limit => 8000000 bits (high risk)
+			//  - 300 misses (100/s), 1KB value, 1250000 bps limit => 800000 bps (low risk)
+			//  - 300 misses (100/s), 10KB value, 1250000 bps limit => 8000000 bps (high risk)
+			//  - 300 misses (100/s), 100KB value, 1250000 bps limit => 80000000 bps (high risk)
+			if ( ( $missesPerSecForHighQPS * $estimatedSize ) >= $this->keyHighUplinkBps ) {
+				$this->cache->clearLastError();
+				if (
+					!$this->cache->add(
+						$this->makeSisterKey( $key, self::$TYPE_COOLOFF ),
+						1,
+						self::$COOLOFF_TTL
+					) &&
+					// Don't treat failures due to I/O errors as the key being in cooloff
+					$this->cache->getLastError() === BagOStuff::ERR_NONE
+				) {
+					$this->stats->increment( "wanobjectcache.$kClass.cooloff_bounce" );
+
+					return false;
+				}
+			}
+		}
+
+		// Corresponding metrics for cache writes that actually get sent over the write
 		$this->stats->timing( "wanobjectcache.$kClass.regen_set_delay", 1e3 * $elapsed );
-
-		// If $lockTSE is set, the lock was bypassed because there was no stale/interim value,
-		// and $elapsed indicates that regeration is slow, then there is a risk of set()
-		// stampedes with large blobs. With a typical scale-out infrastructure, CPU and query
-		// load from $callback invocations is distributed among appservers and replica DBs,
-		// but cache operations for a given key route to a single cache server (e.g. striped
-		// consistent hashing).
-		if ( $lockTSE < 0 || $hasLock ) {
-			return true; // either not a priori hot or thread has the lock
-		} elseif ( $elapsed <= self::$SET_DELAY_HIGH_MS * 1e3 ) {
-			return true; // not enough time for threads to pile up
-		}
-
-		$this->cache->clearLastError();
-		if (
-			!$this->cache->add(
-				$this->makeSisterKey( $key, self::$TYPE_COOLOFF ),
-				1,
-				self::$COOLOFF_TTL
-			) &&
-			// Don't treat failures due to I/O errors as the key being in cooloff
-			$this->cache->getLastError() === BagOStuff::ERR_NONE
-		) {
-			$this->stats->increment( "wanobjectcache.$kClass.cooloff_bounce" );
-
-			return false;
-		}
+		$this->stats->updateCount( "wanobjectcache.$kClass.regen_set_bytes", $estimatedSize );
 
 		return true;
 	}
@@ -2444,7 +2522,7 @@ class WANObjectCache implements IExpiringStore, IStoreKeyEncoder, LoggerAwareInt
 		$ageStale = abs( $curTTL ); // seconds of staleness
 		$curGTTL = ( $graceTTL - $ageStale ); // current grace-time-to-live
 		if ( $curGTTL <= 0 ) {
-			return false; //  already out of grace period
+			return false; // already out of grace period
 		}
 
 		// Chance of using a stale value is the complement of the chance of refreshing it
@@ -2562,7 +2640,7 @@ class WANObjectCache implements IExpiringStore, IStoreKeyEncoder, LoggerAwareInt
 	 * @param int $ttl Seconds to live or zero for "indefinite"
 	 * @param int|null $version Value version number or null if not versioned
 	 * @param float $now Unix Current timestamp just before calling set()
-	 * @param float $walltime How long it took to generate the value in seconds
+	 * @param float|null $walltime How long it took to generate the value in seconds
 	 * @return array
 	 */
 	private function wrap( $value, $ttl, $version, $now, $walltime ) {
@@ -2744,35 +2822,25 @@ class WANObjectCache implements IExpiringStore, IStoreKeyEncoder, LoggerAwareInt
 		}
 
 		// Get all the value keys to fetch...
-		$keysWarmUp = $this->makeSisterKeys( $keys, self::$TYPE_VALUE );
+		$keysWarmup = $this->makeSisterKeys( $keys, self::$TYPE_VALUE );
 		// Get all the check keys to fetch...
-		foreach ( $checkKeys as $i => $checkKeyOrKeys ) {
+		foreach ( $checkKeys as $i => $checkKeyOrKeyGroup ) {
+			// Note: avoid array_merge() inside loop in case there are many keys
 			if ( is_int( $i ) ) {
 				// Single check key that applies to all value keys
-				$keysWarmUp[] = $this->makeSisterKey( $checkKeyOrKeys, self::$TYPE_TIMESTAMP );
+				$keysWarmup[] = $this->makeSisterKey( $checkKeyOrKeyGroup, self::$TYPE_TIMESTAMP );
 			} else {
-				// List of check keys that apply to value key $i
-				$keysWarmUp = array_merge(
-					$keysWarmUp,
-					$this->makeSisterKeys( $checkKeyOrKeys, self::$TYPE_TIMESTAMP )
-				);
+				// List of check keys that apply to a specific value key
+				foreach ( (array)$checkKeyOrKeyGroup as $checkKey ) {
+					$keysWarmup[] = $this->makeSisterKey( $checkKey, self::$TYPE_TIMESTAMP );
+				}
 			}
 		}
 
-		$warmupCache = $this->cache->getMulti( $keysWarmUp );
-		$warmupCache += array_fill_keys( $keysWarmUp, false );
+		$warmupCache = $this->cache->getMulti( $keysWarmup );
+		$warmupCache += array_fill_keys( $keysWarmup, false );
 
 		return $warmupCache;
-	}
-
-	/**
-	 * Set/clear the mcrouter support flag for testing
-	 *
-	 * @param bool $enabled
-	 * @since 1.35
-	 */
-	public function setMcRouterAware( $enabled ) {
-		$this->mcrouterAware = $enabled;
 	}
 
 	/**

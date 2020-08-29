@@ -22,12 +22,13 @@
  * @defgroup SpecialPage SpecialPage
  */
 
-namespace MediaWiki\Special;
+namespace MediaWiki\SpecialPage;
 
-use Hooks;
 use IContextSource;
 use Language;
 use MediaWiki\Config\ServiceOptions;
+use MediaWiki\HookContainer\HookContainer;
+use MediaWiki\HookContainer\HookRunner;
 use MediaWiki\Linker\LinkRenderer;
 use Profiler;
 use RequestContext;
@@ -102,7 +103,12 @@ class SpecialPageFactory {
 		// Authentication
 		'Userlogin' => \SpecialUserLogin::class,
 		'Userlogout' => \SpecialUserLogout::class,
-		'CreateAccount' => \SpecialCreateAccount::class,
+		'CreateAccount' => [
+			'class' => \SpecialCreateAccount::class,
+			'services' => [
+				'PermissionManager',
+			]
+		],
 		'LinkAccounts' => \SpecialLinkAccounts::class,
 		'UnlinkAccounts' => \SpecialUnlinkAccounts::class,
 		'ChangeCredentials' => \SpecialChangeCredentials::class,
@@ -110,13 +116,28 @@ class SpecialPageFactory {
 
 		// Users and rights
 		'Activeusers' => \SpecialActiveUsers::class,
-		'Block' => \SpecialBlock::class,
+		'Block' => [
+			'class' => \SpecialBlock::class,
+			'services' => [
+				'PermissionManager'
+			]
+		],
 		'Unblock' => \SpecialUnblock::class,
 		'BlockList' => \SpecialBlockList::class,
-		'AutoblockList' => \SpecialAutoblockList::class,
+		'AutoblockList' => [
+			'class' => \SpecialAutoblockList::class,
+			'services' => [
+				'PermissionManager',
+			],
+		],
 		'ChangePassword' => \SpecialChangePassword::class,
 		'BotPasswords' => \SpecialBotPasswords::class,
-		'PasswordReset' => \SpecialPasswordReset::class,
+		'PasswordReset' => [
+			'class' => \SpecialPasswordReset::class,
+			'services' => [
+				'PasswordReset'
+			]
+		],
 		'DeletedContributions' => \SpecialDeletedContributions::class,
 		'Preferences' => \SpecialPreferences::class,
 		'ResetTokens' => \SpecialResetTokens::class,
@@ -133,7 +154,12 @@ class SpecialPageFactory {
 				'WatchedItemStore'
 			]
 		],
-		'PasswordPolicies' => \SpecialPasswordPolicies::class,
+		'PasswordPolicies' => [
+			'class' => \SpecialPasswordPolicies::class,
+			'services' => [
+				'NamespaceInfo'
+			]
+		],
 
 		// Recent changes and logs
 		'Newimages' => \SpecialNewFiles::class,
@@ -155,9 +181,19 @@ class SpecialPageFactory {
 		'ListDuplicatedFiles' => \SpecialListDuplicatedFiles::class,
 
 		// Data and tools
-		'ApiSandbox' => \SpecialApiSandbox::class,
+		'ApiSandbox' => [
+			'class' => \SpecialApiSandbox::class,
+			'services' => [
+				'PermissionManager',
+			],
+		],
 		'Statistics' => \SpecialStatistics::class,
-		'Allmessages' => \SpecialAllMessages::class,
+		'Allmessages' => [
+			'class' => \SpecialAllMessages::class,
+			'services' => [
+				'ContentLanguage'
+			]
+		],
 		'Version' => \SpecialVersion::class,
 		'Lockdb' => \SpecialLockdb::class,
 		'Unlockdb' => \SpecialUnlockdb::class,
@@ -187,6 +223,12 @@ class SpecialPageFactory {
 		'Whatlinkshere' => \SpecialWhatLinksHere::class,
 		'MergeHistory' => \SpecialMergeHistory::class,
 		'ExpandTemplates' => \SpecialExpandTemplates::class,
+		'ChangeContentModel' => [
+			'class' => \SpecialChangeContentModel::class,
+			'services' => [
+				'ContentHandlerFactory',
+			],
+		],
 
 		// Other
 		'Booksources' => \SpecialBookSources::class,
@@ -215,11 +257,18 @@ class SpecialPageFactory {
 		'AllMyUploads' => \SpecialAllMyUploads::class,
 		'NewSection' => \SpecialNewSection::class,
 		'PermanentLink' => \SpecialPermanentLink::class,
-		'Redirect' => \SpecialRedirect::class,
+		'Redirect' => [
+			'class' => \SpecialRedirect::class,
+			'services' => [
+				'PermissionManager',
+				'RepoGroup'
+			]
+		],
 		'Revisiondelete' => [
 			'class' => \SpecialRevisionDelete::class,
 			'services' => [
 				'PermissionManager',
+				'RepoGroup',
 			],
 		],
 		'RunJobs' => \SpecialRunJobs::class,
@@ -242,12 +291,16 @@ class SpecialPageFactory {
 	/** @var ObjectFactory */
 	private $objectFactory;
 
+	/** @var HookContainer */
+	private $hookContainer;
+
+	/** @var HookRunner */
+	private $hookRunner;
+
 	/**
-	 * @var array
-	 * @since 1.35
+	 * @internal For use by ServiceWiring
 	 */
 	public const CONSTRUCTOR_OPTIONS = [
-		'ContentHandlerUseDB',
 		'DisableInternalSearch',
 		'EmailAuthentication',
 		'EnableEmail',
@@ -261,16 +314,20 @@ class SpecialPageFactory {
 	 * @param ServiceOptions $options
 	 * @param Language $contLang
 	 * @param ObjectFactory $objectFactory
+	 * @param HookContainer $hookContainer
 	 */
 	public function __construct(
 		ServiceOptions $options,
 		Language $contLang,
-		ObjectFactory $objectFactory
+		ObjectFactory $objectFactory,
+		HookContainer $hookContainer
 	) {
 		$options->assertRequiredOptions( self::CONSTRUCTOR_OPTIONS );
 		$this->options = $options;
 		$this->contLang = $contLang;
 		$this->objectFactory = $objectFactory;
+		$this->hookContainer = $hookContainer;
+		$this->hookRunner = new HookRunner( $hookContainer );
 	}
 
 	/**
@@ -297,12 +354,22 @@ class SpecialPageFactory {
 			}
 
 			if ( $this->options->get( 'EmailAuthentication' ) ) {
-				$this->list['Confirmemail'] = \SpecialConfirmEmail::class;
+				$this->list['Confirmemail'] = [
+					'class' => \SpecialConfirmEmail::class,
+					'services' => [
+						'PermissionManager',
+					]
+				];
 				$this->list['Invalidateemail'] = \SpecialEmailInvalidate::class;
 			}
 
 			if ( $this->options->get( 'EnableEmail' ) ) {
-				$this->list['ChangeEmail'] = \SpecialChangeEmail::class;
+				$this->list['ChangeEmail'] = [
+					'class' => \SpecialChangeEmail::class,
+					'services' => [
+						'PermissionManager',
+					],
+				];
 			}
 
 			if ( $this->options->get( 'EnableJavaScriptTest' ) ) {
@@ -317,22 +384,12 @@ class SpecialPageFactory {
 				$this->list['PageLanguage'] = \SpecialPageLanguage::class;
 			}
 
-			if ( $this->options->get( 'ContentHandlerUseDB' ) ) {
-				$this->list['ChangeContentModel'] = [
-					'class' => \SpecialChangeContentModel::class,
-					'services' => [
-						'ContentHandlerFactory',
-					],
-				];
-			}
-
 			// Add extension special pages
 			$this->list = array_merge( $this->list, $this->options->get( 'SpecialPages' ) );
 
 			// This hook can be used to disable unwanted core special pages
 			// or conditionally register special pages.
-			Hooks::run( 'SpecialPage_initList', [ &$this->list ] );
-
+			$this->hookRunner->onSpecialPage_initList( $this->list );
 		}
 
 		return $this->list;
@@ -443,9 +500,10 @@ class SpecialPageFactory {
 			$rec = $specialPageList[$realName];
 
 			if ( $rec instanceof SpecialPage ) {
-				wfDeprecated(
-					"a SpecialPage instance (for $realName) in " .
-					'$wgSpecialPages or from the SpecialPage_initList hook',
+				wfDeprecatedMsg(
+					"A SpecialPage instance for $realName was found in " .
+					'$wgSpecialPages or came from a SpecialPage_initList hook handler, ' .
+					'this was deprecated in MediaWiki 1.34',
 					'1.34'
 				);
 
@@ -463,6 +521,7 @@ class SpecialPageFactory {
 			}
 
 			if ( $page instanceof SpecialPage ) {
+				$page->setHookContainer( $this->hookContainer );
 				return $page;
 			}
 
@@ -765,3 +824,6 @@ class SpecialPageFactory {
 		return null;
 	}
 }
+
+/** @deprecated since 1.35, use MediaWiki\\SpecialPage\\SpecialPageFactory */
+class_alias( SpecialPageFactory::class, 'MediaWiki\\Special\\SpecialPageFactory' );

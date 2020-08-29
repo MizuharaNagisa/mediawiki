@@ -43,9 +43,9 @@ class SpecialEditWatchlist extends UnlistedSpecialPage {
 	 * Editing modes. EDIT_CLEAR is no longer used; the "Clear" link scared people
 	 * too much. Now it's passed on to the raw editor, from which it's very easy to clear.
 	 */
-	const EDIT_CLEAR = 1;
-	const EDIT_RAW = 2;
-	const EDIT_NORMAL = 3;
+	public const EDIT_CLEAR = 1;
+	public const EDIT_RAW = 2;
+	public const EDIT_NORMAL = 3;
 
 	protected $successMessage;
 
@@ -63,9 +63,13 @@ class SpecialEditWatchlist extends UnlistedSpecialPage {
 	 */
 	private $watchedItemStore;
 
+	/** @var bool Watchlist Expiry flag */
+	private $isWatchlistExpiryEnabled;
+
 	public function __construct( WatchedItemStoreInterface $watchedItemStore ) {
 		parent::__construct( 'EditWatchlist', 'editmywatchlist' );
 		$this->watchedItemStore = $watchedItemStore;
+		$this->isWatchlistExpiryEnabled = $this->getConfig()->get( 'WatchlistExpiry' );
 	}
 
 	/**
@@ -415,19 +419,25 @@ class SpecialEditWatchlist extends UnlistedSpecialPage {
 	protected function getWatchlistInfo() {
 		$titles = [];
 		$services = MediaWikiServices::getInstance();
+		$options = [ 'sort' => WatchedItemStore::SORT_ASC ];
+
+		if ( $this->isWatchlistExpiryEnabled ) {
+			$options[ 'sortByExpiry'] = true;
+		}
 
 		$watchedItems = $this->watchedItemStore->getWatchedItemsForUser(
-			$this->getUser(), [ 'sort' => WatchedItemStore::SORT_ASC ]
+			$this->getUser(), $options
 		);
 
 		$lb = new LinkBatch();
+		$context = $this->getContext();
 
 		foreach ( $watchedItems as $watchedItem ) {
 			$namespace = $watchedItem->getLinkTarget()->getNamespace();
 			$dbKey = $watchedItem->getLinkTarget()->getDBkey();
 			$lb->add( $namespace, $dbKey );
 			if ( !$services->getNamespaceInfo()->isTalk( $namespace ) ) {
-				$titles[$namespace][$dbKey] = 1;
+				$titles[$namespace][$dbKey] = $watchedItem->getExpiryInDaysText( $context );
 			}
 		}
 
@@ -478,7 +488,7 @@ class SpecialEditWatchlist extends UnlistedSpecialPage {
 				list( $title, $namespace, $dbKey ) = $row;
 				$action = $title ? 'cleaning up' : 'deleting';
 				wfDebug( "User {$user->getName()} has broken watchlist item " .
-					"ns($namespace):$dbKey, $action.\n" );
+					"ns($namespace):$dbKey, $action." );
 
 				// NOTE: We *know* that the title is invalid. TitleValue may refuse instantiation.
 				// XXX: We may need an InvalidTitleValue class that allows instantiation of
@@ -538,7 +548,12 @@ class SpecialEditWatchlist extends UnlistedSpecialPage {
 				Title::newFromTitleValue( $target ) :
 				Title::newFromText( $target );
 			$page = WikiPage::factory( $title );
-			Hooks::run( $action . 'ArticleComplete', [ $this->getUser(), &$page ] );
+			$user = $this->getUser();
+			if ( $action === 'Watch' ) {
+				$this->getHookRunner()->onWatchArticleComplete( $user, $page );
+			} else {
+				$this->getHookRunner()->onUnwatchArticleComplete( $user, $page );
+			}
 		}
 		return true;
 	}
@@ -601,19 +616,15 @@ class SpecialEditWatchlist extends UnlistedSpecialPage {
 		// Allow subscribers to manipulate the list of watched pages (or use it
 		// to preload lots of details at once)
 		$watchlistInfo = $this->getWatchlistInfo();
-		Hooks::run(
-			'WatchlistEditorBeforeFormRender',
-			[ &$watchlistInfo ]
-		);
+		$this->getHookRunner()->onWatchlistEditorBeforeFormRender( $watchlistInfo );
 
 		foreach ( $watchlistInfo as $namespace => $pages ) {
 			$options = [];
-
-			foreach ( array_keys( $pages ) as $dbkey ) {
+			foreach ( $pages as $dbkey => $expiryDaysText ) {
 				$title = Title::makeTitleSafe( $namespace, $dbkey );
 
 				if ( $this->checkTitle( $title, $namespace, $dbkey ) ) {
-					$text = $this->buildRemoveLine( $title );
+					$text = $this->buildRemoveLine( $title, $expiryDaysText );
 					$options[$text] = $title->getPrefixedText();
 					$count++;
 				}
@@ -670,9 +681,11 @@ class SpecialEditWatchlist extends UnlistedSpecialPage {
 	 * Build the label for a checkbox, with a link to the title, and various additional bits
 	 *
 	 * @param Title $title
+	 * @param string $expiryDaysText message shows the number of days a title has remaining in a user's watchlist.
+	 *               If this param is not empty then include a message that states the time remaining in a watchlist.
 	 * @return string
 	 */
-	private function buildRemoveLine( $title ) {
+	private function buildRemoveLine( $title, string $expiryDaysText = '' ): string {
 		$linkRenderer = $this->getLinkRenderer();
 		$link = $linkRenderer->makeLink( $title );
 
@@ -691,25 +704,33 @@ class SpecialEditWatchlist extends UnlistedSpecialPage {
 			);
 		}
 
-		if ( $title->getNamespace() == NS_USER && !$title->isSubpage() ) {
+		if ( $title->getNamespace() === NS_USER && !$title->isSubpage() ) {
 			$tools['contributions'] = $linkRenderer->makeKnownLink(
 				SpecialPage::getTitleFor( 'Contributions', $title->getText() ),
 				$this->msg( 'contribslink' )->text()
 			);
 		}
 
-		Hooks::run(
-			'WatchlistEditorBuildRemoveLine',
-			[ &$tools, $title, $title->isRedirect(), $this->getSkin(), &$link ]
-		);
+		$this->getHookRunner()->onWatchlistEditorBuildRemoveLine(
+			$tools, $title, $title->isRedirect(), $this->getSkin(), $link );
 
 		if ( $title->isRedirect() ) {
 			// Linker already makes class mw-redirect, so this is redundant
 			$link = '<span class="watchlistredir">' . $link . '</span>';
 		}
 
+		$watchlistExpiringMessage = '';
+		if ( $this->isWatchlistExpiryEnabled && $expiryDaysText ) {
+			$watchlistExpiringMessage = Html::element(
+				'span',
+				[ 'class' => 'watchlistexpiry-msg' ],
+				$expiryDaysText
+			);
+		}
+
 		return $link . ' ' .
-			$this->msg( 'parentheses' )->rawParams( $this->getLanguage()->pipeList( $tools ) )->escaped();
+			$this->msg( 'parentheses' )->rawParams( $this->getLanguage()->pipeList( $tools ) )->escaped() .
+			$watchlistExpiringMessage;
 	}
 
 	/**

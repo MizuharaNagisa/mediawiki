@@ -1,6 +1,6 @@
 <?php
 /**
- * See docs/magicword.txt.
+ * See docs/magicword.md.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -49,7 +49,10 @@ use MediaWiki\MediaWikiServices;
  * ];
  * @endcode
  *
- * For magic words which are also Parser variables, add a MagicWordwgVariableIDs
+ * For magic words which name Parser double underscore names, add a
+ * GetDoubleUnderscoreIDs hook. Use string keys.
+ *
+ * For magic words which name Parser magic variables, add a GetMagicVariableIDs
  * hook. Use string keys.
  *
  * @ingroup Parser
@@ -129,7 +132,7 @@ class MagicWord {
 
 	/**
 	 * Preliminary initialisation
-	 * @private
+	 * @internal
 	 */
 	public function initRegex() {
 		// Sort the synonyms by length, descending, so that the longest synonym

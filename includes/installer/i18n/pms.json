@@ -1,14 +1,14 @@
 {
 	"@metadata": {
 		"authors": [
+			"Amire80",
 			"Borichèt",
 			"Dragonòt",
 			"Krinkle",
-			"아라",
-			"Amire80",
 			"Macofe",
+			"MaxSem",
 			"Seb35",
-			"MaxSem"
+			"아라"
 		]
 	},
 	"config-desc": "L'instalador për mediaWiki",
@@ -40,7 +40,6 @@
 	"config-page-install": "Instala",
 	"config-page-complete": "Completa!",
 	"config-page-restart": "Fé torna parte l'instalassion",
-	"config-page-readme": "Lesme",
 	"config-page-releasenotes": "Nòte ëd publicassion",
 	"config-page-copying": "Copié",
 	"config-page-upgradedoc": "Agiorné",

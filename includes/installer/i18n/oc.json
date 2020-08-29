@@ -2,10 +2,10 @@
 	"@metadata": {
 		"authors": [
 			"Cedric31",
+			"Fitoschido",
 			"Jfblanc",
-			"Seb35",
 			"Nicolas Eynaud",
-			"Fitoschido"
+			"Seb35"
 		]
 	},
 	"config-desc": "Lo programa d’installacion de MediaWiki",
@@ -30,7 +30,6 @@
 	"config-page-install": "Installar",
 	"config-page-complete": "Acabat !",
 	"config-page-restart": "Reaviar l’installacion",
-	"config-page-readme": "Legissètz-me",
 	"config-page-releasenotes": "Nòtas de version",
 	"config-page-copying": "Còpia",
 	"config-page-upgradedoc": "Mesa a jorn",

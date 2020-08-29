@@ -212,6 +212,7 @@
 				if ( response.parse.langlinks && mw.config.get( 'skin' ) === 'vector' ) {
 					newList = response.parse.langlinks.map( function ( langlink ) {
 						var bcp47 = mw.language.bcp47( langlink.lang );
+						// eslint-disable-next-line mediawiki/class-doc
 						return $( '<li>' )
 							.addClass( 'interlanguage-link interwiki-' + langlink.lang )
 							.append( $( '<a>' )
@@ -316,6 +317,12 @@
 				$( '<div>' )
 					.hide()
 					.attr( 'id', 'wikiDiff' )
+					// The following classes are used here:
+					// * diff-editfont-monospace
+					// * diff-editfont-sans-serif
+					// * diff-editfont-serif
+					.addClass( 'diff-editfont-' + mw.user.options.get( 'editfont' ) )
+					// TODO: Set diff-contentalign-* classes
 					.append(
 						$( '<table>' ).addClass( 'diff' ).append(
 							$( '<col>' ).addClass( 'diff-marker' ),

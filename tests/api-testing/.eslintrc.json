@@ -1,17 +1,10 @@
 {
 	"extends": [
 		"wikimedia/server",
-		"wikimedia/node",
-		"wikimedia/language/es2017"
+		"wikimedia/mocha"
 	],
-	"env": {
-		"mocha": true
-	},
-	"parserOptions": {
-		"ecmaVersion": 2018
-	},
 	"rules": {
 		"camelcase": "off",
-		"require-atomic-updates": "off"
+		"mocha/no-setup-in-describe": "off"
 	}
 }

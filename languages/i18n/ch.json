@@ -1,17 +1,17 @@
 {
 	"@metadata": {
 		"authors": [
+			"Cuatro Remos",
+			"DannyS712",
 			"Diego Grez",
+			"Fanjiayi",
 			"Gadao01",
 			"Jatrobat",
+			"Macofe",
 			"Magalahi",
 			"MisterWiki",
 			"Shirayuki",
-			"아라",
-			"Macofe",
-			"Fanjiayi",
-			"Cuatro Remos",
-			"DannyS712"
+			"아라"
 		]
 	},
 	"tog-underline": "Na'raya i inachetton:",
@@ -213,7 +213,7 @@
 	"nosuchaction": "Tåya' na aksion taiguenao",
 	"nosuchspecialpage": "Tåya' na påhinan espesiat taiguenao",
 	"error": "Linachi",
-	"laggedslavemode": "Adahi: Buente ha' tataigue i tinilaika gi halacha.",
+	"laggedreplicamode": "Adahi: Buente ha' tataigue i tinilaika gi halacha.",
 	"missing-article": "Ti ha sodda' i database i palabras i pahina ni debi di u sodda', i mafa'na'an \"$1\" $2.\n\nTenga, masusesedi este yanggen un klik i ti fafacho'cho' na diff pat historia na inachetton i pahina ni mana'suha.\n\nYanggen ti este i rason, buente mañodda' hao \"bug\" gi \"software\".\n\nPot fabot ripotta este para un [[Special:ListUsers/sysop|administrator]], ya un nota i URL.",
 	"missingarticle-rev": "(tinilaika#: $1)",
 	"missingarticle-diff": "(Dif: $1, $2)",
@@ -371,8 +371,8 @@
 	"rev-deleted-comment": "(mana'suha kommentu)",
 	"rev-deleted-user": "(mana'suha nå'an muna'sesetbi)",
 	"rev-deleted-event": "(mana'suha aksion log)",
-	"rev-deleted-text-permission": "Mana'suha este na tinilaika ginen i manpubliku na atkibu siha.\nFana'an guåha attikulo gi [{{fullurl:{{#Special:Log}}/suppress|page={{FULLPAGENAMEE}}}} log muna'susuha].",
-	"rev-deleted-text-view": "Mana'suha este na tinilaika ginen i mampubliku na atkibu siha.\nKomu administradot {{SITENAME}} siña un atan ha';\nfana'an guåha attikulo gi [{{fullurl:{{#Special:Log}}/suppress|page={{FULLPAGENAMEE}}}} log muna'susuha].",
+	"rev-deleted-text-permission": "Mana'suha este na tinilaika ginen i manpubliku na atkibu siha.\nFana'an guåha attikulo gi [{{fullurl:{{#Special:Log}}/suppress|page=$1}} log muna'susuha].",
+	"rev-deleted-text-view": "Mana'suha este na tinilaika ginen i mampubliku na atkibu siha.\nKomu administradot {{SITENAME}} siña un atan ha';\nfana'an guåha attikulo gi [{{fullurl:{{#Special:Log}}/suppress|page=$1}} log muna'susuha].",
 	"rev-delundel": "na'annok/nå'na'",
 	"revisiondelete": "Na'suha/para håfa muna'suha i tinilaika",
 	"logdelete-selected": "{{PLURAL:$1|Kasun log ni ma'ayek|Kasun log ni manma'ayek}}:",

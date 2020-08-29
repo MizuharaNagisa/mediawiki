@@ -30,6 +30,7 @@ use LogicException;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use RuntimeException;
+use Throwable;
 use WANObjectCache;
 use Wikimedia\ScopedCallback;
 
@@ -82,6 +83,8 @@ abstract class LBFactory implements ILBFactory {
 	private $tableAliases = [];
 	/** @var string[] Map of (index alias => index) */
 	private $indexAliases = [];
+	/** @var DatabaseDomain[]|string[] Map of (domain alias => DB domain) */
+	private $domainAliases = [];
 	/** @var callable[] */
 	private $replicationWaitCallbacks = [];
 
@@ -105,12 +108,15 @@ abstract class LBFactory implements ILBFactory {
 	/** @var int|null */
 	protected $maxLag;
 
-	const ROUND_CURSORY = 'cursory';
-	const ROUND_BEGINNING = 'within-begin';
-	const ROUND_COMMITTING = 'within-commit';
-	const ROUND_ROLLING_BACK = 'within-rollback';
-	const ROUND_COMMIT_CALLBACKS = 'within-commit-callbacks';
-	const ROUND_ROLLBACK_CALLBACKS = 'within-rollback-callbacks';
+	/** @var DatabaseDomain[] Map of (domain ID => domain instance) */
+	private $nonLocalDomainCache = [];
+
+	private const ROUND_CURSORY = 'cursory';
+	private const ROUND_BEGINNING = 'within-begin';
+	private const ROUND_COMMITTING = 'within-commit';
+	private const ROUND_ROLLING_BACK = 'within-rollback';
+	private const ROUND_COMMIT_CALLBACKS = 'within-commit-callbacks';
+	private const ROUND_ROLLBACK_CALLBACKS = 'within-rollback-callbacks';
 
 	private static $loggerFields =
 		[ 'replLogger', 'connLogger', 'queryLogger', 'perfLogger' ];
@@ -132,7 +138,7 @@ abstract class LBFactory implements ILBFactory {
 		foreach ( self::$loggerFields as $key ) {
 			$this->$key = $conf[$key] ?? new NullLogger();
 		}
-		$this->errorLogger = $conf['errorLogger'] ?? function ( Exception $e ) {
+		$this->errorLogger = $conf['errorLogger'] ?? function ( Throwable $e ) {
 			trigger_error( get_class( $e ) . ': ' . $e->getMessage(), E_USER_WARNING );
 		};
 		$this->deprecationLogger = $conf['deprecationLogger'] ?? function ( $msg ) {
@@ -175,7 +181,34 @@ abstract class LBFactory implements ILBFactory {
 	}
 
 	public function resolveDomainID( $domain ) {
-		return ( $domain !== false ) ? (string)$domain : $this->getLocalDomainID();
+		return $this->resolveDomainInstance( $domain )->getId();
+	}
+
+	/**
+	 * @param DatabaseDomain|string|bool $domain
+	 * @return DatabaseDomain
+	 */
+	final protected function resolveDomainInstance( $domain ) {
+		if ( $domain instanceof DatabaseDomain ) {
+			return $domain; // already a domain instance
+		} elseif ( $domain === false || $domain === $this->localDomain->getId() ) {
+			return $this->localDomain;
+		} elseif ( isset( $this->domainAliases[$domain] ) ) {
+			// This array acts as both the original map and as instance cache.
+			// Instances pass-through DatabaseDomain::newFromId as-is.
+			$this->domainAliases[$domain] =
+				DatabaseDomain::newFromId( $this->domainAliases[$domain] );
+
+			return $this->domainAliases[$domain];
+		}
+
+		$cachedDomain = $this->nonLocalDomainCache[$domain] ?? null;
+		if ( $cachedDomain === null ) {
+			$cachedDomain = DatabaseDomain::newFromId( $domain );
+			$this->nonLocalDomainCache = [ $domain => $cachedDomain ];
+		}
+
+		return $cachedDomain;
 	}
 
 	public function shutdown(
@@ -385,6 +418,7 @@ abstract class LBFactory implements ILBFactory {
 			'ifWritesSince' => null
 		];
 
+		// @phan-suppress-next-line PhanSuspiciousValueComparison
 		if ( $opts['domain'] === false && isset( $opts['wiki'] ) ) {
 			$opts['domain'] = $opts['wiki']; // b/c
 		}
@@ -392,6 +426,7 @@ abstract class LBFactory implements ILBFactory {
 		// Figure out which clusters need to be checked
 		/** @var ILoadBalancer[] $lbs */
 		$lbs = [];
+		// @phan-suppress-next-line PhanSuspiciousValueComparison
 		if ( $opts['cluster'] !== false ) {
 			$lbs[] = $this->getExternalLB( $opts['cluster'] );
 		} elseif ( $opts['domain'] !== false ) {
@@ -417,6 +452,7 @@ abstract class LBFactory implements ILBFactory {
 				!$lb->hasStreamingReplicaServers() ||
 				// No writes since the last replication wait
 				(
+					// @phan-suppress-next-line PhanImpossibleConditionInLoop
 					$opts['ifWritesSince'] &&
 					$lb->lastMasterChangeTimestamp() < $opts['ifWritesSince']
 				)
@@ -497,8 +533,8 @@ abstract class LBFactory implements ILBFactory {
 		return $waitSucceeded;
 	}
 
-	public function getChronologyProtectorTouched( $dbName ) {
-		return $this->getChronologyProtector()->getTouched( $dbName );
+	public function getChronologyProtectorTouched( $domain = false ) {
+		return $this->getChronologyProtector()->getTouched( $this->getMainLB( $domain ) );
 	}
 
 	public function disableChronologyProtection() {
@@ -631,6 +667,7 @@ abstract class LBFactory implements ILBFactory {
 
 		$lb->setTableAliases( $this->tableAliases );
 		$lb->setIndexAliases( $this->indexAliases );
+		$lb->setDomainAliases( $this->domainAliases );
 	}
 
 	public function setTableAliases( array $aliases ) {
@@ -639,6 +676,14 @@ abstract class LBFactory implements ILBFactory {
 
 	public function setIndexAliases( array $aliases ) {
 		$this->indexAliases = $aliases;
+	}
+
+	public function setDomainAliases( array $aliases ) {
+		$this->domainAliases = $aliases;
+	}
+
+	public function getTransactionProfiler(): TransactionProfiler {
+		return $this->trxProfiler;
 	}
 
 	public function setLocalDomainPrefix( $prefix ) {

@@ -30,10 +30,7 @@ class StatusTest extends MediaWikiLangTestCase {
 	 * @covers Status::newFatal
 	 */
 	public function testNewFatalWithMessage() {
-		$message = $this->getMockBuilder( Message::class )
-			->disableOriginalConstructor()
-			->getMock();
-
+		$message = $this->getMockMessage();
 		$status = Status::newFatal( $message );
 		$this->assertFalse( $status->isGood() );
 		$this->assertFalse( $status->isOK() );
@@ -221,19 +218,6 @@ class StatusTest extends MediaWikiLangTestCase {
 			$this->assertEquals( $errors[$key], $expectedArray );
 		}
 		$this->assertFalse( $status->isOK() );
-	}
-
-	protected function getMockMessage( $key = 'key', $params = [] ) {
-		$message = $this->getMockBuilder( Message::class )
-			->disableOriginalConstructor()
-			->getMock();
-		$message->expects( $this->atLeastOnce() )
-			->method( 'getKey' )
-			->will( $this->returnValue( $key ) );
-		$message->expects( $this->atLeastOnce() )
-			->method( 'getParams' )
-			->will( $this->returnValue( $params ) );
-		return $message;
 	}
 
 	/**
@@ -446,7 +430,7 @@ class StatusTest extends MediaWikiLangTestCase {
 	 * @covers Status::getMessage
 	 */
 	public function testGetMessage(
-		Status $status, $expectedParams = [], $expectedKey, $expectedWrapper
+		Status $status, $expectedParams, $expectedKey, $expectedWrapper
 	) {
 		$message = $status->getMessage( null, null, 'qqx' );
 		$this->assertInstanceOf( Message::class, $message );
@@ -663,7 +647,7 @@ class StatusTest extends MediaWikiLangTestCase {
 
 		$array = $status->getWarningsArray(); // We use getWarningsArray to access getStatusArray
 
-		$this->assertEquals( 1, count( $array ) );
+		$this->assertCount( 1, $array );
 		$this->assertEquals( $nonObjMsg, $array[0] );
 	}
 

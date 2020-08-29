@@ -9,7 +9,7 @@ use PHPUnit\Framework\MockObject\MockObject;
 /**
  * @covers \Article::view()
  */
-class ArticleViewTest extends MediaWikiTestCase {
+class ArticleViewTest extends MediaWikiIntegrationTestCase {
 
 	protected function setUp() : void {
 		parent::setUp();
@@ -59,6 +59,9 @@ class ArticleViewTest extends MediaWikiTestCase {
 	 * @covers Article::getRevIdFetched()
 	 */
 	public function testGetOldId() {
+		$this->hideDeprecated( 'Article::getRevisionFetched' );
+		$this->hideDeprecated( 'Revision::__construct' );
+
 		$revisions = [];
 		$page = $this->getPage( __METHOD__, [ 1 => 'Test A', 2 => 'Test B' ], $revisions );
 
@@ -129,7 +132,8 @@ class ArticleViewTest extends MediaWikiTestCase {
 	}
 
 	/**
-	 * @covers Article::getRedirectTarget()
+	 * @covers Article::getPage()
+	 * @covers WikiPage::getRedirectTarget()
 	 */
 	public function testViewRedirect() {
 		$target = Title::makeTitle( $this->getDefaultWikitextNS(), 'Test_Target' );
@@ -142,11 +146,11 @@ class ArticleViewTest extends MediaWikiTestCase {
 		$article->view();
 
 		$this->assertNotNull(
-			$article->getRedirectTarget()->getPrefixedDBkey()
+			$article->getPage()->getRedirectTarget()->getPrefixedDBkey()
 		);
 		$this->assertSame(
 			$target->getPrefixedDBkey(),
-			$article->getRedirectTarget()->getPrefixedDBkey()
+			$article->getPage()->getRedirectTarget()->getPrefixedDBkey()
 		);
 
 		$output = $article->getContext()->getOutput();
@@ -159,7 +163,7 @@ class ArticleViewTest extends MediaWikiTestCase {
 
 	public function testViewNonText() {
 		$dummy = $this->getPage( __METHOD__, [ 'Dummy' ] );
-		$dummyRev = $dummy->getRevision()->getRevisionRecord();
+		$dummyRev = $dummy->getRevisionRecord();
 		$title = $dummy->getTitle();
 
 		/** @var MockObject|ContentHandler $mockHandler */
@@ -204,15 +208,13 @@ class ArticleViewTest extends MediaWikiTestCase {
 
 		$rev->setContent( SlotRecord::MAIN, $content );
 
-		$rev = new Revision( $rev );
-
 		/** @var MockObject|WikiPage $page */
 		$page = $this->getMockBuilder( WikiPage::class )
-			->setMethods( [ 'getRevision', 'getLatest' ] )
+			->setMethods( [ 'getRevisionRecord', 'getLatest' ] )
 			->setConstructorArgs( [ $title ] )
 			->getMock();
 
-		$page->method( 'getRevision' )
+		$page->method( 'getRevisionRecord' )
 			->willReturn( $rev );
 		$page->method( 'getLatest' )
 			->willReturn( $rev->getId() );
@@ -292,7 +294,7 @@ class ArticleViewTest extends MediaWikiTestCase {
 		$article->view();
 
 		$output = $article->getContext()->getOutput();
-		$this->assertStringContainsString( '(rev-deleted-text-permission)', $this->getHtml( $output ) );
+		$this->assertStringContainsString( 'rev-deleted-text-permission', $this->getHtml( $output ) );
 
 		$this->assertStringNotContainsString( 'Test A', $this->getHtml( $output ) );
 		$this->assertStringNotContainsString( 'Test B', $this->getHtml( $output ) );
@@ -320,7 +322,7 @@ class ArticleViewTest extends MediaWikiTestCase {
 		$article->view();
 
 		$output = $article->getContext()->getOutput();
-		$this->assertStringContainsString( '(rev-deleted-text-view)', $this->getHtml( $output ) );
+		$this->assertStringContainsString( 'rev-deleted-text-view', $this->getHtml( $output ) );
 
 		$this->assertStringContainsString( 'Test A', $this->getHtml( $output ) );
 		$this->assertStringNotContainsString( 'Test B', $this->getHtml( $output ) );
@@ -339,7 +341,7 @@ class ArticleViewTest extends MediaWikiTestCase {
 
 	public function testViewDeletedPage() {
 		$page = $this->getPage( __METHOD__, [ 1 => 'Test A', 2 => 'Test B' ] );
-		$page->doDeleteArticle( 'Test' );
+		$page->doDeleteArticleReal( 'Test', $this->getTestSysop()->getUser() );
 
 		$article = new Article( $page->getTitle() );
 		$article->getContext()->getOutput()->setTitle( $page->getTitle() );
@@ -435,42 +437,6 @@ class ArticleViewTest extends MediaWikiTestCase {
 		$this->assertSame( 'Hook Title', $output->getPageTitle() );
 	}
 
-	public function testArticleContentViewCustomHook() {
-		$page = $this->getPage( __METHOD__, [ 1 => 'Test A' ] );
-
-		$article = new Article( $page->getTitle(), 0 );
-		$article->getContext()->getOutput()->setTitle( $page->getTitle() );
-
-		// use ArticleViewHeader hook to bypass the parser cache
-		$this->setTemporaryHook(
-			'ArticleViewHeader',
-			function ( Article $articlePage, &$outputDone, &$useParserCache ) use ( $article ) {
-				$useParserCache = false;
-			}
-		);
-
-		$this->setTemporaryHook(
-			'ArticleContentViewCustom',
-			function ( Content $content, Title $title, OutputPage $output ) use ( $page ) {
-				$this->assertSame( $page->getTitle(), $title, '$title' );
-				$this->assertSame( 'Test A', $content->getText(), '$content' );
-
-				$output->addHTML( 'Hook Text' );
-				return false;
-			}
-		);
-
-		$this->hideDeprecated(
-			'ArticleContentViewCustom hook (used in hook-ArticleContentViewCustom-closure)'
-		);
-
-		$article->view();
-
-		$output = $article->getContext()->getOutput();
-		$this->assertStringNotContainsString( 'Test A', $this->getHtml( $output ) );
-		$this->assertStringContainsString( 'Hook Text', $this->getHtml( $output ) );
-	}
-
 	public function testArticleRevisionViewCustomHook() {
 		$page = $this->getPage( __METHOD__, [ 1 => 'Test A' ] );
 
@@ -495,42 +461,6 @@ class ArticleViewTest extends MediaWikiTestCase {
 				$output->addHTML( 'Hook Text' );
 				return false;
 			}
-		);
-
-		$article->view();
-
-		$output = $article->getContext()->getOutput();
-		$this->assertStringNotContainsString( 'Test A', $this->getHtml( $output ) );
-		$this->assertStringContainsString( 'Hook Text', $this->getHtml( $output ) );
-	}
-
-	public function testArticleAfterFetchContentObjectHook() {
-		$page = $this->getPage( __METHOD__, [ 1 => 'Test A' ] );
-
-		$article = new Article( $page->getTitle(), 0 );
-		$article->getContext()->getOutput()->setTitle( $page->getTitle() );
-
-		// use ArticleViewHeader hook to bypass the parser cache
-		$this->setTemporaryHook(
-			'ArticleViewHeader',
-			function ( Article $articlePage, &$outputDone, &$useParserCache ) use ( $article ) {
-				$useParserCache = false;
-			}
-		);
-
-		$this->setTemporaryHook(
-			'ArticleAfterFetchContentObject',
-			function ( Article &$articlePage, Content &$content ) use ( $page, $article ) {
-				$this->assertSame( $article, $articlePage, '$articlePage' );
-				$this->assertSame( 'Test A', $content->getText(), '$content' );
-
-				$content = new WikitextContent( 'Hook Text' );
-			}
-		);
-
-		$this->hideDeprecated(
-			'ArticleAfterFetchContentObject hook'
-			. ' (used in hook-ArticleAfterFetchContentObject-closure)'
 		);
 
 		$article->view();

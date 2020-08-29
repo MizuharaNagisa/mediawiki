@@ -3,7 +3,7 @@
 /**
  * @covers MigrateFileRepoLayout
  */
-class MigrateFileRepoLayoutTest extends MediaWikiTestCase {
+class MigrateFileRepoLayoutTest extends MediaWikiIntegrationTestCase {
 	protected $tmpPrefix;
 	protected $migratorMock;
 	protected $tmpFilepath;
@@ -32,9 +32,10 @@ class MigrateFileRepoLayoutTest extends MediaWikiTestCase {
 			->disableOriginalConstructor()
 			->getMock();
 
-		$imageRow = new stdClass;
-		$imageRow->img_name = $filename;
-		$imageRow->img_sha1 = sha1( $this->text );
+		$imageRow = (object)[
+			'img_name' => $filename,
+			'img_sha1' => sha1( $this->text ),
+		];
 
 		$dbMock->expects( $this->any() )
 			->method( 'select' )

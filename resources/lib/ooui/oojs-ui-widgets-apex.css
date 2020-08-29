@@ -1,12 +1,12 @@
 /*!
- * OOUI v0.36.4
+ * OOUI v0.40.1
  * https://www.mediawiki.org/wiki/OOUI
  *
  * Copyright 2011–2020 OOUI Team and other contributors.
  * Released under the MIT license
  * http://oojs.mit-license.org
  *
- * Date: 2020-02-05T19:37:21Z
+ * Date: 2020-08-05T21:22:12Z
  */
 .oo-ui-draggableElement-handle:not( .oo-ui-draggableElement-undraggable ).oo-ui-widget {
   cursor: move;
@@ -261,6 +261,12 @@
 }
 .oo-ui-toggleButtonWidget:last-child {
   margin-right: 0;
+}
+.oo-ui-toggleButtonWidget.oo-ui-widget-enabled.oo-ui-buttonElement-frameless.oo-ui-toggleWidget-on .oo-ui-buttonElement-button {
+  background-color: rgba(0, 0, 0, 0.13333333);
+}
+.oo-ui-toggleButtonWidget.oo-ui-widget-enabled.oo-ui-buttonElement-frameless.oo-ui-toggleWidget-on .oo-ui-buttonElement-button > .oo-ui-labelElement-label {
+  color: #000;
 }
 
 .oo-ui-toggleSwitchWidget {
@@ -532,9 +538,6 @@
 .oo-ui-outlineControlsWidget-movers {
   float: right;
 }
-.oo-ui-outlineControlsWidget-movers .oo-ui-buttonWidget {
-  float: right;
-}
 .oo-ui-outlineControlsWidget-items > .oo-ui-buttonWidget,
 .oo-ui-outlineControlsWidget-movers > .oo-ui-buttonWidget {
   height: 2.5em;
@@ -601,6 +604,10 @@
   border-color: transparent;
   border-style: solid;
   padding: 0.5em 1em;
+}
+.oo-ui-tabOptionWidget > .oo-ui-labelElement-label {
+  color: inherit;
+  text-decoration: inherit;
 }
 .oo-ui-tabOptionWidget.oo-ui-optionWidget-selected {
   cursor: default;

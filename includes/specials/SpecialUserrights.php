@@ -36,7 +36,7 @@ class UserrightsPage extends SpecialPage {
 	 * @var null|string
 	 */
 	protected $mTarget;
-	/*
+	/**
 	 * @var null|User $mFetchedUser The user object of the target username or null.
 	 */
 	protected $mFetchedUser = null;
@@ -88,7 +88,6 @@ class UserrightsPage extends SpecialPage {
 	 *
 	 * @param string|null $par String if any subpage provided, else null
 	 * @throws UserBlockedError|PermissionsError
-	 * @suppress PhanUndeclaredMethod
 	 */
 	public function execute( $par ) {
 		$user = $this->getUser();
@@ -228,7 +227,7 @@ class UserrightsPage extends SpecialPage {
 		}
 	}
 
-	function getSuccessURL() {
+	private function getSuccessURL() {
 		return $this->getPageTitle( $this->mTarget )->getFullURL();
 	}
 
@@ -349,7 +348,7 @@ class UserrightsPage extends SpecialPage {
 	 *   containing only those groups that are to have new expiry values set
 	 * @return array Tuple of added, then removed groups
 	 */
-	function doSaveUserGroups( $user, array $add, array $remove, $reason = '',
+	public function doSaveUserGroups( $user, array $add, array $remove, $reason = '',
 		array $tags = [], array $groupExpiries = []
 	) {
 		// Validate input set...
@@ -360,9 +359,8 @@ class UserrightsPage extends SpecialPage {
 		$addable = array_merge( $changeable['add'], $isself ? $changeable['add-self'] : [] );
 		$removable = array_merge( $changeable['remove'], $isself ? $changeable['remove-self'] : [] );
 
-		$remove = array_unique(
-			array_intersect( (array)$remove, $removable, $groups ) );
-		$add = array_intersect( (array)$add, $addable );
+		$remove = array_unique( array_intersect( $remove, $removable, $groups ) );
+		$add = array_intersect( $add, $addable );
 
 		// add only groups that are not already present or that need their expiry updated,
 		// UNLESS the user can only add this group (not remove it) and the expiry time
@@ -380,7 +378,7 @@ class UserrightsPage extends SpecialPage {
 				return !in_array( $group, $groups ) || array_key_exists( $group, $groupExpiries );
 			} );
 
-		Hooks::run( 'ChangeUserGroups', [ $this->getUser(), $user, &$add, &$remove ] );
+		$this->getHookRunner()->onChangeUserGroups( $this->getUser(), $user, $add, $remove );
 
 		$oldGroups = $groups;
 		$oldUGMs = $user->getGroupMemberships();
@@ -411,13 +409,13 @@ class UserrightsPage extends SpecialPage {
 		$user->invalidateCache();
 
 		// update groups in external authentication database
-		Hooks::run( 'UserGroupsChanged', [ $user, $add, $remove, $this->getUser(),
-			$reason, $oldUGMs, $newUGMs ] );
+		$this->getHookRunner()->onUserGroupsChanged( $user, $add, $remove,
+			$this->getUser(), $reason, $oldUGMs, $newUGMs );
 
-		wfDebug( 'oldGroups: ' . print_r( $oldGroups, true ) . "\n" );
-		wfDebug( 'newGroups: ' . print_r( $newGroups, true ) . "\n" );
-		wfDebug( 'oldUGMs: ' . print_r( $oldUGMs, true ) . "\n" );
-		wfDebug( 'newUGMs: ' . print_r( $newUGMs, true ) . "\n" );
+		wfDebug( 'oldGroups: ' . print_r( $oldGroups, true ) );
+		wfDebug( 'newGroups: ' . print_r( $newGroups, true ) );
+		wfDebug( 'oldUGMs: ' . print_r( $oldUGMs, true ) );
+		wfDebug( 'newUGMs: ' . print_r( $newUGMs, true ) );
 
 		// Only add a log entry if something actually changed
 		if ( $newGroups != $oldGroups || $newUGMs != $oldUGMs ) {
@@ -488,7 +486,7 @@ class UserrightsPage extends SpecialPage {
 	 * Edit user groups membership
 	 * @param string $username Name of the user.
 	 */
-	function editUserGroupsForm( $username ) {
+	private function editUserGroupsForm( $username ) {
 		$status = $this->fetchUser( $username, true );
 		if ( !$status->isOK() ) {
 			$this->getOutput()->addWikiTextAsInterface(
@@ -579,6 +577,16 @@ class UserrightsPage extends SpecialPage {
 			return Status::newFatal( 'nosuchusershort', $username );
 		}
 
+		if ( $user instanceof User &&
+			$user->isHidden() &&
+			!MediaWikiServices::getInstance()
+				->getPermissionManager()
+				->userHasRight( $this->getUser(), 'hideuser' )
+		) {
+			// Cannot see hidden users, pretend they don't exist
+			return Status::newFatal( 'nosuchusershort', $username );
+		}
+
 		return Status::newGood( $user );
 	}
 
@@ -600,7 +608,7 @@ class UserrightsPage extends SpecialPage {
 	/**
 	 * Output a form to allow searching for a user
 	 */
-	function switchForm() {
+	protected function switchForm() {
 		$this->getOutput()->addModules( 'mediawiki.userSuggest' );
 
 		$this->getOutput()->addHTML(
@@ -705,18 +713,21 @@ class UserrightsPage extends SpecialPage {
 			$grouplist .= '<p>' . $autogrouplistintro . ' ' . $displayedAutolist . "</p>\n";
 		}
 
-		if ( $isUserInstance && $user->isSystemUser() ) {
+		$systemUser = $isUserInstance && $user->isSystemUser();
+		if ( $systemUser ) {
 			$systemusernote = $this->msg( 'userrights-systemuser' )
 				->params( $user->getName() )
 				->parse();
 			$grouplist .= '<p>' . $systemusernote . "</p>\n";
 		}
 
+		// Only add an email link if the user is not a system user
+		$flags = $systemUser ? 0 : Linker::TOOL_LINKS_EMAIL;
 		$userToolLinks = Linker::userToolLinks(
 			$user->getId(),
 			$user->getName(),
 			false, /* default for redContribsWhenNoEdits */
-			Linker::TOOL_LINKS_EMAIL /* Add "send e-mail" link */
+			$flags
 		);
 
 		list( $groupCheckboxes, $canChangeAny ) =
@@ -814,9 +825,9 @@ class UserrightsPage extends SpecialPage {
 
 		// Get the list of preset expiry times from the system message
 		$expiryOptionsMsg = $this->msg( 'userrights-expiry-options' )->inContentLanguage();
-		$expiryOptions = $expiryOptionsMsg->isDisabled() ?
-			[] :
-			explode( ',', $expiryOptionsMsg->text() );
+		$expiryOptions = $expiryOptionsMsg->isDisabled()
+			? []
+			: XmlSelect::parseOptionsMessage( $expiryOptionsMsg->text() );
 
 		// Put all column info into an associative array so that extensions can
 		// more easily manage it.
@@ -951,14 +962,8 @@ class UserrightsPage extends SpecialPage {
 							$this->msg( 'userrights-expiry-othertime' )->text(),
 							'other'
 						);
-						foreach ( $expiryOptions as $option ) {
-							if ( strpos( $option, ":" ) === false ) {
-								$displayText = $value = $option;
-							} else {
-								list( $displayText, $value ) = explode( ":", $option );
-							}
-							$expiryFormOptions->addOption( $displayText, htmlspecialchars( $value ) );
-						}
+
+						$expiryFormOptions->addOptions( $expiryOptions );
 
 						// Add expiry dropdown
 						$expiryHtml .= $expiryFormOptions->getHTML() . '<br />';
@@ -1036,7 +1041,7 @@ class UserrightsPage extends SpecialPage {
 	 *   'remove-self' => [ removable groups from self ]
 	 *  ]
 	 */
-	function changeableGroups() {
+	protected function changeableGroups() {
 		return $this->getUser()->changeableGroups();
 	}
 

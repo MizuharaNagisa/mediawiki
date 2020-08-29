@@ -5,7 +5,7 @@ use Wikimedia\TestingAccessWrapper;
 /**
  * @group ResourceLoader
  */
-class ResourceLoaderSkinModuleTest extends MediaWikiTestCase {
+class ResourceLoaderSkinModuleTest extends MediaWikiIntegrationTestCase {
 
 	public static function provideGetAvailableLogos() {
 		return [
@@ -364,5 +364,71 @@ CSS
 				'Link: </w/test.jpg?edcf2>;rel=preload;as=image',
 			],
 		];
+	}
+
+	/**
+	 * Covers ResourceLoaderSkinModule::FEATURE_FILES, but not annotatable.
+	 *
+	 * @dataProvider provideFeatureFiles
+	 * @coversNothing
+	 *
+	 * @param string $file
+	 */
+	public function testFeatureFilesExist( string $file ) : void {
+		$this->assertFileExists( $file );
+	}
+
+	public function provideFeatureFiles() : Generator {
+		global $IP;
+
+		$featureFiles = ( new ReflectionClass( ResourceLoaderSkinModule::class ) )
+			->getConstant( 'FEATURE_FILES' );
+
+		foreach ( $featureFiles as $feature => $files ) {
+			foreach ( $files as $media => $stylesheets ) {
+				foreach ( $stylesheets as $stylesheet ) {
+					yield "$feature: $media: $stylesheet" => [ "$IP/$stylesheet" ];
+				}
+			}
+		}
+	}
+
+	/**
+	 * @covers ResourceLoaderSkinModule::getStyleFiles
+	 */
+	public function testGetStyleFilesFeatureStylesOrder() : void {
+		$ctx = $this->createMock( ResourceLoaderContext::class );
+		$module = new ResourceLoaderSkinModule(
+			[
+				'features' => [ 'normalize' ],
+				'styles' => [
+					'test.styles/styles.css' => [
+						'media' => 'screen'
+					]
+				]
+			]
+		);
+
+		list( $defaultLocalBasePath, $defaultRemoteBasePath ) =
+			ResourceLoaderFileModule::extractBasePaths();
+
+		$featureFiles = ( new ReflectionClass( ResourceLoaderSkinModule::class ) )
+			->getConstant( 'FEATURE_FILES' );
+
+		$expected = [
+			'screen' => [
+				new ResourceLoaderFilePath(
+					$featureFiles['normalize']['screen'][0],
+					$defaultLocalBasePath,
+					$defaultRemoteBasePath
+				),
+				'test.styles/styles.css'
+			]
+		];
+
+		$this->assertEquals(
+			$expected,
+			$module->getStyleFiles( $ctx )
+		);
 	}
 }

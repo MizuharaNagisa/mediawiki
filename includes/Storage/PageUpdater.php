@@ -30,10 +30,14 @@ use CommentStoreComment;
 use Content;
 use ContentHandler;
 use DeferredUpdates;
-use Hooks;
+use InvalidArgumentException;
 use LogicException;
 use ManualLogEntry;
+use MediaWiki\Config\ServiceOptions;
 use MediaWiki\Content\IContentHandlerFactory;
+use MediaWiki\Debug\DeprecatablePropertyArray;
+use MediaWiki\HookContainer\HookContainer;
+use MediaWiki\HookContainer\HookRunner;
 use MediaWiki\Linker\LinkTarget;
 use MediaWiki\Revision\MutableRevisionRecord;
 use MediaWiki\Revision\RevisionAccessException;
@@ -74,6 +78,15 @@ use WikiPage;
 class PageUpdater {
 
 	/**
+	 * Options that have to be present in the ServiceOptions object passed to the constructor.
+	 *
+	 * @internal
+	 */
+	public const CONSTRUCTOR_OPTIONS = [
+		'ManualRevertSearchRadius'
+	];
+
+	/**
 	 * @var User
 	 */
 	private $user;
@@ -109,6 +122,16 @@ class PageUpdater {
 	private $contentHandlerFactory;
 
 	/**
+	 * @var HookRunner
+	 */
+	private $hookRunner;
+
+	/**
+	 * @var HookContainer
+	 */
+	private $hookContainer;
+
+	/**
 	 * @var boolean see $wgUseAutomaticEditSummaries
 	 * @see $wgUseAutomaticEditSummaries
 	 */
@@ -130,19 +153,9 @@ class PageUpdater {
 	private $ajaxEditStash = true;
 
 	/**
-	 * @var bool|int
-	 */
-	private $originalRevId = false;
-
-	/**
 	 * @var array
 	 */
 	private $tags = [];
-
-	/**
-	 * @var int
-	 */
-	private $undidRevId = 0;
 
 	/**
 	 * @var RevisionSlotsUpdate
@@ -155,6 +168,16 @@ class PageUpdater {
 	private $status = null;
 
 	/**
+	 * @var EditResultBuilder
+	 */
+	private $editResultBuilder;
+
+	/**
+	 * @var EditResult|null
+	 */
+	private $editResult = null;
+
+	/**
 	 * @param User $user
 	 * @param WikiPage $wikiPage
 	 * @param DerivedPageDataUpdater $derivedDataUpdater
@@ -162,6 +185,8 @@ class PageUpdater {
 	 * @param RevisionStore $revisionStore
 	 * @param SlotRoleRegistry $slotRoleRegistry
 	 * @param IContentHandlerFactory $contentHandlerFactory
+	 * @param HookContainer $hookContainer
+	 * @param ServiceOptions $serviceOptions
 	 */
 	public function __construct(
 		User $user,
@@ -170,8 +195,12 @@ class PageUpdater {
 		ILoadBalancer $loadBalancer,
 		RevisionStore $revisionStore,
 		SlotRoleRegistry $slotRoleRegistry,
-		IContentHandlerFactory $contentHandlerFactory
+		IContentHandlerFactory $contentHandlerFactory,
+		HookContainer $hookContainer,
+		ServiceOptions $serviceOptions
 	) {
+		$serviceOptions->assertRequiredOptions( self::CONSTRUCTOR_OPTIONS );
+
 		$this->user = $user;
 		$this->wikiPage = $wikiPage;
 		$this->derivedDataUpdater = $derivedDataUpdater;
@@ -180,8 +209,16 @@ class PageUpdater {
 		$this->revisionStore = $revisionStore;
 		$this->slotRoleRegistry = $slotRoleRegistry;
 		$this->contentHandlerFactory = $contentHandlerFactory;
+		$this->hookContainer = $hookContainer;
+		$this->hookRunner = new HookRunner( $hookContainer );
 
 		$this->slotsUpdate = new RevisionSlotsUpdate();
+		$this->editResultBuilder = new EditResultBuilder(
+			$this->revisionStore,
+			ChangeTags::getSoftwareTags(),
+			$loadBalancer,
+			$serviceOptions
+		);
 	}
 
 	/**
@@ -312,7 +349,7 @@ class PageUpdater {
 	 *
 	 * This method MUST not be called after saveRevision() was called!
 	 *
-	 * The current revision determined by the first call to this methods effectively acts a
+	 * The current revision determined by the first call to this method effectively acts a
 	 * compare-and-swap (CAS) token which is checked by saveRevision(), which fails if any
 	 * concurrent updates created a new revision.
 	 *
@@ -411,16 +448,6 @@ class PageUpdater {
 	}
 
 	/**
-	 * Returns the ID of an earlier revision that is being repeated or restored by this update.
-	 *
-	 * @return bool|int The original revision id, or false if no earlier revision is known to be
-	 * repeated or restored by this update.
-	 */
-	public function getOriginalRevisionId() {
-		return $this->originalRevId;
-	}
-
-	/**
 	 * Sets the ID of an earlier revision that is being repeated or restored by this update.
 	 * The new revision is expected to have the exact same content as the given original revision.
 	 * This is used with rollbacks and with dummy "null" revisions which are created to record
@@ -432,30 +459,41 @@ class PageUpdater {
 	 * is known to be repeated or restored by this update.
 	 */
 	public function setOriginalRevisionId( $originalRevId ) {
-		Assert::parameterType( 'integer|boolean', $originalRevId, '$originalRevId' );
-		$this->originalRevId = $originalRevId;
+		$this->editResultBuilder->setOriginalRevisionId( $originalRevId );
 	}
 
 	/**
-	 * Returns the revision ID set by setUndidRevisionId(), indicating what revision is being
-	 * undone by this edit.
+	 * Marks this edit as a revert and applies relevant information.
+	 * Will also cause the PageUpdater to add a relevant change tag when saving the edit.
+	 * Will do nothing if $oldestRevertedRevId is 0.
 	 *
-	 * @return int
+	 * @param int $revertMethod The method used to make the revert:
+	 *        REVERT_UNDO, REVERT_ROLLBACK or REVERT_MANUAL
+	 * @param int $oldestRevertedRevId The ID of the oldest revision that was reverted.
+	 * @param int $newestRevertedRevId The ID of the newest revision that was reverted. This
+	 *        parameter is optional, default value is $oldestRevertedRevId
+	 *
+	 * @see EditResultBuilder::markAsRevert()
 	 */
-	public function getUndidRevisionId() {
-		return $this->undidRevId;
+	public function markAsRevert(
+		int $revertMethod,
+		int $oldestRevertedRevId,
+		int $newestRevertedRevId = 0
+	) {
+		$this->editResultBuilder->markAsRevert(
+			$revertMethod, $oldestRevertedRevId, $newestRevertedRevId
+		);
 	}
 
 	/**
-	 * Sets the ID of revision that was undone by the present update.
-	 * This is used with the "undo" action, and is expected to hold the oldest revision ID
-	 * in case more then one revision is being undone.
+	 * Returns the EditResult associated with this PageUpdater.
+	 * Will return null if PageUpdater::saveRevision() wasn't called yet.
+	 * Will also return null if the update was not successful.
 	 *
-	 * @param int $undidRevId
+	 * @return EditResult|null
 	 */
-	public function setUndidRevisionId( $undidRevId ) {
-		Assert::parameterType( 'integer', $undidRevId, '$undidRevId' );
-		$this->undidRevId = $undidRevId;
+	public function getEditResult() : ?EditResult {
+		return $this->editResult;
 	}
 
 	/**
@@ -497,6 +535,7 @@ class PageUpdater {
 	 */
 	private function computeEffectiveTags( $flags ) {
 		$tags = $this->tags;
+		$editResult = $this->getEditResult();
 
 		foreach ( $this->slotsUpdate->getModifiedRoles() as $role ) {
 			$old_content = $this->getParentContent( $role );
@@ -512,10 +551,7 @@ class PageUpdater {
 			}
 		}
 
-		// Check for undo tag
-		if ( $this->undidRevId !== 0 && in_array( 'mw-undo', ChangeTags::getSoftwareTags() ) ) {
-			$tags[] = 'mw-undo';
-		}
+		$tags = array_merge( $tags, $editResult->getRevertTags() );
 
 		return array_unique( $tags );
 	}
@@ -692,9 +728,6 @@ class PageUpdater {
 			$useStashed = $this->ajaxEditStash;
 		}
 
-		// TODO: use this only for the legacy hook, and only if something uses the legacy hook
-		$wikiPage = $this->getWikiPage();
-
 		$user = $this->user;
 
 		// Prepare the update. This performs PST and generates the canonical ParserOutput.
@@ -734,16 +767,27 @@ class PageUpdater {
 		 */
 		$this->derivedDataUpdater->getCanonicalParserOutput();
 
-		$mainContent = $this->derivedDataUpdater->getSlots()->getContent( SlotRecord::MAIN );
-
 		// Trigger pre-save hook (using provided edit summary)
+		$renderedRevision = $this->derivedDataUpdater->getRenderedRevision();
 		$hookStatus = Status::newGood( [] );
-		// TODO: replace legacy hook!
-		// TODO: avoid pass-by-reference, see T193950
-		$hook_args = [ &$wikiPage, &$user, &$mainContent, &$summary,
-			$flags & EDIT_MINOR, null, null, &$flags, &$hookStatus ];
-		// Check if the hook rejected the attempted save
-		if ( !Hooks::run( 'PageContentSave', $hook_args ) ) {
+		$allowedByHook = $this->hookRunner->onMultiContentSave(
+			$renderedRevision, $user, $summary, $flags, $hookStatus
+		);
+		if ( $allowedByHook && $this->hookContainer->isRegistered( 'PageContentSave' ) ) {
+			// Also run the legacy hook.
+			// NOTE: WikiPage should only be used for the legacy hook,
+			// and only if something uses the legacy hook.
+			$mainContent = $this->derivedDataUpdater->getSlots()->getContent( SlotRecord::MAIN );
+
+			// Deprecated since 1.35.
+			$allowedByHook = $this->hookRunner->onPageContentSave(
+				$this->getWikiPage(), $user, $mainContent, $summary,
+				$flags & EDIT_MINOR, null, null, $flags, $hookStatus
+			);
+		}
+
+		if ( !$allowedByHook ) {
+			// The hook has prevented this change from being saved.
 			if ( $hookStatus->isOK() ) {
 				// Hook returned false but didn't call fatal(); use generic message
 				$hookStatus->fatal( 'edit-hook-aborted' );
@@ -775,7 +819,7 @@ class PageUpdater {
 		} );
 
 		// NOTE: set $this->status only after all hooks have been called,
-		// so wasCommitted doesn't return true wehn called indirectly from a hook handler!
+		// so wasCommitted doesn't return true when called indirectly from a hook handler!
 		$this->status = $status;
 
 		// TODO: replace bad status with Exceptions!
@@ -894,6 +938,26 @@ class PageUpdater {
 		$rev = $this->derivedDataUpdater->getRevision();
 		'@phan-var MutableRevisionRecord $rev';
 
+		// Avoid fatal error when the Title's ID changed, T204793
+		if (
+			$rev->getPageId() !== null && $title->exists()
+			&& $rev->getPageId() !== $title->getArticleID()
+		) {
+			$titlePageId = $title->getArticleID();
+			$revPageId = $rev->getPageId();
+			$masterPageId = $title->getArticleID( Title::READ_LATEST );
+
+			if ( $revPageId === $masterPageId ) {
+				wfWarn( __METHOD__ . ": Encountered stale Title object: old ID was $titlePageId, "
+					. "continuing with new ID from master, $masterPageId" );
+			} else {
+				throw new InvalidArgumentException(
+					"Revision inherited page ID $revPageId from its parent, "
+					. "but the provided Title object belongs to page ID $masterPageId"
+				);
+			}
+		}
+
 		$rev->setPageId( $title->getArticleID() );
 
 		if ( $parent ) {
@@ -928,6 +992,19 @@ class PageUpdater {
 	}
 
 	/**
+	 * Builds the EditResult for this update.
+	 * Should be called by either doModify or doCreate.
+	 *
+	 * @param RevisionRecord $revision
+	 * @param bool $isNew
+	 */
+	private function buildEditResult( RevisionRecord $revision, bool $isNew ) {
+		$this->editResultBuilder->setRevisionRecord( $revision );
+		$this->editResultBuilder->setIsNew( $isNew );
+		$this->editResult = $this->editResultBuilder->buildEditResult();
+	}
+
+	/**
 	 * @param CommentStoreComment $summary The edit summary
 	 * @param User $user The revision's author
 	 * @param int $flags EXIT_XXX constants
@@ -939,7 +1016,13 @@ class PageUpdater {
 		$wikiPage = $this->getWikiPage(); // TODO: use for legacy hooks only!
 
 		// Update article, but only if changed.
-		$status = Status::newGood( [ 'new' => false, 'revision' => null, 'revision-record' => null ] );
+		$status = Status::newGood(
+			new DeprecatablePropertyArray(
+				[ 'new' => false, 'revision' => null, 'revision-record' => null ],
+				[ 'revision' => '1.35' ],
+				__METHOD__ . ' status'
+			)
+		);
 
 		$oldRev = $this->grabParentRevision();
 		$oldid = $oldRev ? $oldRev->getId() : 0;
@@ -966,6 +1049,16 @@ class PageUpdater {
 
 		// XXX: we may want a flag that allows a null revision to be forced!
 		$changed = $this->derivedDataUpdater->isChange();
+
+		// We build the EditResult before the $change if/else branch in order to pass
+		// the correct $newRevisionRecord to EditResultBuilder. In case this is a null
+		// edit, $newRevisionRecord will be later overridden to its parent revision, which
+		// would confuse EditResultBuilder.
+		if ( !$changed ) {
+			// This is a null edit, ensure original revision ID is set properly
+			$this->editResultBuilder->setOriginalRevisionId( $oldid );
+		}
+		$this->buildEditResult( $newRevisionRecord, false );
 
 		$dbw = $this->getDBConnectionRef( DB_MASTER );
 
@@ -994,21 +1087,32 @@ class PageUpdater {
 
 			// Save revision content and meta-data
 			$newRevisionRecord = $this->revisionStore->insertRevisionOn( $newRevisionRecord, $dbw );
-			$newLegacyRevision = new Revision( $newRevisionRecord );
 
 			// Update page_latest and friends to reflect the new revision
 			// TODO: move to storage service
 			$wasRedirect = $this->derivedDataUpdater->wasRedirect();
-			if ( !$wikiPage->updateRevisionOn( $dbw, $newLegacyRevision, null, $wasRedirect ) ) {
+			if ( !$wikiPage->updateRevisionOn( $dbw, $newRevisionRecord, null, $wasRedirect ) ) {
 				throw new PageUpdateException( "Failed to update page row to use new revision." );
 			}
 
-			// TODO: replace legacy hook!
+			$editResult = $this->getEditResult();
 			$tags = $this->computeEffectiveTags( $flags );
-			Hooks::run(
-				'NewRevisionFromEditComplete',
-				[ $wikiPage, $newLegacyRevision, $this->getOriginalRevisionId(), $user, &$tags ]
+			$this->hookRunner->onRevisionFromEditComplete(
+				$wikiPage, $newRevisionRecord, $editResult->getOriginalRevisionId(), $user, $tags
 			);
+
+			// Hook is hard deprecated since 1.35
+			if ( $this->hookContainer->isRegistered( 'NewRevisionFromEditComplete' ) ) {
+				// Only create Revision object if needed
+				$newLegacyRevision = new Revision( $newRevisionRecord );
+				$this->hookRunner->onNewRevisionFromEditComplete(
+					$wikiPage,
+					$newLegacyRevision,
+					$editResult->getOriginalRevisionId(),
+					$user,
+					$tags
+				);
+			}
 
 			// Update recentchanges
 			if ( !( $flags & EDIT_SUPPRESS_RC ) ) {
@@ -1027,7 +1131,8 @@ class PageUpdater {
 					$newRevisionRecord->getSize(),
 					$newRevisionRecord->getId(),
 					$this->rcPatrolStatus,
-					$tags
+					$tags,
+					$editResult
 				);
 			}
 
@@ -1038,8 +1143,10 @@ class PageUpdater {
 			// Return the new revision to the caller
 			$status->value['revision-record'] = $newRevisionRecord;
 
-			// TODO: globally replace usages of 'revision' with getNewRevision()
-			$status->value['revision'] = $newLegacyRevision;
+			// Deprecated via DeprecatablePropertyArray
+			$status->value['revision'] = function () use ( $newRevisionRecord ) {
+				return new Revision( $newRevisionRecord );
+			};
 		} else {
 			// T34948: revision ID must be set to page {{REVISIONID}} and
 			// related variables correctly. Likewise for {{REVISIONUSER}} (T135261).
@@ -1057,7 +1164,7 @@ class PageUpdater {
 		// Do secondary updates once the main changes have been committed...
 		// NOTE: the updates have to be processed before sending the response to the client
 		// (DeferredUpdates::PRESEND), otherwise the client may already be following the
-		// HTTP redirect to the standard view before dervide data has been created - most
+		// HTTP redirect to the standard view before derived data has been created - most
 		// importantly, before the parser cache has been updated. This would cause the
 		// content to be parsed a second time, or may cause stale content to be shown.
 		DeferredUpdates::addUpdate(
@@ -1093,7 +1200,13 @@ class PageUpdater {
 			throw new PageUpdateException( 'Must provide a main slot when creating a page!' );
 		}
 
-		$status = Status::newGood( [ 'new' => true, 'revision' => null, 'revision-record' => null ] );
+		$status = Status::newGood(
+			new DeprecatablePropertyArray(
+				[ 'new' => true, 'revision' => null, 'revision-record' => null ],
+				[ 'revision' => '1.35' ],
+				__METHOD__ . ' status'
+			)
+		);
 
 		$newRevisionRecord = $this->makeNewRevision(
 			$summary,
@@ -1106,6 +1219,7 @@ class PageUpdater {
 			return $status;
 		}
 
+		$this->buildEditResult( $newRevisionRecord, true );
 		$now = $newRevisionRecord->getTimestamp();
 
 		$dbw = $this->getDBConnectionRef( DB_MASTER );
@@ -1129,20 +1243,30 @@ class PageUpdater {
 
 		// Save the revision text...
 		$newRevisionRecord = $this->revisionStore->insertRevisionOn( $newRevisionRecord, $dbw );
-		$newLegacyRevision = new Revision( $newRevisionRecord );
 
 		// Update the page record with revision data
 		// TODO: move to storage service
-		if ( !$wikiPage->updateRevisionOn( $dbw, $newLegacyRevision, 0 ) ) {
+		if ( !$wikiPage->updateRevisionOn( $dbw, $newRevisionRecord, 0 ) ) {
 			throw new PageUpdateException( "Failed to update page row to use new revision." );
 		}
 
-		// TODO: replace legacy hook!
 		$tags = $this->computeEffectiveTags( $flags );
-		Hooks::run(
-			'NewRevisionFromEditComplete',
-			[ $wikiPage, $newLegacyRevision, false, $user, &$tags ]
+		$this->hookRunner->onRevisionFromEditComplete(
+			$wikiPage, $newRevisionRecord, false, $user, $tags
 		);
+
+		// Hook is deprecated since 1.35
+		if ( $this->hookContainer->isRegistered( 'NewRevisionFromEditComplete' ) ) {
+			// ONly create Revision object if needed
+			$newLegacyRevision = new Revision( $newRevisionRecord );
+			$this->hookRunner->onNewRevisionFromEditComplete(
+				$wikiPage,
+				$newLegacyRevision,
+				false,
+				$user,
+				$tags
+			);
+		}
 
 		// Update recentchanges
 		if ( !( $flags & EDIT_SUPPRESS_RC ) ) {
@@ -1182,9 +1306,12 @@ class PageUpdater {
 		$dbw->endAtomic( __METHOD__ );
 
 		// Return the new revision to the caller
-		// TODO: globally replace usages of 'revision' with getNewRevision()
-		$status->value['revision'] = $newLegacyRevision;
 		$status->value['revision-record'] = $newRevisionRecord;
+
+		// Deprecated via DeprecatablePropertyArray
+		$status->value['revision'] = function () use ( $newRevisionRecord ) {
+			return new Revision( $newRevisionRecord );
+		};
 
 		// Do secondary updates once the main changes have been committed...
 		DeferredUpdates::addUpdate(
@@ -1225,28 +1352,47 @@ class PageUpdater {
 				$hints['causeAction'] = 'edit-page';
 				$hints['causeAgent'] = $user->getName();
 
-				$newLegacyRevision = new Revision( $newRevisionRecord );
-				$mainContent = $newRevisionRecord->getContent( SlotRecord::MAIN, RevisionRecord::RAW );
+				$editResult = $this->getEditResult();
 
 				// Update links tables, site stats, etc.
 				$this->derivedDataUpdater->prepareUpdate( $newRevisionRecord, $hints );
 				$this->derivedDataUpdater->doUpdates();
 
-				// TODO: replace legacy hook!
-				// TODO: avoid pass-by-reference, see T193950
+				$created = $hints['created'] ?? false;
+				$flags |= ( $created ? EDIT_NEW : EDIT_UPDATE );
 
-				if ( $hints['created'] ?? false ) {
+				// PageSaveComplete replaces the other two since 1.35
+				$this->hookRunner->onPageSaveComplete(
+					$wikiPage,
+					$user,
+					$summary->text,
+					$flags,
+					$newRevisionRecord,
+					$editResult
+				);
+
+				// Both hooks are hard deprecated since 1.35
+				if ( !$this->hookContainer->isRegistered( 'PageContentInsertComplete' )
+					&& !$this->hookContainer->isRegistered( 'PageContentSaveComplete' )
+				) {
+					// Don't go on to create a Revision unless its needed
+					return;
+				}
+
+				$mainContent = $newRevisionRecord->getContent( SlotRecord::MAIN, RevisionRecord::RAW );
+				$newLegacyRevision = new Revision( $newRevisionRecord );
+				if ( $created ) {
 					// Trigger post-create hook
-					$params = [ &$wikiPage, &$user, $mainContent, $summary->text,
-						$flags & EDIT_MINOR, null, null, &$flags, $newLegacyRevision ];
-					Hooks::run( 'PageContentInsertComplete', $params );
+					$this->hookRunner->onPageContentInsertComplete( $wikiPage, $user,
+						$mainContent, $summary->text, $flags & EDIT_MINOR,
+						null, null, $flags, $newLegacyRevision );
 				}
 
 				// Trigger post-save hook
-				$params = [ &$wikiPage, &$user, $mainContent, $summary->text,
-						$flags & EDIT_MINOR, null, null, &$flags, $newLegacyRevision,
-						&$status, $this->getOriginalRevisionId(), $this->undidRevId ];
-				Hooks::run( 'PageContentSaveComplete', $params );
+				$this->hookRunner->onPageContentSaveComplete( $wikiPage, $user, $mainContent,
+					$summary->text, $flags & EDIT_MINOR, null,
+					null, $flags, $newLegacyRevision, $status,
+					$editResult->getOriginalRevisionId(), $editResult->getUndidRevId() );
 			}
 		);
 	}

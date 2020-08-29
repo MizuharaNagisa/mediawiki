@@ -4,14 +4,14 @@
 			"Cgtdk",
 			"Christian List",
 			"EileenSanda",
-			"Laketown",
-			"Palnatoke",
-			"Simeondahl",
-			"Tehnix",
-			"Macofe",
-			"Peter Alberti",
 			"Joedalton",
-			"Saederup92"
+			"Laketown",
+			"Macofe",
+			"Palnatoke",
+			"Peter Alberti",
+			"Saederup92",
+			"Simeondahl",
+			"Tehnix"
 		]
 	},
 	"ooui-outline-control-move-down": "Flyt ned",
@@ -30,5 +30,6 @@
 	"ooui-selectfile-button-select": "Vælg en fil",
 	"ooui-selectfile-placeholder": "Ingen filer er valgt",
 	"ooui-selectfile-dragdrop-placeholder": "Smid filen her",
+	"ooui-popup-widget-close-button-aria-label": "Luk",
 	"ooui-field-help": "Hjælp"
 }

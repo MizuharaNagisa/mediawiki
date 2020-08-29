@@ -1,6 +1,5 @@
 <?php
 
-use MediaWiki\Auth\AuthManager;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Permissions\PermissionManager;
 use MediaWiki\Preferences\DefaultPreferencesFactory;
@@ -29,7 +28,7 @@ use Wikimedia\TestingAccessWrapper;
  * @group Preferences
  * @coversDefaultClass MediaWiki\Preferences\DefaultPreferencesFactory
  */
-class DefaultPreferencesFactoryTest extends \MediaWikiTestCase {
+class DefaultPreferencesFactoryTest extends \MediaWikiIntegrationTestCase {
 	use TestAllServiceOptionsUsed;
 
 	/** @var IContextSource */
@@ -38,7 +37,7 @@ class DefaultPreferencesFactoryTest extends \MediaWikiTestCase {
 	/** @var Config */
 	protected $config;
 
-	public function setUp() : void {
+	protected function setUp() : void {
 		parent::setUp();
 		$this->context = new RequestContext();
 		$this->context->setTitle( Title::newFromText( self::class ) );
@@ -64,16 +63,19 @@ class DefaultPreferencesFactoryTest extends \MediaWikiTestCase {
 		$mockNsInfo->expects( $this->never() )
 			->method( $this->anythingBut( 'getValidNamespaces', '__destruct' ) );
 
+		$services = MediaWikiServices::getInstance();
+
 		return new DefaultPreferencesFactory(
 			new LoggedServiceOptions( self::$serviceOptionsAccessLog,
 				DefaultPreferencesFactory::CONSTRUCTOR_OPTIONS, $this->config ),
 			$language,
-			AuthManager::singleton(),
-			MediaWikiServices::getInstance()->getLinkRenderer(),
+			$services->getAuthManager(),
+			$services->getLinkRenderer(),
 			$mockNsInfo,
 			$mockPM,
-			MediaWikiServices::getInstance()->getLanguageConverterFactory()
-				->getLanguageConverter( $language )
+			$services->getLanguageConverterFactory()->getLanguageConverter( $language ),
+			$services->getLanguageNameUtils(),
+			$services->getHookContainer()
 		);
 	}
 
@@ -87,8 +89,8 @@ class DefaultPreferencesFactoryTest extends \MediaWikiTestCase {
 		$testUser = $this->getTestUser();
 		$pm = $this->createMock( PermissionManager::class );
 		$pm->method( 'userHasRight' )->willReturn( true );
-		$form = $this->getPreferencesFactory( $pm, new Language() )
-			->getForm( $testUser->getUser(), $this->context );
+		$prefFactory = $this->getPreferencesFactory( $pm, new Language() );
+		$form = $prefFactory->getForm( $testUser->getUser(), $this->context );
 		$this->assertInstanceOf( PreferencesFormOOUI::class, $form );
 		$this->assertCount( 5, $form->getPreferenceSections() );
 	}
@@ -268,7 +270,8 @@ class DefaultPreferencesFactoryTest extends \MediaWikiTestCase {
 			->will( $this->returnValueMap( [
 				[ $user, 'editmyoptions', true ]
 			] ) );
-		$form = $this->getPreferencesFactory( $pm, new Language() )->getForm( $user, $this->context );
+		$prefFactory = $this->getPreferencesFactory( $pm, new Language() );
+		$form = $prefFactory->getForm( $user, $this->context );
 		$form->show();
 		$form->trySubmit();
 		$this->assertEquals( 12, $user->getOption( 'rclimit' ) );
@@ -334,6 +337,13 @@ class DefaultPreferencesFactoryTest extends \MediaWikiTestCase {
 	 * @coversNothing
 	 */
 	public function testAllServiceOptionsUsed() {
-		$this->assertAllServiceOptionsUsed( [ 'EnotifMinorEdits', 'EnotifRevealEditorAddress' ] );
+		$this->assertAllServiceOptionsUsed( [
+			// Only used when $wgEnotifWatchlist or $wgEnotifUserTalk is true
+			'EnotifMinorEdits',
+			// Only used when $wgEnotifWatchlist or $wgEnotifUserTalk is true
+			'EnotifRevealEditorAddress',
+			// Only used when 'fancysig' preference is enabled
+			'SignatureValidation',
+		] );
 	}
 }

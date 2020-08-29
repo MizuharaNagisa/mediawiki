@@ -32,6 +32,8 @@ use Wikimedia\ParamValidator\TypeDef\IntegerDef;
 /**
  * A base class for functions common to producing a list of revisions.
  *
+ * @stable to extend
+ *
  * @ingroup API
  */
 abstract class ApiQueryRevisionsBase extends ApiQueryGeneratorBase {
@@ -43,8 +45,8 @@ abstract class ApiQueryRevisionsBase extends ApiQueryGeneratorBase {
 
 	// Bits to indicate the results of the revdel permission check on a revision,
 	// see self::checkRevDel()
-	const IS_DELETED = 1; // Whether the field is revision-deleted
-	const CANNOT_VIEW = 2; // Whether the user cannot view the field due to revdel
+	private const IS_DELETED = 1; // Whether the field is revision-deleted
+	private const CANNOT_VIEW = 2; // Whether the user cannot view the field due to revdel
 
 	/** @} */
 
@@ -220,7 +222,7 @@ abstract class ApiQueryRevisionsBase extends ApiQueryGeneratorBase {
 		$ret = $revision->isDeleted( $field ) ? self::IS_DELETED : 0;
 		if ( $ret ) {
 			$canSee = $revision->audienceCan( $field, RevisionRecord::FOR_THIS_USER, $this->getUser() );
-			$ret = $ret | ( $canSee ? 0 : self::CANNOT_VIEW );
+			$ret |= ( $canSee ? 0 : self::CANNOT_VIEW );
 		}
 		return $ret;
 	}
@@ -421,6 +423,7 @@ abstract class ApiQueryRevisionsBase extends ApiQueryGeneratorBase {
 				// @todo Move this into extractSlotInfo() (and remove its $content parameter)
 				// when extractDeprecatedContent() is no more.
 				if ( $content ) {
+					/** @var Content $content */
 					$vals['slots'][$role]['contentmodel'] = $content->getModel();
 					$vals['slots'][$role]['contentformat'] = $content->getDefaultFormat();
 					ApiResult::setContentValue(
@@ -520,7 +523,6 @@ abstract class ApiQueryRevisionsBase extends ApiQueryGeneratorBase {
 					Parser::OT_PREPROCESS
 				);
 				$dom = $parser->preprocessToDom( $t );
-				// @phan-suppress-next-line PhanUndeclaredMethodInCallable
 				if ( is_callable( [ $dom, 'saveXML' ] ) ) {
 					// @phan-suppress-next-line PhanUndeclaredMethod
 					$xml = $dom->saveXML();
@@ -655,6 +657,12 @@ abstract class ApiQueryRevisionsBase extends ApiQueryGeneratorBase {
 		return $vals;
 	}
 
+	/**
+	 * @stable to override
+	 * @param array $params
+	 *
+	 * @return string
+	 */
 	public function getCacheMode( $params ) {
 		if ( $this->userCanSeeRevDel() ) {
 			return 'private';
@@ -663,6 +671,11 @@ abstract class ApiQueryRevisionsBase extends ApiQueryGeneratorBase {
 		return 'public';
 	}
 
+	/**
+	 * @stable to override
+	 * @return array
+	 * @throws MWException
+	 */
 	public function getAllowedParams() {
 		$slotRoles = MediaWikiServices::getInstance()->getSlotRoleRegistry()->getKnownRoles();
 		sort( $slotRoles, SORT_STRING );

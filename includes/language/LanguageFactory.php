@@ -1,8 +1,5 @@
 <?php
 /**
- * Internationalisation code.
- * See https://www.mediawiki.org/wiki/Special:MyLanguage/Localisation for more information.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -19,7 +16,6 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup Language
  */
 
 /**
@@ -32,11 +28,14 @@ use Language;
 use LanguageConverter;
 use LocalisationCache;
 use MediaWiki\Config\ServiceOptions;
+use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\MediaWikiServices;
 use MWException;
 
 /**
  * Internationalisation code
+ * See https://www.mediawiki.org/wiki/Special:MyLanguage/Localisation for more information.
+ *
  * @ingroup Language
  * @since 1.35
  */
@@ -56,6 +55,9 @@ class LanguageFactory {
 	/** @var LanguageConverterFactory */
 	private $langConverterFactory;
 
+	/** @var HookContainer */
+	private $hookContainer;
+
 	/** @var array */
 	private $langObjCache = [];
 
@@ -63,8 +65,7 @@ class LanguageFactory {
 	private $parentLangCache = [];
 
 	/**
-	 * @since 1.35
-	 * @var array
+	 * @internal For use by ServiceWiring
 	 */
 	public const CONSTRUCTOR_OPTIONS = [
 		'DummyLanguageCodes',
@@ -77,13 +78,15 @@ class LanguageFactory {
 	 * @param LanguageNameUtils $langNameUtils
 	 * @param LanguageFallback $langFallback
 	 * @param LanguageConverterFactory $langConverterFactory
+	 * @param HookContainer $hookContainer
 	 */
 	public function __construct(
 		ServiceOptions $options,
 		LocalisationCache $localisationCache,
 		LanguageNameUtils $langNameUtils,
 		LanguageFallback $langFallback,
-		LanguageConverterFactory $langConverterFactory
+		LanguageConverterFactory $langConverterFactory,
+		HookContainer $hookContainer
 	) {
 		$options->assertRequiredOptions( self::CONSTRUCTOR_OPTIONS );
 
@@ -92,12 +95,14 @@ class LanguageFactory {
 		$this->langNameUtils = $langNameUtils;
 		$this->langFallback = $langFallback;
 		$this->langConverterFactory = $langConverterFactory;
+		$this->hookContainer = $hookContainer;
 	}
 
 	/**
 	 * Get a cached or new language object for a given language code
 	 * @param string $code
-	 * @throws MWException
+	 * @throws MWException if the language code contains dangerous characters, e.g. HTML special
+	 *  characters or characters illegal in MediaWiki titles.
 	 * @return Language
 	 */
 	public function getLanguage( $code ) : Language {
@@ -136,7 +141,7 @@ class LanguageFactory {
 	 * Create a language object for a given language code
 	 * @param string $code
 	 * @param bool $fallback Whether we're going through language fallback chain
-	 * @throws MWException
+	 * @throws MWException if the language code or fallback sequence is invalid
 	 * @return Language
 	 */
 	private function newFromCode( $code, $fallback = false ) : Language {
@@ -150,6 +155,7 @@ class LanguageFactory {
 			$this->langNameUtils,
 			$this->langFallback,
 			$this->langConverterFactory,
+			$this->hookContainer
 		];
 
 		if ( !$this->langNameUtils->isValidBuiltInCode( $code ) ) {

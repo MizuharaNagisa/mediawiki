@@ -5,21 +5,12 @@ use MediaWiki\MediaWikiServices;
 /**
  * @group ContentHandlerFactory
  */
-class RegistrationContentHandlerFactoryToMediaWikiServicesTest extends MediaWikiTestCase {
+class RegistrationContentHandlerFactoryToMediaWikiServicesTest extends MediaWikiIntegrationTestCase {
 
 	protected function setUp(): void {
 		parent::setUp();
 
 		$this->setMwGlobals( [
-			'wgExtraNamespaces' => [
-				12312 => 'Dummy',
-				12313 => 'Dummy_talk',
-			],
-			// The below tests assume that namespaces not mentioned here (Help, User, MediaWiki, ..)
-			// default to CONTENT_MODEL_WIKITEXT.
-			'wgNamespaceContentModels' => [
-				12312 => 'testing',
-			],
 			'wgContentHandlers' => [
 				CONTENT_MODEL_WIKITEXT => WikitextContentHandler::class,
 				CONTENT_MODEL_JAVASCRIPT => JavaScriptContentHandler::class,
@@ -33,13 +24,11 @@ class RegistrationContentHandlerFactoryToMediaWikiServicesTest extends MediaWiki
 			],
 		] );
 
-		// Reset LinkCache
-		MediaWikiServices::getInstance()->resetServiceForTesting( 'LinkCache' );
+		MediaWikiServices::getInstance()->resetServiceForTesting( 'ContentHandlerFactory' );
 	}
 
 	protected function tearDown(): void {
-		// Reset LinkCache
-		MediaWikiServices::getInstance()->resetServiceForTesting( 'LinkCache' );
+		MediaWikiServices::getInstance()->resetServiceForTesting( 'ContentHandlerFactory' );
 
 		parent::tearDown();
 	}

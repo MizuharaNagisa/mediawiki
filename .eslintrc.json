@@ -3,17 +3,15 @@
 		"wikimedia/client",
 		"wikimedia/jquery",
 		"wikimedia/mediawiki",
-		"plugin:vue/recommended"
+		"wikimedia/jsduck"
 	],
 	"globals": {
 		"require": "readonly",
-		"module": "readonly",
-		"OO": "readonly"
+		"module": "readonly"
 	},
 	"rules": {
-		"quote-props": [ "error", "as-needed" ],
 		"max-len": "off",
 		"no-jquery/no-global-selector": "off",
-		"vue/html-indent": [ "warn", "tab" ]
+		"no-shadow": "error"
 	}
 }

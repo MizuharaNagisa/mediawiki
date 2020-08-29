@@ -27,6 +27,8 @@
  * @internal
  */
 class ResourceLoaderSiteStylesModule extends ResourceLoaderWikiModule {
+	/** @var string[] What client platforms the module targets (e.g. desktop, mobile) */
+	protected $targets = [ 'desktop', 'mobile' ];
 
 	/**
 	 * Get list of pages used by this module
@@ -41,7 +43,7 @@ class ResourceLoaderSiteStylesModule extends ResourceLoaderWikiModule {
 			$pages['MediaWiki:Common.css'] = [ 'type' => 'style' ];
 			$pages['MediaWiki:' . ucfirst( $skin ) . '.css'] = [ 'type' => 'style' ];
 			$pages['MediaWiki:Print.css'] = [ 'type' => 'style', 'media' => 'print' ];
-			Hooks::run( 'ResourceLoaderSiteStylesModulePages', [ $skin, &$pages ] );
+			$this->getHookRunner()->onResourceLoaderSiteStylesModulePages( $skin, $pages );
 		}
 		return $pages;
 	}

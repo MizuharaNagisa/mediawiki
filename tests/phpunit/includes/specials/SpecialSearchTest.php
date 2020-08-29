@@ -9,7 +9,7 @@ use MediaWiki\MediaWikiServices;
  * @author Antoine Musso
  * @group Database
  */
-class SpecialSearchTest extends MediaWikiTestCase {
+class SpecialSearchTest extends MediaWikiIntegrationTestCase {
 
 	/**
 	 * @covers SpecialSearch::load
@@ -257,6 +257,8 @@ class SpecialSearchTest extends MediaWikiTestCase {
 		$mock->expects( $this->any() )
 			->method( 'getNearMatcher' )
 			->willReturn( $nearMatcherMock );
+
+		$mock->setHookContainer( MediaWikiServices::getInstance()->getHookContainer() );
 
 		return $mock;
 	}

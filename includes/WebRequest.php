@@ -27,7 +27,6 @@ use MediaWiki\MediaWikiServices;
 use MediaWiki\Session\Session;
 use MediaWiki\Session\SessionId;
 use MediaWiki\Session\SessionManager;
-use Wikimedia\AtEase\AtEase;
 use Wikimedia\IPUtils;
 
 // The point of this class is to be a wrapper around super globals
@@ -69,7 +68,7 @@ class WebRequest {
 	 * Flag to make WebRequest::getHeader return an array of values.
 	 * @since 1.26
 	 */
-	const GETHEADER_LIST = 1;
+	public const GETHEADER_LIST = 1;
 
 	/**
 	 * The unique request ID.
@@ -136,6 +135,9 @@ class WebRequest {
 	 * If the REQUEST_URI is not provided we'll fall back on the PATH_INFO
 	 * provided by the server if any and use that to set a 'title' parameter.
 	 *
+	 * @internal This has many odd special cases and so should only be used by
+	 *   interpolateTitle() for index.php. Instead try getRequestPathSuffix().
+	 *
 	 * @param string $want If this is not 'all', then the function
 	 * will return an empty array if it determines that the URL is
 	 * inside a rewrite path.
@@ -153,9 +155,7 @@ class WebRequest {
 			if ( !preg_match( '!^https?://!', $url ) ) {
 				$url = 'http://unused' . $url;
 			}
-			AtEase::suppressWarnings();
 			$a = parse_url( $url );
-			AtEase::restoreWarnings();
 			if ( !$a ) {
 				return [];
 			}
@@ -172,15 +172,6 @@ class WebRequest {
 
 			// Raw PATH_INFO style
 			$router->add( "$wgScript/$1" );
-
-			if ( isset( $_SERVER['SCRIPT_NAME'] )
-				&& strpos( $_SERVER['SCRIPT_NAME'], '.php' ) !== false
-			) {
-				// Check for SCRIPT_NAME, we handle index.php explicitly
-				// But we do have some other .php files such as img_auth.php
-				// Don't let root article paths clober the parsing for them
-				$router->add( $_SERVER['SCRIPT_NAME'] . "/$1" );
-			}
 
 			global $wgArticlePath;
 			if ( $wgArticlePath ) {
@@ -204,7 +195,7 @@ class WebRequest {
 				);
 			}
 
-			Hooks::run( 'WebRequestPathInfoRouter', [ $router ] );
+			Hooks::runner()->onWebRequestPathInfoRouter( $router );
 
 			$matches = $router->parse( $path );
 		} else {
@@ -224,6 +215,32 @@ class WebRequest {
 		}
 
 		return $matches;
+	}
+
+	/**
+	 * If the request URL matches a given base path, extract the path part of
+	 * the request URL after that base, and decode escape sequences in it.
+	 *
+	 * If the request URL does not match, false is returned.
+	 *
+	 * @since 1.35
+	 * @param string $basePath The base URL path. Trailing slashes will be
+	 *   stripped.
+	 * @return string|false
+	 */
+	public static function getRequestPathSuffix( $basePath ) {
+		$basePath = rtrim( $basePath, '/' ) . '/';
+		$requestUrl = self::getGlobalRequestURL();
+		$qpos = strpos( $requestUrl, '?' );
+		if ( $qpos !== false ) {
+			$requestPath = substr( $requestUrl, 0, $qpos );
+		} else {
+			$requestPath = $requestUrl;
+		}
+		if ( substr( $requestPath, 0, strlen( $basePath ) ) !== $basePath ) {
+			return false;
+		}
+		return rawurldecode( substr( $requestPath, strlen( $basePath ) ) );
 	}
 
 	/**
@@ -310,18 +327,15 @@ class WebRequest {
 	public static function getRequestId() {
 		// This method is called from various error handlers and should be kept simple.
 
-		if ( self::$reqId ) {
-			return self::$reqId;
-		}
-
-		global $wgAllowExternalReqID;
-
-		self::$reqId = $_SERVER['UNIQUE_ID'] ?? wfRandomString( 24 );
-		if ( $wgAllowExternalReqID ) {
-			$id = RequestContext::getMain()->getRequest()->getHeader( 'X-Request-Id' );
-			if ( $id ) {
-				self::$reqId = $id;
+		if ( !self::$reqId ) {
+			global $wgAllowExternalReqID;
+			$id = $wgAllowExternalReqID
+				? RequestContext::getMain()->getRequest()->getHeader( 'X-Request-Id' )
+				: null;
+			if ( !$id ) {
+				$id = $_SERVER['UNIQUE_ID'] ?? wfRandomString( 24 );
 			}
+			self::$reqId = $id;
 		}
 
 		return self::$reqId;
@@ -402,7 +416,7 @@ class WebRequest {
 	 *
 	 * @param string|array $data
 	 * @return array|string Cleaned-up version of the given
-	 * @private
+	 * @internal
 	 */
 	public function normalizeUnicode( $data ) {
 		if ( is_array( $data ) ) {
@@ -411,8 +425,7 @@ class WebRequest {
 			}
 		} else {
 			$contLang = MediaWikiServices::getInstance()->getContentLanguage();
-			$data = $contLang ? $contLang->normalize( $data ) :
-				UtfNormal\Validator::cleanUp( $data );
+			$data = $contLang->normalize( $data );
 		}
 		return $data;
 	}
@@ -818,7 +831,7 @@ class WebRequest {
 	/**
 	 * Set the session for this request
 	 * @since 1.27
-	 * @private For use by MediaWiki\Session classes only
+	 * @internal For use by MediaWiki\Session classes only
 	 * @param SessionId $sessionId
 	 */
 	public function setSessionId( SessionId $sessionId ) {
@@ -828,7 +841,7 @@ class WebRequest {
 	/**
 	 * Get the session id for this request, if any
 	 * @since 1.27
-	 * @private For use by MediaWiki\Session classes only
+	 * @internal For use by MediaWiki\Session classes only
 	 * @return SessionId|null
 	 */
 	public function getSessionId() {
@@ -848,7 +861,40 @@ class WebRequest {
 			global $wgCookiePrefix;
 			$prefix = $wgCookiePrefix;
 		}
-		return $this->getGPCVal( $_COOKIE, $prefix . $key, $default );
+		$name = $prefix . $key;
+		// Work around mangling of $_COOKIE
+		$name = strtr( $name, '.', '_' );
+		if ( isset( $_COOKIE[$name] ) ) {
+			return $_COOKIE[$name];
+		} else {
+			return $default;
+		}
+	}
+
+	/**
+	 * Get a cookie set with SameSite=None possibly with a legacy fallback cookie.
+	 *
+	 * @param string $key The name of the cookie
+	 * @param string $prefix A prefix to use, empty by default
+	 * @param mixed|null $default What to return if the value isn't found
+	 * @return mixed Cookie value or $default if the cookie is not set
+	 */
+	public function getCrossSiteCookie( $key, $prefix = '', $default = null ) {
+		global $wgUseSameSiteLegacyCookies;
+		$name = $prefix . $key;
+		// Work around mangling of $_COOKIE
+		$name = strtr( $name, '.', '_' );
+		if ( isset( $_COOKIE[$name] ) ) {
+			return $_COOKIE[$name];
+		}
+		if ( $wgUseSameSiteLegacyCookies ) {
+			$legacyName = $prefix . "ss0-" . $key;
+			$legacyName = strtr( $legacyName, '.', '_' );
+			if ( isset( $_COOKIE[$legacyName] ) ) {
+				return $_COOKIE[$legacyName];
+			}
+		}
+		return $default;
 	}
 
 	/**
@@ -957,19 +1003,18 @@ class WebRequest {
 	 * defaults if not given. The limit must be positive and is capped at 5000.
 	 * Offset must be positive but is not capped.
 	 *
+	 * @param User $user User to get option for
 	 * @param int $deflimit Limit to use if no input and the user hasn't set the option.
 	 * @param string $optionname To specify an option other than rclimit to pull from.
 	 * @return int[] First element is limit, second is offset
 	 */
-	public function getLimitOffset( $deflimit = 50, $optionname = 'rclimit' ) {
-		global $wgUser;
-
+	public function getLimitOffsetForUser( User $user, $deflimit = 50, $optionname = 'rclimit' ) {
 		$limit = $this->getInt( 'limit', 0 );
 		if ( $limit < 0 ) {
 			$limit = 0;
 		}
 		if ( ( $limit == 0 ) && ( $optionname != '' ) ) {
-			$limit = $wgUser->getIntOption( $optionname );
+			$limit = $user->getIntOption( $optionname );
 		}
 		if ( $limit <= 0 ) {
 			$limit = $deflimit;
@@ -1057,21 +1102,7 @@ class WebRequest {
 			return;
 		}
 
-		$apacheHeaders = function_exists( 'apache_request_headers' ) ? apache_request_headers() : false;
-		if ( $apacheHeaders ) {
-			foreach ( $apacheHeaders as $tempName => $tempValue ) {
-				$this->headers[strtoupper( $tempName )] = $tempValue;
-			}
-		} else {
-			foreach ( $_SERVER as $name => $value ) {
-				if ( substr( $name, 0, 5 ) === 'HTTP_' ) {
-					$name = str_replace( '_', '-', substr( $name, 5 ) );
-					$this->headers[$name] = $value;
-				} elseif ( $name === 'CONTENT_LENGTH' ) {
-					$this->headers['CONTENT-LENGTH'] = $value;
-				}
-			}
-		}
+		$this->headers = array_change_key_case( getallheaders(), CASE_UPPER );
 	}
 
 	/**
@@ -1151,8 +1182,12 @@ class WebRequest {
 	 * @return array [ languageCode => q-value ] sorted by q-value in
 	 *   descending order then appearing time in the header in ascending order.
 	 * May contain the "language" '*', which applies to languages other than those explicitly listed.
-	 * This is aligned with rfc2616 section 14.4
-	 * Preference for earlier languages appears in rfc3282 as an extension to HTTP/1.1.
+	 *
+	 * This logic is aligned with RFC 7231 section 5 (previously RFC 2616 section 14),
+	 * at <https://tools.ietf.org/html/rfc7231#section-5.3.5>.
+	 *
+	 * Earlier languages in the list are preferred as per the RFC 23282 extension to HTTP/1.1,
+	 * at <https://tools.ietf.org/html/rfc3282>.
 	 */
 	public function getAcceptLang() {
 		// Modified version of code found at
@@ -1166,36 +1201,38 @@ class WebRequest {
 		$acceptLang = strtolower( $acceptLang );
 
 		// Break up string into pieces (languages and q factors)
-		$lang_parse = null;
-		preg_match_all(
-			'/([a-z]{1,8}(-[a-z]{1,8})*|\*)\s*(;\s*q\s*=\s*(1(\.0{0,3})?|0(\.[0-9]{0,3})?)?)?/',
+		if ( !preg_match_all(
+			'/
+				# a language code or a star is required
+				([a-z]{1,8}(?:-[a-z]{1,8})*|\*)
+				# from here everything is optional
+				\s*
+				(?:
+					# this accepts only numbers in the range ;q=0.000 to ;q=1.000
+					;\s*q\s*=\s*
+					(1(?:\.0{0,3})?|0(?:\.\d{0,3})?)?
+				)?
+			/x',
 			$acceptLang,
-			$lang_parse
-		);
-
-		if ( !count( $lang_parse[1] ) ) {
+			$matches,
+			PREG_SET_ORDER
+		) ) {
 			return [];
 		}
 
-		$langcodes = $lang_parse[1];
-		$qvalues = $lang_parse[4];
-		$indices = range( 0, count( $lang_parse[1] ) - 1 );
-
-		// Set default q factor to 1
-		foreach ( $indices as $index ) {
-			if ( $qvalues[$index] === '' ) {
-				$qvalues[$index] = 1;
-			} elseif ( $qvalues[$index] == 0 ) {
-				unset( $langcodes[$index], $qvalues[$index], $indices[$index] );
+		// Create a list like "en" => 0.8
+		$langs = [];
+		foreach ( $matches as $match ) {
+			$languageCode = $match[1];
+			// When not present, the default value is 1
+			$qValue = (float)( $match[2] ?? 1.0 );
+			if ( $qValue ) {
+				$langs[$languageCode] = $qValue;
 			}
 		}
 
-		// Sort list. First by $qvalues, then by order. Reorder $langcodes the same way
-		array_multisort( $qvalues, SORT_DESC, SORT_NUMERIC, $indices, $langcodes );
-
-		// Create a list like "en" => 0.8
-		$langs = array_combine( $langcodes, $qvalues );
-
+		// Sort list by qValue
+		arsort( $langs, SORT_NUMERIC );
 		return $langs;
 	}
 
@@ -1205,7 +1242,7 @@ class WebRequest {
 	 * @since 1.19
 	 *
 	 * @throws MWException
-	 * @return string
+	 * @return string|null
 	 */
 	protected function getRawIP() {
 		if ( !isset( $_SERVER['REMOTE_ADDR'] ) ) {
@@ -1287,13 +1324,12 @@ class WebRequest {
 		}
 
 		# Allow extensions to improve our guess
-		Hooks::run( 'GetIP', [ &$ip ] );
+		Hooks::runner()->onGetIP( $ip );
 
 		if ( !$ip ) {
 			throw new MWException( "Unable to determine IP." );
 		}
 
-		wfDebug( "IP: $ip\n" );
 		$this->ip = $ip;
 		return $ip;
 	}

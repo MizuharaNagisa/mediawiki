@@ -24,7 +24,6 @@
  * @author Ævar Arnfjörð Bjarmason <avarab@gmail.com>
  */
 
-use MediaWiki\MediaWikiServices;
 use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\Rdbms\IResultWrapper;
 
@@ -35,7 +34,7 @@ use Wikimedia\Rdbms\IResultWrapper;
  */
 class SpecialUnwatchedPages extends QueryPage {
 
-	function __construct( $name = 'Unwatchedpages' ) {
+	public function __construct( $name = 'Unwatchedpages' ) {
 		parent::__construct( $name, 'unwatchedpages' );
 	}
 
@@ -43,7 +42,7 @@ class SpecialUnwatchedPages extends QueryPage {
 		return true;
 	}
 
-	function isSyndicated() {
+	public function isSyndicated() {
 		return false;
 	}
 
@@ -87,11 +86,11 @@ class SpecialUnwatchedPages extends QueryPage {
 		];
 	}
 
-	function sortDescending() {
+	protected function sortDescending() {
 		return false;
 	}
 
-	function getOrderFields() {
+	protected function getOrderFields() {
 		return [ 'page_namespace', 'page_title' ];
 	}
 
@@ -110,17 +109,14 @@ class SpecialUnwatchedPages extends QueryPage {
 	 * @param object $result Result row
 	 * @return string
 	 */
-	function formatResult( $skin, $result ) {
+	public function formatResult( $skin, $result ) {
 		$nt = Title::makeTitleSafe( $result->namespace, $result->title );
 		if ( !$nt ) {
 			return Html::element( 'span', [ 'class' => 'mw-invalidtitle' ],
 				Linker::getInvalidTitleDescription( $this->getContext(), $result->namespace, $result->title ) );
 		}
 
-		$converter = MediaWikiServices::getInstance()->getLanguageConverterFactory()
-			->getLanguageConverter();
-
-		$text = $converter->convertHtml( $nt->getPrefixedText() );
+		$text = $this->getLanguageConverter()->convertHtml( $nt->getPrefixedText() );
 
 		$linkRenderer = $this->getLinkRenderer();
 

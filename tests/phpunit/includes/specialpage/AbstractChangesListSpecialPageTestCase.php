@@ -6,7 +6,7 @@
  *
  * @group Database
  */
-abstract class AbstractChangesListSpecialPageTestCase extends MediaWikiTestCase {
+abstract class AbstractChangesListSpecialPageTestCase extends MediaWikiIntegrationTestCase {
 	// Must be initialized by subclass
 	/**
 	 * @var ChangesListSpecialPage
@@ -105,12 +105,6 @@ abstract class AbstractChangesListSpecialPageTestCase extends MediaWikiTestCase 
 				$redirected = true;
 			}
 		);
-		$ctx = new RequestContext();
-
-		// Give users patrol permissions so we can test that.
-		$user = $this->getTestSysop()->getUser();
-		$user->setOption( 'rcenhancedfilters-disable', $rcfilters ? 0 : 1 );
-		$ctx->setUser( $user );
 
 		// Disable this hook or it could break changeType
 		// depending on which other extensions are running.
@@ -118,6 +112,12 @@ abstract class AbstractChangesListSpecialPageTestCase extends MediaWikiTestCase 
 			'ChangesListSpecialPageStructuredFilters',
 			null
 		);
+
+		// Give users patrol permissions so we can test that.
+		$user = $this->getTestSysop()->getUser();
+		$user->setOption( 'rcenhancedfilters-disable', $rcfilters ? 0 : 1 );
+		$ctx = new RequestContext();
+		$ctx->setUser( $user );
 
 		$ctx->setOutput( $output );
 		$clsp = $this->changesListSpecialPage;

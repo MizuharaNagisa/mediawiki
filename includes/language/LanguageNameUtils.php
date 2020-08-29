@@ -1,8 +1,5 @@
 <?php
 /**
- * Internationalisation code.
- * See https://www.mediawiki.org/wiki/Special:MyLanguage/Localisation for more information.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -19,7 +16,6 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup Language
  */
 
 /**
@@ -29,38 +25,40 @@
 namespace MediaWiki\Languages;
 
 use HashBagOStuff;
-use Hooks;
 use MediaWiki\Config\ServiceOptions;
+use MediaWiki\HookContainer\HookContainer;
+use MediaWiki\HookContainer\HookRunner;
 use MediaWikiTitleCodec;
 use MWException;
 
 /**
- * @ingroup Language
- *
  * A service that provides utilities to do with language names and codes.
  *
+ * See https://www.mediawiki.org/wiki/Special:MyLanguage/Localisation for more information.
+ *
  * @since 1.34
+ * @ingroup Language
  */
 class LanguageNameUtils {
 	/**
 	 * Return autonyms in getLanguageName(s).
 	 */
-	const AUTONYMS = null;
+	public const AUTONYMS = null;
 
 	/**
 	 * Return all known languages in getLanguageName(s).
 	 */
-	const ALL = 'all';
+	public const ALL = 'all';
 
 	/**
 	 * Return in getLanguageName(s) only the languages that are defined by MediaWiki.
 	 */
-	const DEFINED = 'mw';
+	public const DEFINED = 'mw';
 
 	/**
 	 * Return in getLanguageName(s) only the languages for which we have at least some localisation.
 	 */
-	const SUPPORTED = 'mwfile';
+	public const SUPPORTED = 'mwfile';
 
 	/** @var ServiceOptions */
 	private $options;
@@ -77,17 +75,25 @@ class LanguageNameUtils {
 	 */
 	private $validCodeCache = [];
 
+	/**
+	 * @internal For use by ServiceWiring
+	 */
 	public const CONSTRUCTOR_OPTIONS = [
 		'ExtraLanguageNames',
 		'UsePigLatinVariant',
 	];
 
+	/** @var HookRunner */
+	private $hookRunner;
+
 	/**
 	 * @param ServiceOptions $options
+	 * @param HookContainer $hookContainer
 	 */
-	public function __construct( ServiceOptions $options ) {
+	public function __construct( ServiceOptions $options, HookContainer $hookContainer ) {
 		$options->assertRequiredOptions( self::CONSTRUCTOR_OPTIONS );
 		$this->options = $options;
+		$this->hookRunner = new HookRunner( $hookContainer );
 	}
 
 	/**
@@ -117,7 +123,8 @@ class LanguageNameUtils {
 	 *
 	 * @param string $code
 	 *
-	 * @return bool
+	 * @return bool False if the language code contains dangerous characters, e.g. HTML special
+	 *  characters or characters illegal in MediaWiki titles.
 	 */
 	public function isValidCode( string $code ) : bool {
 		if ( !isset( $this->validCodeCache[$code] ) ) {
@@ -206,7 +213,7 @@ class LanguageNameUtils {
 
 		if ( $inLanguage !== self::AUTONYMS ) {
 			# TODO: also include for self::AUTONYMS, when this code is more efficient
-			Hooks::run( 'LanguageGetTranslatedLanguageNames', [ &$names, $inLanguage ] );
+			$this->hookRunner->onLanguageGetTranslatedLanguageNames( $names, $inLanguage );
 		}
 
 		$mwNames = $this->options->get( 'ExtraLanguageNames' ) + Data\Names::$names;
@@ -294,7 +301,7 @@ class LanguageNameUtils {
 	public function getMessagesFileName( $code ) {
 		global $IP;
 		$file = $this->getFileName( "$IP/languages/messages/Messages", $code, '.php' );
-		Hooks::run( 'Language::getMessagesFileName', [ $code, &$file ] );
+		$this->hookRunner->onLanguage__getMessagesFileName( $code, $file );
 		return $file;
 	}
 

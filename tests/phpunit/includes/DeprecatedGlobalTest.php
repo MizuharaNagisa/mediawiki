@@ -23,15 +23,15 @@ use PHPUnit\Framework\Error\Deprecated;
 /**
  * @covers DeprecatedGlobal
  */
-class DeprecatedGlobalTest extends MediaWikiTestCase {
+class DeprecatedGlobalTest extends MediaWikiIntegrationTestCase {
 	private $oldErrorLevel;
 
-	public function setUp() : void {
+	protected function setUp() : void {
 		parent::setUp();
 		$this->oldErrorLevel = error_reporting( -1 );
 	}
 
-	public function tearDown() : void {
+	protected function tearDown() : void {
 		error_reporting( $this->oldErrorLevel );
 		parent::tearDown();
 	}

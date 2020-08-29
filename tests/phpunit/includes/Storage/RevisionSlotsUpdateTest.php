@@ -8,13 +8,13 @@ use MediaWiki\Revision\RevisionAccessException;
 use MediaWiki\Revision\RevisionSlots;
 use MediaWiki\Revision\SlotRecord;
 use MediaWiki\Storage\RevisionSlotsUpdate;
-use MediaWikiTestCase;
+use MediaWikiIntegrationTestCase;
 use WikitextContent;
 
 /**
  * @covers \MediaWiki\Storage\RevisionSlotsUpdate
  */
-class RevisionSlotsUpdateTest extends MediaWikiTestCase {
+class RevisionSlotsUpdateTest extends MediaWikiIntegrationTestCase {
 
 	public function provideNewFromRevisionSlots() {
 		$slotA = SlotRecord::newUnsaved( 'A', new WikitextContent( 'A' ) );
@@ -97,20 +97,20 @@ class RevisionSlotsUpdateTest extends MediaWikiTestCase {
 		$update = RevisionSlotsUpdate::newFromContent( $newContent, $parentSlots );
 
 		$this->assertEquals( $modified, $update->getModifiedRoles() );
-		$this->assertEmpty( $update->getRemovedRoles() );
+		$this->assertSame( [], $update->getRemovedRoles() );
 	}
 
 	public function testConstructor() {
 		$update = new RevisionSlotsUpdate();
 
-		$this->assertEmpty( $update->getModifiedRoles() );
-		$this->assertEmpty( $update->getRemovedRoles() );
+		$this->assertSame( [], $update->getModifiedRoles() );
+		$this->assertSame( [], $update->getRemovedRoles() );
 
 		$slotA = SlotRecord::newUnsaved( 'A', new WikitextContent( 'A' ) );
 		$update = new RevisionSlotsUpdate( [ 'A' => $slotA ] );
 
 		$this->assertEquals( [ 'A' ], $update->getModifiedRoles() );
-		$this->assertEmpty( $update->getRemovedRoles() );
+		$this->assertSame( [], $update->getRemovedRoles() );
 
 		$update = new RevisionSlotsUpdate( [ 'A' => $slotA ], [ 'X' ] );
 

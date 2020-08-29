@@ -52,8 +52,6 @@ class CommandFactory {
 	private $firejail;
 
 	/**
-	 * Constructor
-	 *
 	 * @param array $limits See {@see Command::limits()}
 	 * @param string|bool $cgroup See {@see Command::cgroup()}
 	 * @param string|bool $restrictionMethod
@@ -74,9 +72,10 @@ class CommandFactory {
 		$this->setLogger( new NullLogger() );
 	}
 
-	private function findFirejail(): ?string {
+	protected function findFirejail(): ?string {
 		if ( $this->firejail === null ) {
-			$this->firejail = ExecutableFinder::findInDefaultPaths( 'firejail' );
+			// Convert a `false` from ExecutableFinder to `null` (T257282)
+			$this->firejail = ExecutableFinder::findInDefaultPaths( 'firejail' ) ?: null;
 		}
 
 		return $this->firejail;

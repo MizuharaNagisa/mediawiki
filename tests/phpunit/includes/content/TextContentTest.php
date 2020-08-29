@@ -21,28 +21,19 @@ class TextContentTest extends MediaWikiLangTestCase {
 		$user = new User();
 		$user->setName( '127.0.0.1' );
 
-		$this->context = new RequestContext( new FauxRequest() );
-		$this->context->setTitle( Title::newFromText( 'Test' ) );
+		$this->context = new RequestContext();
+		$this->context->setTitle( Title::makeTitle( NS_MAIN, 'Test' ) );
 		$this->context->setUser( $user );
 
 		$this->setMwGlobals( [
-			'wgUser' => $user,
 			'wgTextModelsToParse' => [
 				CONTENT_MODEL_WIKITEXT,
 				CONTENT_MODEL_CSS,
 				CONTENT_MODEL_JAVASCRIPT,
 			],
-			'wgTidyConfig' => [ 'driver' => 'RemexHtml' ],
 			'wgCapitalLinks' => true,
 			'wgHooks' => [], // bypass hook ContentGetParserOutput that force custom rendering
 		] );
-
-		MWTidy::destroySingleton();
-	}
-
-	protected function tearDown() : void {
-		MWTidy::destroySingleton();
-		parent::tearDown();
 	}
 
 	/**
@@ -86,8 +77,8 @@ class TextContentTest extends MediaWikiLangTestCase {
 
 		if ( $expectedFields ) {
 			foreach ( $expectedFields as $field => $exp ) {
-				$f = 'get' . ucfirst( $field );
-				$v = call_user_func( [ $po, $f ] );
+				$getter = 'get' . ucfirst( $field );
+				$v = $po->$getter();
 
 				if ( is_array( $exp ) ) {
 					$this->assertArrayEquals( $exp, $v );
@@ -218,7 +209,7 @@ class TextContentTest extends MediaWikiLangTestCase {
 
 		$content = $this->newContent( $text );
 
-		$v = $content->isCountable( $hasLinks, $this->context->getTitle() );
+		$v = $content->isCountable( $hasLinks );
 
 		$this->assertEquals(
 			$expected,

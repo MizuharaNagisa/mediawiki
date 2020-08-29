@@ -318,9 +318,10 @@ class ApiMainTest extends ApiTestCase {
 	private function doTestCheckMaxLag( $lag ) {
 		$mockLB = $this->getMockBuilder( LoadBalancer::class )
 			->disableOriginalConstructor()
-			->setMethods( [ 'getMaxLag', '__destruct' ] )
+			->setMethods( [ 'getMaxLag', 'getConnectionRef', '__destruct' ] )
 			->getMock();
 		$mockLB->method( 'getMaxLag' )->willReturn( [ 'somehost', $lag ] );
+		$mockLB->method( 'getConnectionRef' )->willReturn( $this->db );
 		$this->setService( 'DBLoadBalancer', $mockLB );
 
 		$req = new FauxRequest();
@@ -370,6 +371,8 @@ class ApiMainTest extends ApiTestCase {
 		return [
 			[ false, [], 'user', 'assertuserfailed' ],
 			[ true, [], 'user', false ],
+			[ false, [], 'anon', false ],
+			[ true, [], 'anon', 'assertanonfailed' ],
 			[ true, [], 'bot', 'assertbotfailed' ],
 			[ true, [ 'bot' ], 'user', false ],
 			[ true, [ 'bot' ], 'bot', false ],
@@ -1150,5 +1153,16 @@ class ApiMainTest extends ApiTestCase {
 		$this->assertArrayHasKey( 'error', $data );
 		$this->assertArrayHasKey( 'code', $data['error'] );
 		$this->assertSame( 'badvalue', $data['error']['code'] );
+	}
+
+	public function testMatchRequestedHeaders() {
+		$api = Wikimedia\TestingAccessWrapper::newFromClass( 'ApiMain' );
+		$allowedHeaders = [ 'Accept', 'Origin', 'User-Agent' ];
+
+		$this->assertTrue( $api->matchRequestedHeaders( 'Accept', $allowedHeaders ) );
+		$this->assertTrue( $api->matchRequestedHeaders( 'Accept,Origin', $allowedHeaders ) );
+		$this->assertTrue( $api->matchRequestedHeaders( 'accEpt, oRIGIN', $allowedHeaders ) );
+		$this->assertFalse( $api->matchRequestedHeaders( 'Accept,Foo', $allowedHeaders ) );
+		$this->assertFalse( $api->matchRequestedHeaders( 'Accept, fOO', $allowedHeaders ) );
 	}
 }
